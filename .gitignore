@@ -1,0 +1,39 @@
+# secrets
+.env
+.env.*
+.openai*
+
+# notes, images, documents
+*.md
+!README.md
+!app/extraction_prompt.md
+*.png
+*.jpg
+*.jpeg
+*.pdf
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+
+# node
+node_modules/
+dist/
+
+# tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# editors and os
+.vscode/
+.idea/
+.DS_Store
+
+invoices/
+skills-lock.json
+.agents
+.claude

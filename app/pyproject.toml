@@ -1,0 +1,25 @@
+[project]
+name = "app"
+version = "0.0.1"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "vaakesh", email = "apua.uaua@mail.ru" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "alembic>=1.18.5",
+    "asyncpg>=0.31.0",
+    "fastapi[standard]>=0.141.1",
+    "pydantic-settings>=2.14.2",
+    "sqlalchemy[asyncio]>=2.0.51",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.1",
+    "ty>=0.0.65",
+]
+
+[tool.uv]
+exclude-newer = "2026-08-03T15:00:00Z"

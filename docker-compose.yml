@@ -1,0 +1,95 @@
+services:
+  app:
+    build:
+      context: ./app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    ports:
+      - "127.0.0.1:${APP_PORT:?Set APP_PORT in .env}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          from urllib.request import urlopen
+
+          with urlopen(
+              url="http://127.0.0.1:8000/openapi.json",
+              timeout=2,
+          ):
+              pass
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}:80"
+
+  postgres:
+    image: postgres:18.3
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:26.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CB_SERVER_NAME: ${CB_SERVER_NAME}
+      CB_SERVER_URL: http://localhost:${CLOUDBEAVER_PORT}
+      CB_ADMIN_NAME: ${CB_ADMIN_NAME}
+      CB_ADMIN_PASSWORD: ${CB_ADMIN_PASSWORD}
+      # substituted into initial-data-sources.conf
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # CloudBeaver does not substitute variables in initial-data-sources.conf,
+    # so the file is built from a template before start
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        sed
+        -e "s|__POSTGRES_USER__|$$POSTGRES_USER|g"
+        -e "s|__POSTGRES_PASSWORD__|$$POSTGRES_PASSWORD|g"
+        -e "s|__POSTGRES_DB__|$$POSTGRES_DB|g"
+        /opt/cloudbeaver/initial-data-sources.template.conf
+        > /opt/cloudbeaver/conf/initial-data-sources.conf
+        && exec ./launch-product.sh
+    ports:
+      - "127.0.0.1:${CLOUDBEAVER_PORT}:8978"
+    volumes:
+      - cloudbeaver:/opt/cloudbeaver/workspace
+      # database connection created on first start
+      - ./cloudbeaver/initial-data-sources.conf:/opt/cloudbeaver/initial-data-sources.template.conf:ro
+
+volumes:
+  pgdata:
+  cloudbeaver:
