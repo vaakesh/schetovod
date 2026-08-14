@@ -2,7 +2,7 @@
 
 Суммовой учёт товаров в розничных ценах.
 
-Подготовлены окружение, подключение к PostgreSQL и начальная схема данных.
+Добавлена загрузка накладных из JSON, проверка данных и расчёт розничных цен.
 Backend — FastAPI и PostgreSQL, frontend — React.
 
 ## Запуск
@@ -37,6 +37,13 @@ docker compose up --build -d
 
 | Метод и путь | Назначение |
 | --- | --- |
+| `GET /invoice` | Список накладных, фильтр по статусу и поиск |
+| `POST /invoice` | Создать черновик из JSON |
+| `POST /invoice/{id}/confirm`, `POST /invoice/{id}/decline` | Провести или отклонить |
+| `GET /invoice/{id}/confirmed` | Открыть проведённую накладную |
+| `GET /supplier`, `GET /supplier/{id}/products` | Поиск поставщиков и их товаров |
+
+
 
 Форматы запросов доступны в `/docs`.
 Разработка и проверки — в [app/README.md](app/README.md).

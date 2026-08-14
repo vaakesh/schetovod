@@ -1,6 +1,6 @@
 [project]
 name = "app"
-version = "0.0.1"
+version = "0.0.2"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -8,18 +8,18 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "alembic>=1.18.5",
+    "alembic>=1.19.1",
     "asyncpg>=0.31.0",
     "fastapi[standard]>=0.141.1",
-    "pydantic-settings>=2.14.2",
-    "sqlalchemy[asyncio]>=2.0.51",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy[asyncio]>=2.0.52",
 ]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.16.1",
-    "ty>=0.0.65",
+    "ruff>=0.16.3",
+    "ty>=0.0.71",
 ]
 
 [tool.uv]
-exclude-newer = "2026-08-03T15:00:00Z"
+exclude-newer = "2026-08-14T15:00:00Z"

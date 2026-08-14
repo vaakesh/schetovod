@@ -175,24 +175,27 @@ class Invoice(Base):
         primary_key=True,
         nullable=False,
     )
-    supplier_id: Mapped[BigInt] = mapped_column(
+    supplier_id: Mapped[BigInt | None] = mapped_column(
         ForeignKey(
             column="suppliers.id",
         ),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     # as printed, may contain letters and leading zeros
-    invoice_number: Mapped[str] = mapped_column(
-        nullable=False,
+    invoice_number: Mapped[str | None] = mapped_column(
+        nullable=True,
     )
     # date of the document, not of the upload
-    invoice_date: Mapped[date] = mapped_column(
-        nullable=False,
+    invoice_date: Mapped[date | None] = mapped_column(
+        nullable=True,
     )
+    # starts as a draft until the user confirms or declines it
     status: Mapped[InvoiceStatus] = mapped_column(
         invoice_status_enum,
         nullable=False,
+        default=InvoiceStatus.DRAFT,
+        server_default=InvoiceStatus.DRAFT,
     )
     created_at: Mapped[DateTimeTz] = mapped_column(
         nullable=False,
@@ -214,6 +217,15 @@ class Invoice(Base):
     )
 
     __table_args__ = (
+        # confirmed invoices need an identity, drafts and declined uploads may be incomplete
+        CheckConstraint(
+            sqltext=(
+                f"status <> '{InvoiceStatus.CONFIRMED}' OR "
+                "(supplier_id IS NOT NULL AND invoice_number IS NOT NULL "
+                "AND invoice_date IS NOT NULL)"
+            ),
+            name="confirmed_fields",
+        ),
         # target for the composite foreign key from invoice_items
         UniqueConstraint(
             "id",

@@ -2,6 +2,7 @@ from enum import StrEnum
 
 
 class InvoiceStatus(StrEnum):
+    DRAFT = "draft"
     CONFIRMED = "confirmed"
     DECLINED = "declined"
 
