@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,6 +30,20 @@ class Settings(BaseSettings):
     postgres_port: int
     # the shop's day, ledger dates and the future date check follow it
     timezone: str = "Europe/Moscow"
+    # without it a photo upload is refused before any call to OpenAI
+    include_api_openai: bool = False
+    # the key is read from a file, in docker it is mounted as a secret
+    openai_token_file: Path = REPO_ROOT / ".openai-token"
+    openai_model: str = "gpt-6-luna"
+    openai_reasoning_effort: Literal[
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    ] = "xhigh"
+    # a long reasoning over several pages takes minutes
+    openai_timeout: float = 600
 
     @property
     def database_url(self) -> URL:

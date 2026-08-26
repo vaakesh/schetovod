@@ -114,7 +114,10 @@ class InvoiceRepository:
             Invoice.extracted["supplier"]["name"].astext,
         )
         lines = func.jsonb_array_length(
-            Invoice.extracted["items"],
+            func.coalesce(
+                Invoice.corrections["lines"],
+                Invoice.extracted["items"],
+            ),
         )
         statement = (
             select(

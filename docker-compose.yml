@@ -11,6 +11,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+      # 1 turns on recognition by photo, the token must be in .openai-token in the repo root
+      INCLUDE_API_OPENAI: ${INCLUDE_API_OPENAI:-0}
+      OPENAI_TOKEN_FILE: /run/secrets/openai_token
+    secrets:
+      - openai_token
     ports:
       - "127.0.0.1:${APP_PORT:?Set APP_PORT in .env}:8000"
     healthcheck:
@@ -93,3 +98,7 @@ services:
 volumes:
   pgdata:
   cloudbeaver:
+
+secrets:
+  openai_token:
+    file: ./.openai-token

@@ -144,6 +144,7 @@ class InvoiceService:
                 invoice_date=invoice.invoice_date,
                 status=InvoiceStatus.DRAFT,
                 extracted=extracted,
+                corrections={},
             ),
         )
         draft = await self._draft(
@@ -259,6 +260,35 @@ class InvoiceService:
                 invoice_id=invoice_id,
             ),
         )
+
+    async def save_form(
+        self,
+        invoice_id: int,
+        form: DraftForm,
+    ) -> InvoiceDraft:
+        draft_invoice = await self._get_draft(
+            invoice_id=invoice_id,
+        )
+        draft_invoice.corrections = form.model_dump(
+            mode="json",
+        )
+        # the columns behind the checks and the uniqueness of confirmed invoices follow the form
+        draft_invoice.invoice_number = form.invoice_number
+        draft_invoice.invoice_date = form.invoice_date
+        supplier = None
+        if isinstance(
+            form.supplier,
+            SupplierRef,
+        ):
+            supplier = await self.suppliers.get(
+                supplier_id=form.supplier.id,
+            )
+        draft_invoice.supplier_id = supplier.id if supplier else None
+        draft = await self._draft(
+            draft_invoice=draft_invoice,
+        )
+        await self.invoices.commit()
+        return draft
 
     async def confirm_invoice(
         self,
@@ -475,10 +505,15 @@ class InvoiceService:
         extraction = InvoiceExtraction.model_validate(
             obj=draft_invoice.extracted,
         )
-        form = await self._initial_form(
-            draft_invoice=draft_invoice,
-            extraction=extraction,
-        )
+        if not draft_invoice.corrections:
+            form = await self._initial_form(
+                draft_invoice=draft_invoice,
+                extraction=extraction,
+            )
+        else:
+            form = DraftForm.model_validate(
+                obj=draft_invoice.corrections,
+            )
         plan = DraftPlan(
             form=form,
             extraction=extraction,

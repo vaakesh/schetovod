@@ -8,8 +8,9 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import settings
 from db import get_session
-from enums import InvoiceStatus
+from enums import InvoiceStatus, LedgerKind
 from main import app
 from models import (
     Invoice,
@@ -212,7 +213,11 @@ class FakeInvoices:
             ).get_for_invoice(
                 invoice_id=invoice.id,
             )
-            lines = invoice.extracted["items"]
+            lines = (
+                invoice.corrections["lines"]
+                if invoice.corrections
+                else invoice.extracted["items"]
+            )
             rows.append(
                 InvoiceRow(
                     invoice=invoice,
@@ -627,6 +632,10 @@ class ReceiveInvoiceTests(InvoiceApiTestCase):
         )
         invoice = self.store.invoices[draft["id"]]
         self.assertEqual(
+            first=invoice.corrections,
+            second={},
+        )
+        self.assertEqual(
             first=invoice.extracted,
             second=invoice_payload(),
         )
@@ -699,6 +708,30 @@ class ReceiveInvoiceTests(InvoiceApiTestCase):
                 "code": None,
             },
             container=draft["issues"],
+        )
+
+    def test_new_supplier_has_only_new_products(self) -> None:
+        draft = self.upload()
+        form = draft["form"]
+        form["supplier"] = {"name": "ООО «Поставщик»", "inn": None}
+
+        draft = self.save(
+            draft=draft,
+            form=form,
+        )
+
+        self.assertEqual(
+            first=self.blocking(
+                draft=draft,
+            ),
+            second=[
+                (1, "новый товар, укажите розничную цену"),
+                (2, "новый товар, укажите розничную цену"),
+            ],
+        )
+        self.assertEqual(
+            first=[line["new_product"] for line in draft["lines"]],
+            second=[True, True],
         )
 
     def test_known_supplier_and_products_make_it_ready(self) -> None:
@@ -1045,3 +1078,1164 @@ class ReceiveInvoiceTests(InvoiceApiTestCase):
             "item": payload["items"][0],
             "totals": payload["totals"],
         }
+
+
+class RecognizeImageTests(InvoiceApiTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        enabled = patch.object(
+            target=settings,
+            attribute="include_api_openai",
+            new=True,
+        )
+        enabled.start()
+        self.addCleanup(
+            enabled.stop,
+        )
+
+    def test_turned_off_recognition_does_not_call_openai(self) -> None:
+        settings.include_api_openai = False
+
+        response, extract = self.post_images(
+            files=[
+                ("files", ("page.jpg", b"page", "image/jpeg")),
+            ],
+            extracted=invoice_payload(),
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=503,
+        )
+        extract.assert_not_awaited()
+
+    def post_images(
+        self,
+        files: list[tuple[str, tuple[str, bytes, str]]],
+        extracted: dict[str, Any],
+    ) -> tuple[Any, AsyncMock]:
+        extract = AsyncMock(
+            return_value=extracted,
+        )
+        with patch(
+            target="main.extract_invoice",
+            new=extract,
+        ):
+            response = self.client.post(
+                url="/invoice/image",
+                files=files,
+            )
+        return response, extract
+
+    def test_recognized_invoice_becomes_a_draft(self) -> None:
+        response, extract = self.post_images(
+            files=[
+                ("files", ("page1.jpg", b"first", "image/jpeg")),
+                ("files", ("page2.png", b"second", "image/png")),
+            ],
+            extracted=invoice_payload(),
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        call = extract.await_args
+        assert call is not None
+        images = call.kwargs["images"]
+        self.assertEqual(
+            first=[(image.content, image.media_type) for image in images],
+            second=[(b"first", "image/jpeg"), (b"second", "image/png")],
+        )
+        draft = response.json()
+        self.assertEqual(
+            first=self.store.invoices[draft["id"]].extracted,
+            second=invoice_payload(),
+        )
+
+    def test_rejects_a_file_that_is_not_an_image(self) -> None:
+        response, extract = self.post_images(
+            files=[
+                ("files", ("invoice.pdf", b"%PDF", "application/pdf")),
+            ],
+            extracted=invoice_payload(),
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=422,
+        )
+        extract.assert_not_awaited()
+
+    def test_malformed_recognition_is_reported_by_field(self) -> None:
+        payload = invoice_payload()
+        payload["invoice_date"] = "12.08.2026"
+
+        response, _ = self.post_images(
+            files=[
+                ("files", ("page.jpg", b"page", "image/jpeg")),
+            ],
+            extracted=payload,
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=422,
+        )
+        self.assertEqual(
+            first=[error["loc"] for error in response.json()["detail"]],
+            second=[["body", "invoice_date"]],
+        )
+        self.assertEqual(
+            first=self.store.invoices,
+            second={},
+        )
+
+
+class SaveFormTests(InvoiceApiTestCase):
+    def test_new_supplier_and_prices_make_it_ready_without_catalog_writes(self) -> None:
+        draft = self.upload()
+        form = draft["form"]
+        form["supplier"] = {"name": "ООО «Поставщик»", "inn": INN}
+        form["lines"][0]["retail_price"] = 65
+        form["lines"][1]["retail_price"] = 40
+
+        draft = self.save(
+            draft=draft,
+            form=form,
+        )
+
+        self.assertTrue(
+            expr=draft["ready"],
+            msg=draft["issues"],
+        )
+        self.assertEqual(
+            first=[
+                (line["new_product"], line["markup_pct"], line["retail_price"])
+                for line in draft["lines"]
+            ],
+            second=[(True, "30.00", "65"), (True, "33.33", "40")],
+        )
+        self.assertEqual(
+            first=draft["form"],
+            second=form,
+        )
+        self.assertEqual(
+            first=(self.store.suppliers, self.store.products, self.store.aliases),
+            second=({}, {}, []),
+        )
+        invoice = self.store.invoices[draft["id"]]
+        self.assertEqual(
+            first=invoice.corrections,
+            second=form,
+        )
+        self.assertEqual(
+            first=invoice.extracted,
+            second=invoice_payload(),
+        )
+
+    def test_header_columns_follow_the_form(self) -> None:
+        supplier, _, _ = self.known_supplier()
+        draft = self.upload()
+        form = draft["form"]
+        form["invoice_number"] = "43"
+        form["invoice_date"] = "13-08-2026"
+
+        self.save(
+            draft=draft,
+            form=form,
+        )
+        invoice = self.store.invoices[draft["id"]]
+        self.assertEqual(
+            first=(invoice.invoice_number, invoice.invoice_date, invoice.supplier_id),
+            second=(
+                "43",
+                date(
+                    year=2026,
+                    month=8,
+                    day=13,
+                ),
+                supplier.id,
+            ),
+        )
+
+        form["supplier"] = {"name": "Другой", "inn": None}
+        self.save(
+            draft=draft,
+            form=form,
+        )
+        self.assertIsNone(
+            obj=invoice.supplier_id,
+        )
+
+    def test_edited_lines_are_recalculated(self) -> None:
+        self.known_supplier()
+        draft = self.upload()
+        form = draft["form"]
+        form["lines"][0]["cost_price_total"] = "150.00"
+        form["lines"][1]["vat_percent"] = "20"
+
+        draft = self.save(
+            draft=draft,
+            form=form,
+        )
+
+        self.assertEqual(
+            first=[
+                (
+                    line["cost_price"],
+                    line["base_price_total"],
+                    line["retail_price"],
+                )
+                for line in draft["lines"]
+            ],
+            second=[("60.00", "150.00", "78"), ("30.00", "25.00", "36")],
+        )
+        # what the model read disagrees now, which is only worth a look
+        self.assertTrue(
+            expr=draft["ready"],
+        )
+        self.assertEqual(
+            first=[issue["message"] for issue in draft["issues"]],
+            second=[
+                "сумма без НДС: в накладной 125.00, по сумме строки 150.00",
+                "цена за единицу: в накладной 50.00, по сумме строки 60.00",
+                "цена без НДС: в накладной 50.00, по сумме строки 60.00",
+                "сумма без НДС: в накладной 30.00, по сумме строки 25.00",
+                "итог к оплате: в накладной 155.00, по строкам 180.00",
+                "итог без НДС: в накладной 155.00, по строкам 175.00",
+            ],
+        )
+
+    def test_lines_may_be_added_and_removed(self) -> None:
+        self.known_supplier()
+        draft = self.upload()
+        form = draft["form"]
+        form["lines"] = [
+            form["lines"][1],
+            form["lines"][1] | {"name": "Перец", "retail_price": 50},
+        ]
+        form["totals"] = {"cost_total": "60.00", "base_total": None}
+
+        draft = self.save(
+            draft=draft,
+            form=form,
+        )
+
+        self.assertEqual(
+            first=draft["issues"],
+            second=[],
+        )
+        self.assertEqual(
+            first=[
+                (line["product_name"], line["new_product"]) for line in draft["lines"]
+            ],
+            second=[("Соль", False), ("Перец", True)],
+        )
+
+    def test_spelling_of_a_known_product(self) -> None:
+        _, sugar, _ = self.known_supplier()
+        draft = self.upload()
+        form = draft["form"]
+        form["lines"][0]["name"] = "Сахар 1кг"
+        form["lines"][0]["product_id"] = sugar.id
+
+        draft = self.save(
+            draft=draft,
+            form=form,
+        )
+
+        self.assertEqual(
+            first=(
+                draft["lines"][0]["product_id"],
+                draft["lines"][0]["product_name"],
+                draft["lines"][0]["retail_price"],
+            ),
+            second=(sugar.id, "Сахар-песок 1 кг", "65"),
+        )
+        self.assertTrue(
+            expr=draft["ready"],
+        )
+
+    def test_blocking_problems(self) -> None:
+        supplier, sugar, salt = self.known_supplier()
+        stranger = self.store.add_supplier(
+            name="Чужой",
+            inn=None,
+        )
+        foreign = self.store.add_product(
+            supplier=stranger,
+            name="Чужой товар",
+            markup_pct="10",
+            retail_price="100",
+        )
+        cases = [
+            (
+                {"supplier": {"id": 999}},
+                [(None, "продавца с id 999 нет")],
+            ),
+            (
+                {"supplier": {"name": "Двойник", "inn": INN}},
+                [(None, f"продавец с ИНН {INN} уже есть, выберите его")],
+            ),
+            (
+                {"invoice_number": None},
+                [(None, "номер накладной не указан")],
+            ),
+            (
+                {"line": {"quantity": None}},
+                [(1, "количество не указано")],
+            ),
+            (
+                {"line": {"name": None}},
+                [(1, "название не указано")],
+            ),
+            (
+                {"line": {"name": "Новинка"}},
+                [(1, "новый товар, укажите розничную цену")],
+            ),
+            (
+                {"line": {"product_id": foreign.id}},
+                [(1, f"у продавца нет товара с id {foreign.id}")],
+            ),
+            (
+                {"line": {"product_id": salt.id}},
+                [(1, f"это название уже относится к товару «{sugar.name}»")],
+            ),
+            (
+                {"line": {"retail_price": 40}},
+                [
+                    (
+                        1,
+                        (
+                            "при цене 40 и закупке 50.00 наценка -20.00%, "
+                            "а она должна быть от 0 до 999.99%"
+                        ),
+                    ),
+                ],
+            ),
+            (
+                {"line": {"cost_price_total": "0.00", "retail_price": 40}},
+                [(1, "нет закупочной цены, наценку посчитать не из чего")],
+            ),
+            (
+                {
+                    "second": {"name": "Сахар-песок 1 кг", "retail_price": 70},
+                    "line": {"retail_price": 66},
+                },
+                [(2, "у этого товара уже задана другая цена в строке 1")],
+            ),
+        ]
+        draft = self.upload()
+        for change, problems in cases:
+            with self.subTest(
+                change=change,
+            ):
+                form = draft["form"] | {
+                    key: value
+                    for key, value in change.items()
+                    if key not in ("line", "second")
+                }
+                form["lines"] = [
+                    form["lines"][0] | change.get("line", {}),
+                    form["lines"][1] | change.get("second", {}),
+                ]
+                saved = self.save(
+                    draft=draft,
+                    form=form,
+                )
+
+                self.assertEqual(
+                    first=self.blocking(
+                        draft=saved,
+                    ),
+                    second=problems,
+                )
+                self.assertFalse(
+                    expr=saved["ready"],
+                )
+        self.assertEqual(
+            first=supplier.id,
+            second=self.store.invoices[draft["id"]].supplier_id,
+        )
+
+    def test_rejects_invalid_form(self) -> None:
+        draft = self.upload()
+        for change in (
+            {"lines": [draft["form"]["lines"][0] | {"cost_price": "50.00"}]},
+            {"lines": [{"name": "Без остальных полей"}]},
+            {"supplier": {"id": 0}},
+            {"supplier": {"id": 1, "name": "И то и другое", "inn": None}},
+            {"invoice_date": "2026-08-12"},
+            {"lines": [draft["form"]["lines"][0] | {"retail_price": 0}]},
+            {"lines": [draft["form"]["lines"][0] | {"quantity": 2}]},
+            {"status": "confirmed"},
+        ):
+            with self.subTest(
+                change=change,
+            ):
+                response = self.client.put(
+                    url=f"/invoice/{draft['id']}",
+                    json=draft["form"] | change,
+                )
+
+                self.assertEqual(
+                    first=response.status_code,
+                    second=422,
+                )
+        self.assertEqual(
+            first=self.store.invoices[draft["id"]].corrections,
+            second={},
+        )
+
+    def test_only_drafts(self) -> None:
+        draft = self.upload()
+        self.store.invoices[draft["id"]].status = InvoiceStatus.DECLINED
+        for method in ("GET", "PUT"):
+            with self.subTest(
+                method=method,
+            ):
+                response = self.client.request(
+                    method=method,
+                    url=f"/invoice/{draft['id']}",
+                    json=draft["form"] if method == "PUT" else None,
+                )
+
+                self.assertEqual(
+                    first=response.status_code,
+                    second=404,
+                )
+
+
+class ConfirmTests(InvoiceApiTestCase):
+    def confirm(
+        self,
+        draft: dict[str, Any],
+    ) -> Any:
+        return self.client.post(
+            url=f"/invoice/{draft['id']}/confirm",
+        )
+
+    def test_posts_with_new_supplier_products_and_aliases(self) -> None:
+        payload = invoice_payload()
+        # the same product twice, spelled differently
+        payload["items"].append(
+            payload["items"][0] | {"line_no": "3", "name": "САХАР-ПЕСОК  1 кг"},
+        )
+        payload["totals"] = {"base_total": None, "cost_total": "280.00"}
+        draft = self.upload(
+            payload=payload,
+        )
+        form = draft["form"]
+        form["supplier"] = {"name": "ООО «Поставщик»", "inn": INN}
+        form["lines"][0]["retail_price"] = 65
+        form["lines"][1]["retail_price"] = 40
+        self.save(
+            draft=draft,
+            form=form,
+        )
+
+        response = self.confirm(
+            draft=draft,
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        [supplier] = self.store.suppliers.values()
+        self.assertEqual(
+            first=(supplier.name, supplier.inn),
+            second=("ООО «Поставщик»", INN),
+        )
+        sugar, salt = self.store.products.values()
+        self.assertEqual(
+            first=[
+                (product.supplier_id, product.name, product.markup_pct)
+                for product in (sugar, salt)
+            ],
+            second=[
+                (
+                    supplier.id,
+                    "Сахар-песок 1 кг",
+                    Decimal(
+                        value="30.00",
+                    ),
+                ),
+                (
+                    supplier.id,
+                    "Соль",
+                    Decimal(
+                        value="33.33",
+                    ),
+                ),
+            ],
+        )
+        self.assertEqual(
+            first=[(alias.product_id, alias.alias_raw) for alias in self.store.aliases],
+            second=[(sugar.id, "Сахар-песок 1 кг"), (salt.id, "Соль")],
+        )
+        self.assertEqual(
+            first=[
+                (item.line_no, item.product_id, str(item.retail_price))
+                for item in self.store.items
+            ],
+            second=[(1, sugar.id, "65"), (2, salt.id, "40"), (3, sugar.id, "65")],
+        )
+        [entry] = self.store.entries
+        self.assertEqual(
+            first=(entry.kind, entry.amount, entry.invoice_status),
+            second=(
+                LedgerKind.INVOICE,
+                Decimal(
+                    value="365.00",
+                ),
+                InvoiceStatus.CONFIRMED,
+            ),
+        )
+        invoice = self.store.invoices[draft["id"]]
+        self.assertEqual(
+            first=(invoice.status, invoice.supplier_id),
+            second=(InvoiceStatus.CONFIRMED, supplier.id),
+        )
+        self.assertEqual(
+            first=response.json(),
+            second={
+                "id": draft["id"],
+                "ledger_entry_id": entry.id,
+                "retail_total": "365.00",
+                "balance": "365.00",
+            },
+        )
+
+    def test_known_products_keep_or_change_the_markup(self) -> None:
+        _, sugar, salt = self.known_supplier()
+        draft = self.upload()
+        form = draft["form"]
+        # the price it already has keeps the markup, a new price changes it
+        form["lines"][0]["retail_price"] = 65
+        form["lines"][1]["retail_price"] = 45
+        self.save(
+            draft=draft,
+            form=form,
+        )
+
+        response = self.confirm(
+            draft=draft,
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        self.assertEqual(
+            first=(sugar.markup_pct, salt.markup_pct),
+            second=(
+                Decimal(
+                    value=30,
+                ),
+                Decimal(
+                    value="50.00",
+                ),
+            ),
+        )
+        self.assertEqual(
+            first=len(self.store.aliases),
+            second=2,
+        )
+
+    def test_spelling_of_a_known_product_adds_an_alias(self) -> None:
+        _, sugar, _ = self.known_supplier()
+        draft = self.upload()
+        form = draft["form"]
+        form["lines"][0]["name"] = "Сахар 1кг"
+        form["lines"][0]["product_id"] = sugar.id
+        self.save(
+            draft=draft,
+            form=form,
+        )
+
+        response = self.confirm(
+            draft=draft,
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        self.assertEqual(
+            first=(self.store.aliases[-1].product_id, self.store.aliases[-1].alias_raw),
+            second=(sugar.id, "Сахар 1кг"),
+        )
+        self.assertEqual(
+            first=self.store.items[0].name,
+            second="Сахар 1кг",
+        )
+
+    def test_not_ready_draft_is_not_posted(self) -> None:
+        draft = self.upload()
+
+        response = self.confirm(
+            draft=draft,
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=409,
+        )
+        self.assertEqual(
+            first=response.json()["detail"],
+            second=(
+                "Провести нельзя: строка 1: новый товар, укажите розничную цену; "
+                "строка 2: новый товар, укажите розничную цену"
+            ),
+        )
+        self.assertEqual(
+            first=(self.store.items, self.store.entries, self.store.commits),
+            second=([], [], 1),
+        )
+
+    def test_ledger_is_locked_before_the_draft_is_read(self) -> None:
+        self.known_supplier()
+        draft = self.upload()
+        self.store.events.clear()
+
+        response = self.confirm(
+            draft=draft,
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        self.assertEqual(
+            first=self.store.events,
+            second=["lock", "get_draft"],
+        )
+
+    def test_invoice_confirmed_before_is_blocking(self) -> None:
+        self.known_supplier()
+        first = self.upload()
+        self.assertEqual(
+            first=self.confirm(
+                draft=first,
+            ).status_code,
+            second=200,
+        )
+
+        second = self.upload()
+
+        self.assertEqual(
+            first=self.blocking(
+                draft=second,
+            ),
+            second=[(None, f"эта накладная уже проведена под номером {first['id']}")],
+        )
+        self.assertEqual(
+            first=self.confirm(
+                draft=second,
+            ).status_code,
+            second=409,
+        )
+
+    def test_decline(self) -> None:
+        draft = self.upload()
+
+        response = self.client.post(
+            url=f"/invoice/{draft['id']}/decline",
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=204,
+        )
+        self.assertEqual(
+            first=self.store.invoices[draft["id"]].status,
+            second=InvoiceStatus.DECLINED,
+        )
+        for url in (
+            f"/invoice/{draft['id']}/decline",
+            f"/invoice/{draft['id']}/confirm",
+        ):
+            with self.subTest(
+                url=url,
+            ):
+                self.assertEqual(
+                    first=self.client.post(
+                        url=url,
+                    ).status_code,
+                    second=404,
+                )
+
+
+class InvoiceListTests(InvoiceApiTestCase):
+    def confirmed(self) -> dict[str, Any]:
+        """an invoice of the known supplier, posted at the current markups"""
+        self.known_supplier()
+        draft = self.upload()
+        response = self.client.post(
+            url=f"/invoice/{draft['id']}/confirm",
+        )
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        return draft
+
+    def test_lists_newest_first_with_filter_and_search(self) -> None:
+        posted = self.confirmed()
+        payload = invoice_payload()
+        payload["supplier"] = {"name": "ИП Иванов", "inn": None}
+        payload["invoice_number"] = "777"
+        draft = self.upload(
+            payload=payload,
+        )
+
+        everything = self.client.get(
+            url="/invoice",
+        ).json()
+        confirmed = self.client.get(
+            url="/invoice",
+            params={"status": "confirmed"},
+        ).json()
+        found = self.client.get(
+            url="/invoice",
+            params={"q": "иванов"},
+        ).json()
+        first_page = self.client.get(
+            url="/invoice",
+            params={"limit": 1},
+        ).json()
+
+        self.assertEqual(
+            first=[
+                (
+                    item["id"],
+                    item["status"],
+                    item["supplier_name"],
+                    item["retail_total"],
+                    item["lines"],
+                )
+                for item in everything["items"]
+            ],
+            second=[
+                (draft["id"], "draft", "ИП Иванов", None, 2),
+                (posted["id"], "confirmed", "ООО «Поставщик»", "198.50", 2),
+            ],
+        )
+        self.assertEqual(
+            first=[item["id"] for item in confirmed["items"]],
+            second=[posted["id"]],
+        )
+        self.assertEqual(
+            first=[item["id"] for item in found["items"]],
+            second=[draft["id"]],
+        )
+        self.assertEqual(
+            first=(
+                [item["id"] for item in first_page["items"]],
+                first_page["has_more"],
+            ),
+            second=([draft["id"]], True),
+        )
+
+    def test_posted_invoice_shows_the_lines_as_posted(self) -> None:
+        draft = self.confirmed()
+
+        response = self.client.get(
+            url=f"/invoice/{draft['id']}/confirmed",
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        posted = response.json()
+        self.assertEqual(
+            first=(
+                posted["invoice_number"],
+                posted["invoice_date"],
+                posted["supplier"]["name"],
+                posted["cost_total"],
+                posted["retail_total"],
+                posted["ledger_entry_id"],
+            ),
+            second=(
+                "00042/А",
+                "12-08-2026",
+                "ООО «Поставщик»",
+                "155.00",
+                "198.50",
+                self.store.entries[0].id,
+            ),
+        )
+        self.assertEqual(
+            # compared as numbers, the database pads the scale and the fake store does not
+            first=[
+                (
+                    line["line_no"],
+                    line["product_name"],
+                    Decimal(
+                        value=line["retail_price"],
+                    ),
+                    Decimal(
+                        value=line["retail_price_total"],
+                    ),
+                )
+                for line in posted["lines"]
+            ],
+            second=[
+                (
+                    1,
+                    "Сахар-песок 1 кг",
+                    Decimal(
+                        value=65,
+                    ),
+                    Decimal(
+                        value="162.50",
+                    ),
+                ),
+                (
+                    2,
+                    "Соль",
+                    Decimal(
+                        value=36,
+                    ),
+                    Decimal(
+                        value=36,
+                    ),
+                ),
+            ],
+        )
+        self.assertEqual(
+            first=self.store.locks,
+            second=1,
+        )
+
+    def test_draft_is_not_a_posted_invoice(self) -> None:
+        draft = self.upload()
+
+        self.assertEqual(
+            first=self.client.get(
+                url=f"/invoice/{draft['id']}/confirmed",
+            ).status_code,
+            second=404,
+        )
+
+
+class SimilarProductTests(InvoiceApiTestCase):
+    def upload_misread(self) -> dict[str, Any]:
+        """the sugar misread by a letter, the second line is nothing the supplier has"""
+        payload = invoice_payload()
+        payload["items"][0]["name"] = "Сахар-песк 1 кг"
+        payload["items"][1]["name"] = "Перец"
+        return self.upload(
+            payload=payload,
+        )
+
+    def similar_issues(
+        self,
+        draft: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        return [
+            issue for issue in draft["issues"] if issue["code"] == "similar_product"
+        ]
+
+    def test_misread_name_suggests_the_product_as_a_warning(self) -> None:
+        _, sugar, _ = self.known_supplier()
+        # a close name at another supplier is not a candidate
+        other = self.store.add_supplier(
+            name="ИП Иванов",
+            inn=None,
+        )
+        self.store.add_product(
+            supplier=other,
+            name="Перец молотый",
+            markup_pct="10",
+            retail_price="100",
+        )
+
+        draft = self.upload_misread()
+
+        self.assertEqual(
+            first=[line["similar"] for line in draft["lines"]],
+            second=[
+                [{"id": sugar.id, "name": "Сахар-песок 1 кг", "similarity": 96}],
+                [],
+            ],
+        )
+        self.assertEqual(
+            first=self.similar_issues(
+                draft=draft,
+            ),
+            second=[
+                {
+                    "line": 1,
+                    "message": "похож на товар «Сахар-песок 1 кг» (96%), проверьте, не он ли это",
+                    "blocking": False,
+                    "code": "similar_product",
+                },
+            ],
+        )
+        # nothing is decided for the user, both lines are new until a price or a link is set
+        self.assertEqual(
+            first=self.blocking(
+                draft=draft,
+            ),
+            second=[
+                (1, "новый товар, укажите розничную цену"),
+                (2, "новый товар, укажите розничную цену"),
+            ],
+        )
+
+    def test_known_and_linked_lines_are_not_compared(self) -> None:
+        _, _, salt = self.known_supplier()
+        draft = self.upload()
+        self.assertEqual(
+            first=[line["similar"] for line in draft["lines"]],
+            second=[[], []],
+        )
+
+        draft = self.upload_misread()
+        form = draft["form"]
+        form["lines"][0]["product_id"] = salt.id
+        draft = self.save(
+            draft=draft,
+            form=form,
+        )
+
+        self.assertEqual(
+            first=(draft["lines"][0]["similar"], self.similar_issues(draft=draft)),
+            second=([], []),
+        )
+
+    def test_linking_the_suggestion_adds_the_spelling_when_posted(self) -> None:
+        _, sugar, _ = self.known_supplier()
+        draft = self.upload_misread()
+        form = draft["form"]
+        form["lines"][0]["product_id"] = draft["lines"][0]["similar"][0]["id"]
+        form["lines"][1]["retail_price"] = 40
+        self.save(
+            draft=draft,
+            form=form,
+        )
+
+        response = self.client.post(
+            url=f"/invoice/{draft['id']}/confirm",
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        self.assertIn(
+            member=(sugar.id, "сахар-песк 1 кг"),
+            container=[
+                (alias.product_id, alias.alias_normalized)
+                for alias in self.store.aliases
+            ],
+        )
+
+
+class SupplierSearchTests(InvoiceApiTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.petrov = self.store.add_supplier(
+            name="ИП Петров",
+            inn="471909695290",
+        )
+        self.dvor = self.store.add_supplier(
+            name="ООО «Молочный двор»",
+            inn="7707083893",
+        )
+        self.market = self.store.add_supplier(
+            name="Агроторг",
+            inn=None,
+        )
+
+    def search(
+        self,
+        params: dict[str, Any],
+    ) -> list[int]:
+        response = self.client.get(
+            url="/supplier",
+            params=params,
+        )
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        return [supplier["id"] for supplier in response.json()]
+
+    def test_finds_by_a_part_of_the_name_in_any_case(self) -> None:
+        self.assertEqual(
+            first=self.search(
+                params={"q": " молочный "},
+            ),
+            second=[self.dvor.id],
+        )
+
+    def test_finds_by_the_start_of_the_inn(self) -> None:
+        response = self.client.get(
+            url="/supplier",
+            params={"q": "4719"},
+        )
+
+        self.assertEqual(
+            first=response.json(),
+            second=[{"id": self.petrov.id, "name": "ИП Петров", "inn": "471909695290"}],
+        )
+
+    def test_without_a_query_lists_everyone_by_name(self) -> None:
+        self.assertEqual(
+            first=self.search(
+                params={},
+            ),
+            second=[self.market.id, self.petrov.id, self.dvor.id],
+        )
+
+    def test_limit(self) -> None:
+        self.assertEqual(
+            first=self.search(
+                params={"limit": 2},
+            ),
+            second=[self.market.id, self.petrov.id],
+        )
+
+
+class ProductSearchTests(InvoiceApiTestCase):
+    def search(
+        self,
+        supplier_id: int,
+        params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        response = self.client.get(
+            url=f"/supplier/{supplier_id}/products",
+            params=params,
+        )
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        return response.json()
+
+    def test_without_a_query_lists_the_supplier_products_by_name(self) -> None:
+        supplier, sugar, salt = self.known_supplier()
+        other = self.store.add_supplier(
+            name="ИП Иванов",
+            inn=None,
+        )
+        self.store.add_product(
+            supplier=other,
+            name="Сахар у другого",
+            markup_pct="10",
+            retail_price="100",
+        )
+
+        self.assertEqual(
+            first=self.search(
+                supplier_id=supplier.id,
+                params={},
+            ),
+            second=[
+                {
+                    "id": sugar.id,
+                    "name": "Сахар-песок 1 кг",
+                    "markup_pct": "30",
+                    "unit": None,
+                    "vat_percent": None,
+                    "cost_price": None,
+                    "retail_price": None,
+                },
+                {
+                    "id": salt.id,
+                    "name": "Соль",
+                    "markup_pct": "20",
+                    "unit": None,
+                    "vat_percent": None,
+                    "cost_price": None,
+                    "retail_price": None,
+                },
+            ],
+        )
+
+    def test_finds_by_a_part_of_the_name_or_of_another_spelling(self) -> None:
+        supplier, sugar, _ = self.known_supplier()
+        self.store.aliases.append(
+            ProductAlias(
+                id=self.store.new_id(),
+                product_id=sugar.id,
+                supplier_id=supplier.id,
+                alias_normalized=normalize_name(
+                    name="Песок «Русский» 1кг",
+                ),
+                alias_raw="Песок «Русский» 1кг",
+            ),
+        )
+
+        for query in ("САХ", 'песок "русский"'):
+            with self.subTest(
+                query=query,
+            ):
+                self.assertEqual(
+                    first=[
+                        product["id"]
+                        for product in self.search(
+                            supplier_id=supplier.id,
+                            params={"q": query},
+                        )
+                    ],
+                    second=[sugar.id],
+                )
+
+    def test_shows_the_last_posted_line(self) -> None:
+        supplier, sugar, _ = self.known_supplier()
+        draft = self.upload()
+        self.assertEqual(
+            first=self.client.post(
+                url=f"/invoice/{draft['id']}/confirm",
+            ).status_code,
+            second=200,
+        )
+
+        found = self.search(
+            supplier_id=supplier.id,
+            params={"q": "сахар"},
+        )
+
+        self.assertEqual(
+            first=found[0],
+            second={
+                "id": sugar.id,
+                "name": "Сахар-песок 1 кг",
+                "markup_pct": "30",
+                "unit": "кг",
+                "vat_percent": None,
+                "cost_price": "50.00",
+                "retail_price": "65",
+            },
+        )
+
+    def test_unknown_supplier(self) -> None:
+        response = self.client.get(
+            url="/supplier/999/products",
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=404,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

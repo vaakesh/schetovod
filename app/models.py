@@ -207,6 +207,15 @@ class Invoice(Base):
         JSONB,
         nullable=False,
     )
+    corrections: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text(
+            text="'{}'::jsonb",
+        ),
+    )
+
     supplier: Mapped[Supplier | None] = relationship(
         back_populates="invoices",
         lazy="raise",
