@@ -207,13 +207,14 @@ class Invoice(Base):
         JSONB,
         nullable=False,
     )
-    corrections: Mapped[dict] = mapped_column(
-        JSONB,
-        nullable=False,
-        default=dict,
-        server_default=text(
-            text="'{}'::jsonb",
+    # the draft form as the user saved it last, None until the first save,
+    # then the form is built from the extraction and the current catalog
+    form: Mapped[dict | None] = mapped_column(
+        # None is stored as SQL NULL, not as a JSON null
+        JSONB(
+            none_as_null=True,
         ),
+        nullable=True,
     )
 
     supplier: Mapped[Supplier | None] = relationship(

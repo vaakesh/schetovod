@@ -214,9 +214,7 @@ class FakeInvoices:
                 invoice_id=invoice.id,
             )
             lines = (
-                invoice.corrections["lines"]
-                if invoice.corrections
-                else invoice.extracted["items"]
+                invoice.form["lines"] if invoice.form else invoice.extracted["items"]
             )
             rows.append(
                 InvoiceRow(
@@ -631,9 +629,8 @@ class ReceiveInvoiceTests(InvoiceApiTestCase):
             second=invoice_payload(),
         )
         invoice = self.store.invoices[draft["id"]]
-        self.assertEqual(
-            first=invoice.corrections,
-            second={},
+        self.assertIsNone(
+            obj=invoice.form,
         )
         self.assertEqual(
             first=invoice.extracted,
@@ -1227,7 +1224,7 @@ class SaveFormTests(InvoiceApiTestCase):
         )
         invoice = self.store.invoices[draft["id"]]
         self.assertEqual(
-            first=invoice.corrections,
+            first=invoice.form,
             second=form,
         )
         self.assertEqual(
@@ -1484,9 +1481,8 @@ class SaveFormTests(InvoiceApiTestCase):
                     first=response.status_code,
                     second=422,
                 )
-        self.assertEqual(
-            first=self.store.invoices[draft["id"]].corrections,
-            second={},
+        self.assertIsNone(
+            obj=self.store.invoices[draft["id"]].form,
         )
 
     def test_only_drafts(self) -> None:

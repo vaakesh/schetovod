@@ -115,7 +115,7 @@ class InvoiceRepository:
         )
         lines = func.jsonb_array_length(
             func.coalesce(
-                Invoice.corrections["lines"],
+                Invoice.form["lines"],
                 Invoice.extracted["items"],
             ),
         )

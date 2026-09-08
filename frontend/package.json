@@ -1,7 +1,7 @@
 {
   "name": "schetovod-frontend",
   "private": true,
-  "version": "0.0.3",
+  "version": "0.0.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,7 @@
   },
   "devDependencies": {
     "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.5",
+    "@types/react-dom": "19.2.7",
     "@vitejs/plugin-react": "5.2.0",
     "typescript": "5.9.3",
     "vite": "7.3.6"

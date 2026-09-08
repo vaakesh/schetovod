@@ -144,7 +144,7 @@ class InvoiceService:
                 invoice_date=invoice.invoice_date,
                 status=InvoiceStatus.DRAFT,
                 extracted=extracted,
-                corrections={},
+                form=None,
             ),
         )
         draft = await self._draft(
@@ -269,7 +269,7 @@ class InvoiceService:
         draft_invoice = await self._get_draft(
             invoice_id=invoice_id,
         )
-        draft_invoice.corrections = form.model_dump(
+        draft_invoice.form = form.model_dump(
             mode="json",
         )
         # the columns behind the checks and the uniqueness of confirmed invoices follow the form
@@ -505,14 +505,14 @@ class InvoiceService:
         extraction = InvoiceExtraction.model_validate(
             obj=draft_invoice.extracted,
         )
-        if not draft_invoice.corrections:
+        if draft_invoice.form is None:
             form = await self._initial_form(
                 draft_invoice=draft_invoice,
                 extraction=extraction,
             )
         else:
             form = DraftForm.model_validate(
-                obj=draft_invoice.corrections,
+                obj=draft_invoice.form,
             )
         plan = DraftPlan(
             form=form,
