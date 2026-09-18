@@ -15,18 +15,24 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from config import settings
-from enums import InvoiceStatus
+from enums import InvoiceStatus, LedgerKind
 from schemas import (
     ConfirmedInvoice,
     DraftForm,
+    InvoiceDate,
     InvoiceDraft,
     InvoiceExtraction,
     InvoiceList,
+    LedgerBalance,
+    LedgerPage,
+    LedgerPosted,
+    OutflowCreate,
     PostedInvoice,
     ProductSummary,
+    StocktakeCreate,
     SupplierSummary,
 )
-from services import InvoiceServiceDep, SupplierServiceDep
+from services import InvoiceServiceDep, LedgerServiceDep, SupplierServiceDep
 from vision import extract_invoice, read_images
 
 app = FastAPI()
@@ -241,4 +247,89 @@ async def decline_invoice(
 ) -> None:
     await service.decline_invoice(
         invoice_id=invoice_id,
+    )
+
+
+@app.get(
+    path="/ledger",
+    response_model=LedgerPage,
+)
+async def ledger_history(
+    service: LedgerServiceDep,
+    limit: PageLimit = 50,
+    offset: PageOffset = 0,
+) -> LedgerPage:
+    return await service.history(
+        limit=limit,
+        offset=offset,
+    )
+
+
+@app.get(
+    path="/ledger/balance",
+    response_model=LedgerBalance,
+)
+async def ledger_balance(
+    service: LedgerServiceDep,
+    on: Annotated[
+        InvoiceDate | None,
+        Query(),
+    ] = None,
+) -> LedgerBalance:
+    return await service.balance_on(
+        on=on,
+    )
+
+
+@app.post(
+    path="/ledger/sale",
+    response_model=LedgerPosted,
+)
+async def add_sale(
+    payload: OutflowCreate,
+    service: LedgerServiceDep,
+) -> LedgerPosted:
+    return await service.add_outflow(
+        kind=LedgerKind.SALE,
+        payload=payload,
+    )
+
+
+@app.post(
+    path="/ledger/write-off",
+    response_model=LedgerPosted,
+)
+async def add_write_off(
+    payload: OutflowCreate,
+    service: LedgerServiceDep,
+) -> LedgerPosted:
+    return await service.add_outflow(
+        kind=LedgerKind.WRITE_OFF,
+        payload=payload,
+    )
+
+
+@app.post(
+    path="/ledger/stocktake",
+    response_model=LedgerPosted,
+)
+async def add_stocktake(
+    payload: StocktakeCreate,
+    service: LedgerServiceDep,
+) -> LedgerPosted:
+    return await service.add_stocktake(
+        payload=payload,
+    )
+
+
+@app.post(
+    path="/ledger/{entry_id}/reverse",
+    response_model=LedgerPosted,
+)
+async def reverse_entry(
+    entry_id: int,
+    service: LedgerServiceDep,
+) -> LedgerPosted:
+    return await service.reverse(
+        entry_id=entry_id,
     )

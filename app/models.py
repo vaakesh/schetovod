@@ -12,6 +12,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from config import today
 from db import Base
 from db_types import (
     BigInt,
@@ -395,10 +396,11 @@ class LedgerEntry(Base):
         primary_key=True,
         nullable=False,
     )
-    occurred_at: Mapped[DateTimeTz] = mapped_column(
+    # the day it happened, reports are built by it, within a day entries go by id
+    occurred_on: Mapped[date] = mapped_column(
         nullable=False,
-        default=func.now(),
-        server_default=func.now(),
+        default=today,
+        server_default=func.current_date(),
         index=True,
     )
     # when it was entered
@@ -431,9 +433,25 @@ class LedgerEntry(Base):
         ),
         nullable=True,
     )
+    # a reversal cancels the entry it points to, an entry is reversed at most once
+    reverses_id: Mapped[BigInt | None] = mapped_column(
+        ForeignKey(
+            column="ledger_entries.id",
+        ),
+        nullable=True,
+        unique=True,
+    )
+
     invoice: Mapped[Invoice | None] = relationship(
         lazy="raise",
     )
+    reverses: Mapped[LedgerEntry | None] = relationship(
+        remote_side=[
+            id,
+        ],
+        lazy="raise",
+    )
+
     __table_args__ = (
         # also blocks declining an invoice that is already posted
         ForeignKeyConstraint(
@@ -454,5 +472,19 @@ class LedgerEntry(Base):
         CheckConstraint(
             sqltext="(invoice_id IS NULL) = (invoice_status IS NULL)",
             name="invoice_status_present",
+        ),
+        # an invoice brings stock in and is never reversed, its invoice can not be unposted
+        CheckConstraint(
+            sqltext=f"kind <> '{LedgerKind.INVOICE}' OR (amount >= 0 AND reverses_id IS NULL)",
+            name="invoice_amount",
+        ),
+        # a sale or a write-off takes stock out, only its reversal brings it back
+        CheckConstraint(
+            sqltext=(
+                f"kind NOT IN ('{LedgerKind.SALE}', '{LedgerKind.WRITE_OFF}') "
+                "OR (reverses_id IS NULL AND amount < 0) "
+                "OR (reverses_id IS NOT NULL AND amount > 0)"
+            ),
+            name="outflow_sign",
         ),
     )

@@ -2,7 +2,7 @@
 
 Суммовой учёт товаров в розничных ценах.
 
-Добавлен интерфейс загрузки, редактирования, проведения и просмотра накладных.
+Добавлены журнал операций, продажи, списания, переучёт и сторнирование.
 Backend — FastAPI и PostgreSQL, frontend — React.
 
 ## Запуск
@@ -50,6 +50,9 @@ docker compose up --build -d
 | `POST /invoice/{id}/confirm`, `POST /invoice/{id}/decline` | Провести или отклонить |
 | `GET /invoice/{id}/confirmed` | Открыть проведённую накладную |
 | `GET /supplier`, `GET /supplier/{id}/products` | Поиск поставщиков и их товаров |
+| `GET /ledger`, `GET /ledger/balance` | Журнал операций и остаток |
+| `POST /ledger/sale`, `POST /ledger/write-off` | Продажа или списание |
+| `POST /ledger/{id}/reverse` | Сторнировать операцию |
 
 
 

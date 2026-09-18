@@ -171,6 +171,43 @@ export interface PostedInvoice {
   ledger_entry_id: number;
 }
 
+export type LedgerKind = "invoice" | "sale" | "write_off" | "stocktake";
+
+// the kinds entered by hand as one amount
+export type ManualKind = Exclude<LedgerKind, "invoice">;
+
+export interface LedgerEntry {
+  id: number;
+  occurred_on: string;
+  kind: LedgerKind;
+  // signed, positive brings stock in
+  amount: string;
+  balance_after: string;
+  comment: string | null;
+  reverses_id: number | null;
+  reversed_by_id: number | null;
+  invoice_id: number | null;
+  invoice_number: string | null;
+  supplier_name: string | null;
+}
+
+export interface LedgerPage {
+  balance: string;
+  entries: LedgerEntry[];
+  has_more: boolean;
+}
+
+export interface LedgerBalance {
+  balance: string;
+  closed_on: string | null;
+}
+
+export interface LedgerPosted {
+  id: number;
+  amount: string;
+  balance: string;
+}
+
 export interface InvoiceDraft {
   id: number;
   ready: boolean;

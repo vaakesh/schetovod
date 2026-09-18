@@ -5,11 +5,11 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import exists, func, literal, or_, select, tuple_
 from sqlalchemy.orm import aliased, selectinload
 
 from db import SessionDep
-from enums import InvoiceStatus
+from enums import InvoiceStatus, LedgerKind
 from models import (
     Invoice,
     InvoiceItem,
@@ -33,6 +33,7 @@ class InvoiceRow:
     lines: int
 
 
+@dataclass
 class LedgerRow:
     entry: LedgerEntry
     # the running balance in the ledger order, including this entry
@@ -246,6 +247,15 @@ class LedgerRepository:
             ),
         )
 
+    async def get(
+        self,
+        entry_id: int,
+    ) -> LedgerEntry | None:
+        return await self.session.get(
+            LedgerEntry,
+            entry_id,
+        )
+
     async def get_for_invoice(
         self,
         invoice_id: int,
@@ -260,6 +270,7 @@ class LedgerRepository:
 
     async def balance(
         self,
+        on: date | None = None,
     ) -> Decimal:
         """stock at retail prices, the sum of the signed entries up to the end of the day"""
         statement = select(
@@ -270,12 +281,182 @@ class LedgerRepository:
                 0,
             ),
         )
+        if on is not None:
+            statement = statement.where(
+                LedgerEntry.occurred_on <= on,
+            )
         balance = await self.session.scalar(
             statement=statement,
         )
         return Decimal(
             value=balance or 0,
         )
+
+    async def is_reversed(
+        self,
+        entry_id: int,
+    ) -> bool:
+        return bool(
+            await self.session.scalar(
+                statement=select(
+                    exists().where(
+                        LedgerEntry.reverses_id == entry_id,
+                    ),
+                ),
+            ),
+        )
+
+    async def last_stocktake_on(self) -> date | None:
+        """the day of the latest stocktake in force, nothing may be dated before it"""
+        return await self.session.scalar(
+            statement=select(
+                func.max(
+                    LedgerEntry.occurred_on,
+                ),
+            ).where(
+                *_stocktake_in_force(),
+            ),
+        )
+
+    async def has_stocktake_after(
+        self,
+        entry: LedgerEntry,
+    ) -> bool:
+        """a stocktake in force comes later in the ledger order"""
+        return bool(
+            await self.session.scalar(
+                statement=select(
+                    exists().where(
+                        *_stocktake_in_force(),
+                        tuple_(
+                            LedgerEntry.occurred_on,
+                            LedgerEntry.id,
+                        )
+                        > tuple_(
+                            literal(
+                                value=entry.occurred_on,
+                            ),
+                            literal(
+                                value=entry.id,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    async def history(
+        self,
+        limit: int | None,
+        offset: int,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        newest_first: bool = True,
+    ) -> list[LedgerRow]:
+        """each entry with the balance right after it, the days are optional bounds"""
+        running = (
+            select(
+                LedgerEntry.id,
+                func.sum(
+                    LedgerEntry.amount,
+                )
+                .over(
+                    order_by=(
+                        LedgerEntry.occurred_on,
+                        LedgerEntry.id,
+                    ),
+                )
+                .label(
+                    name="balance_after",
+                ),
+            )
+        ).subquery()
+        reversal = aliased(
+            LedgerEntry,
+        )
+        order = (
+            (
+                LedgerEntry.occurred_on.desc(),
+                LedgerEntry.id.desc(),
+            )
+            if newest_first
+            else (
+                LedgerEntry.occurred_on,
+                LedgerEntry.id,
+            )
+        )
+        # the bounds go outside the running sum, so it still counts the earlier entries
+        statement = (
+            select(
+                LedgerEntry,
+                running.c.balance_after,
+                reversal.id,
+                Invoice.invoice_number,
+                Supplier.name,
+            )
+            .join(
+                target=running,
+                onclause=running.c.id == LedgerEntry.id,
+            )
+            .outerjoin(
+                target=reversal,
+                onclause=reversal.reverses_id == LedgerEntry.id,
+            )
+            .outerjoin(
+                target=Invoice,
+                onclause=Invoice.id == LedgerEntry.invoice_id,
+            )
+            .outerjoin(
+                target=Supplier,
+                onclause=Supplier.id == Invoice.supplier_id,
+            )
+            .order_by(
+                *order,
+            )
+            .limit(
+                limit=limit,
+            )
+            .offset(
+                offset=offset,
+            )
+        )
+        if date_from is not None:
+            statement = statement.where(
+                LedgerEntry.occurred_on >= date_from,
+            )
+        if date_to is not None:
+            statement = statement.where(
+                LedgerEntry.occurred_on <= date_to,
+            )
+        result = await self.session.execute(
+            statement=statement,
+        )
+        return [
+            LedgerRow(
+                entry=entry,
+                balance_after=balance_after,
+                reversed_by_id=reversed_by_id,
+                invoice_number=invoice_number,
+                supplier_name=supplier_name,
+            )
+            for entry, balance_after, reversed_by_id, invoice_number, supplier_name in result.tuples()
+        ]
+
+
+def _stocktake_in_force() -> tuple:
+    """a stocktake that is neither a reversal nor reversed itself"""
+    reversal = aliased(
+        LedgerEntry,
+    )
+    return (
+        LedgerEntry.kind == LedgerKind.STOCKTAKE,
+        LedgerEntry.reverses_id.is_(
+            other=None,
+        ),
+        ~exists().where(
+            reversal.reverses_id == LedgerEntry.id,
+        ),
+    )
 
 
 class SupplierRepository:

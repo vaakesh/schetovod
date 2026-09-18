@@ -131,6 +131,17 @@ export default function PostedInvoicePage({ id, go }: Props) {
         </div>
       </section>
 
+      <p className="page-meta">
+        <a
+          href="#/ledger"
+          onClick={(event) => {
+            event.preventDefault();
+            go({ page: "ledger" });
+          }}
+        >
+          Запись журнала №{invoice.ledger_entry_id}
+        </a>
+      </p>
     </main>
   );
 }

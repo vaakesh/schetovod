@@ -1,10 +1,12 @@
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 from fastapi import Depends, HTTPException, status
 from pydantic import JsonValue
 
+from config import today
 from enums import InvoiceStatus, LedgerKind
 from models import (
     Invoice,
@@ -36,6 +38,7 @@ from pricing import (
 from repositories import (
     InvoiceRepositoryDep,
     LedgerRepositoryDep,
+    LedgerRow,
     ProductRepositoryDep,
     SupplierRepositoryDep,
 )
@@ -50,14 +53,21 @@ from schemas import (
     InvoiceList,
     InvoiceListItem,
     Issue,
+    LedgerBalance,
+    LedgerEntryOut,
+    LedgerPage,
+    LedgerPosted,
     NewSupplier,
+    OutflowCreate,
     PostedInvoice,
     PostedLine,
     ProductSummary,
     SimilarProduct,
+    StocktakeCreate,
     SupplierCandidate,
     SupplierRef,
     SupplierSummary,
+    format_invoice_date,
 )
 
 CANDIDATES_LIMIT = 5
@@ -1140,10 +1150,215 @@ class SupplierService:
         ]
 
 
+class LedgerService:
+    def __init__(
+        self,
+        ledger: LedgerRepositoryDep,
+        products: ProductRepositoryDep,
+    ) -> None:
+        self.ledger = ledger
+        self.products = products
+
+    async def history(
+        self,
+        limit: int,
+        offset: int,
+    ) -> LedgerPage:
+        # one row more tells whether there is another page
+        rows = await self.ledger.history(
+            limit=limit + 1,
+            offset=offset,
+        )
+        return LedgerPage(
+            balance=await self.ledger.balance(),
+            entries=[
+                _ledger_entry_out(
+                    row=row,
+                )
+                for row in rows[:limit]
+            ],
+            has_more=len(rows) > limit,
+        )
+
+    async def balance_on(
+        self,
+        on: date | None,
+    ) -> LedgerBalance:
+        return LedgerBalance(
+            balance=await self.ledger.balance(
+                on=on,
+            ),
+            closed_on=await self.ledger.last_stocktake_on(),
+        )
+
+    async def add_outflow(
+        self,
+        kind: LedgerKind,
+        payload: OutflowCreate,
+    ) -> LedgerPosted:
+        """a sale or a write-off, the stock goes down by the amount"""
+        await self.ledger.lock()
+        await self._check_date(
+            on=payload.occurred_on,
+        )
+        return await self._post(
+            entry=LedgerEntry(
+                kind=kind,
+                occurred_on=payload.occurred_on,
+                amount=-payload.amount,
+                comment=payload.comment,
+            ),
+        )
+
+    async def add_stocktake(
+        self,
+        payload: StocktakeCreate,
+    ) -> LedgerPosted:
+        """the entry is the shortage or the surplus, after it the balance is the counted stock"""
+        await self.ledger.lock()
+        await self._check_date(
+            on=payload.occurred_on,
+        )
+        expected = await self.ledger.balance(
+            on=payload.occurred_on,
+        )
+        return await self._post(
+            entry=LedgerEntry(
+                kind=LedgerKind.STOCKTAKE,
+                occurred_on=payload.occurred_on,
+                amount=payload.counted - expected,
+                comment=payload.comment,
+            ),
+        )
+
+    async def reverse(
+        self,
+        entry_id: int,
+    ) -> LedgerPosted:
+        """the ledger is never edited, a mistake is cancelled by an opposite entry on the same day"""
+        await self.ledger.lock()
+        entry = await self.ledger.get(
+            entry_id=entry_id,
+        )
+        if entry is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Запись журнала не найдена",
+            )
+        if entry.kind == LedgerKind.INVOICE:
+            _conflict(
+                detail="Проведённую накладную нельзя сторнировать",
+            )
+        if entry.reverses_id is not None:
+            _conflict(
+                detail="Сторно нельзя сторнировать",
+            )
+        if await self.ledger.is_reversed(
+            entry_id=entry.id,
+        ):
+            _conflict(
+                detail="Запись уже сторнирована",
+            )
+        if await self.ledger.has_stocktake_after(
+            entry=entry,
+        ):
+            _conflict(
+                detail="После этой записи был переучёт, исправьте остаток новым переучётом",
+            )
+        return await self._post(
+            entry=LedgerEntry(
+                kind=entry.kind,
+                occurred_on=entry.occurred_on,
+                amount=-entry.amount,
+                # reverses_id already says what it cancels
+                comment=None,
+                reverses_id=entry.id,
+            ),
+        )
+
+    async def _check_date(
+        self,
+        on: date,
+    ) -> None:
+        if on > today():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Дата не может быть в будущем",
+            )
+        closed_on = await self.ledger.last_stocktake_on()
+        # a stocktake fixes the balance, an entry before it would change what was counted
+        if closed_on is not None and on < closed_on:
+            closed = format_invoice_date(
+                value=closed_on,
+            )
+            _conflict(
+                detail=f"Период закрыт переучётом от {closed}",
+            )
+
+    async def _post(
+        self,
+        entry: LedgerEntry,
+    ) -> LedgerPosted:
+        return await self._finish(
+            entry=await self.ledger.create(
+                entry=entry,
+            ),
+        )
+
+    async def _finish(
+        self,
+        entry: LedgerEntry,
+    ) -> LedgerPosted:
+        """commits the created entry and reports the balance after it"""
+        balance = await self.ledger.balance()
+        await self.ledger.commit()
+        return LedgerPosted(
+            id=entry.id,
+            amount=entry.amount,
+            balance=balance,
+        )
+
+
+def _conflict(detail: str) -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=detail,
+    )
+
+
+def _invalid(detail: str) -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail=detail,
+    )
+
+
+def _ledger_entry_out(row: LedgerRow) -> LedgerEntryOut:
+    return LedgerEntryOut(
+        id=row.entry.id,
+        occurred_on=row.entry.occurred_on,
+        kind=row.entry.kind,
+        amount=row.entry.amount,
+        balance_after=row.balance_after,
+        comment=row.entry.comment,
+        reverses_id=row.entry.reverses_id,
+        reversed_by_id=row.reversed_by_id,
+        invoice_id=row.entry.invoice_id,
+        invoice_number=row.invoice_number,
+        supplier_name=row.supplier_name,
+    )
+
+
 InvoiceServiceDep = Annotated[
     InvoiceService,
     Depends(
         dependency=InvoiceService,
+    ),
+]
+LedgerServiceDep = Annotated[
+    LedgerService,
+    Depends(
+        dependency=LedgerService,
     ),
 ]
 SupplierServiceDep = Annotated[

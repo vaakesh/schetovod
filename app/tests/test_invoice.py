@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
+from config import settings, today
 from db import get_session
 from enums import InvoiceStatus, LedgerKind
 from main import app
@@ -25,6 +25,7 @@ from repositories import (
     InvoiceRepository,
     InvoiceRow,
     LedgerRepository,
+    LedgerRow,
     ProductRepository,
     ProductRow,
     SupplierRepository,
@@ -473,14 +474,21 @@ class FakeLedger:
     ) -> LedgerEntry:
         entry.id = self.store.new_id()
         # the column default is applied on flush, there is none here
-        if entry.occurred_at is None:
-            entry.occurred_at = datetime.now(
-                tz=UTC,
-            )
+        if entry.occurred_on is None:
+            entry.occurred_on = today()
         self.store.entries.append(
             entry,
         )
         return entry
+
+    async def get(
+        self,
+        entry_id: int,
+    ) -> LedgerEntry | None:
+        for entry in self.store.entries:
+            if entry.id == entry_id:
+                return entry
+        return None
 
     async def get_for_invoice(
         self,
@@ -493,13 +501,111 @@ class FakeLedger:
 
     async def balance(
         self,
+        on: date | None = None,
     ) -> Decimal:
         return sum(
-            (entry.amount for entry in self.store.entries),
+            (
+                entry.amount
+                for entry in self.store.entries
+                if on is None or entry.occurred_on <= on
+            ),
             start=Decimal(
                 value=0,
             ),
         )
+
+    async def is_reversed(
+        self,
+        entry_id: int,
+    ) -> bool:
+        return any(entry.reverses_id == entry_id for entry in self.store.entries)
+
+    def in_force(
+        self,
+        entry: LedgerEntry,
+    ) -> bool:
+        return (
+            entry.kind == LedgerKind.STOCKTAKE
+            and entry.reverses_id is None
+            and not any(other.reverses_id == entry.id for other in self.store.entries)
+        )
+
+    async def last_stocktake_on(self) -> date | None:
+        dates = [
+            entry.occurred_on
+            for entry in self.store.entries
+            if self.in_force(
+                entry=entry,
+            )
+        ]
+        return max(
+            dates,
+            default=None,
+        )
+
+    async def has_stocktake_after(
+        self,
+        entry: LedgerEntry,
+    ) -> bool:
+        return any(
+            self.in_force(
+                entry=other,
+            )
+            and (other.occurred_on, other.id) > (entry.occurred_on, entry.id)
+            for other in self.store.entries
+        )
+
+    async def history(
+        self,
+        limit: int | None,
+        offset: int,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        newest_first: bool = True,
+    ) -> list[LedgerRow]:
+        ordered = sorted(
+            self.store.entries,
+            key=lambda entry: (entry.occurred_on, entry.id),
+        )
+        rows = []
+        balance = Decimal(
+            value=0,
+        )
+        for entry in ordered:
+            balance += entry.amount
+            invoice = None
+            if entry.invoice_id is not None:
+                invoice = self.store.invoices.get(
+                    entry.invoice_id,
+                )
+            supplier = None
+            if invoice is not None and invoice.supplier_id is not None:
+                supplier = self.store.suppliers.get(
+                    invoice.supplier_id,
+                )
+            reversals = [
+                other.id
+                for other in self.store.entries
+                if other.reverses_id == entry.id
+            ]
+            rows.append(
+                LedgerRow(
+                    entry=entry,
+                    balance_after=balance,
+                    reversed_by_id=reversals[0] if reversals else None,
+                    invoice_number=invoice.invoice_number if invoice else None,
+                    supplier_name=supplier.name if supplier else None,
+                ),
+            )
+        rows = [
+            row
+            for row in rows
+            if (date_from is None or row.entry.occurred_on >= date_from)
+            and (date_to is None or row.entry.occurred_on <= date_to)
+        ]
+        if newest_first:
+            rows.reverse()
+        return rows[offset : None if limit is None else offset + limit]
 
 
 class InvoiceApiTestCase(unittest.TestCase):

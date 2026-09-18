@@ -11,7 +11,7 @@ from pydantic import (
     PlainSerializer,
 )
 
-from enums import InvoiceStatus
+from enums import InvoiceStatus, LedgerKind
 
 DECIMAL_PATTERN = r"[0-9]+(?:\.[0-9]+)?"
 LINE_NO_PATTERN = r"[0-9]+"
@@ -434,3 +434,56 @@ class PostedInvoice(BaseModel):
 
 
 # the ledger input has the strict formats of the form
+class OutflowCreate(FormModel):
+    occurred_on: InvoiceDate
+    amount: Annotated[
+        Money,
+        Field(
+            gt=0,
+        ),
+    ]
+    comment: Text | None
+
+
+class StocktakeCreate(FormModel):
+    occurred_on: InvoiceDate
+    # stock at retail prices as counted, the balance becomes this amount
+    counted: Money
+    comment: Text | None
+
+
+class LedgerEntryOut(BaseModel):
+    id: int
+    occurred_on: OutputDate
+    kind: LedgerKind
+    # signed, positive brings stock in
+    amount: Decimal
+    # the running balance in the ledger order, including this entry
+    balance_after: Decimal
+    comment: str | None
+    # the entry this one cancels
+    reverses_id: int | None
+    # the entry that cancels this one
+    reversed_by_id: int | None
+    invoice_id: int | None
+    invoice_number: str | None
+    supplier_name: str | None
+
+
+class LedgerPage(BaseModel):
+    balance: Decimal
+    entries: list[LedgerEntryOut]
+    has_more: bool
+
+
+class LedgerBalance(BaseModel):
+    # stock at retail prices at the end of the day, or now
+    balance: Decimal
+    # the day of the latest stocktake, nothing may be dated before it
+    closed_on: OutputDate | None
+
+
+class LedgerPosted(BaseModel):
+    id: int
+    amount: Decimal
+    balance: Decimal

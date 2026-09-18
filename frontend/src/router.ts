@@ -4,6 +4,7 @@ export type Route =
   | { page: "invoices" }
   | { page: "draft"; id: number }
   | { page: "posted"; id: number }
+  | { page: "ledger" }
   ;
 
 export function parseRoute(hash: string): Route {
@@ -15,6 +16,9 @@ export function parseRoute(hash: string): Route {
   if (posted) {
     return { page: "posted", id: Number(posted[1]) };
   }
+  if (hash === "#/ledger") {
+    return { page: "ledger" };
+  }
   return { page: "invoices" };
 }
 
@@ -24,6 +28,8 @@ export function routeHash(route: Route): string {
       return `#/invoice/${route.id}`;
     case "posted":
       return `#/posted/${route.id}`;
+    case "ledger":
+      return "#/ledger";
     case "invoices":
       return "#/";
   }

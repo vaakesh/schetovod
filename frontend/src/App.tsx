@@ -6,6 +6,7 @@ import UploadForm, { type UploadKind } from "./components/UploadForm";
 import { message } from "./message";
 import DraftPage from "./pages/DraftPage";
 import InvoicesPage from "./pages/InvoicesPage";
+import LedgerPage from "./pages/LedgerPage";
 import PostedInvoicePage from "./pages/PostedInvoicePage";
 import { routeHash, sameRoute, useRoute, type Route } from "./router";
 import type { InvoiceDraft } from "./types";
@@ -110,6 +111,8 @@ export default function App() {
         );
       case "posted":
         return <PostedInvoicePage key={route.id} id={route.id} go={go} />;
+      case "ledger":
+        return <LedgerPage go={go} ask={ask} />;
       case "invoices":
         return (
           <InvoicesPage
@@ -153,8 +156,9 @@ export default function App() {
             {tab(
               { page: "invoices" },
               "Накладные",
-              true,
+              route.page !== "ledger",
             )}
+            {tab({ page: "ledger" }, "Журнал", route.page === "ledger")}
           </nav>
         </div>
         {route.page !== "invoices" && (

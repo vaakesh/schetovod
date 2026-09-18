@@ -4,6 +4,10 @@ import type {
   InvoiceDraft,
   InvoiceList,
   InvoiceStatus,
+  LedgerBalance,
+  LedgerPage,
+  LedgerPosted,
+  ManualKind,
   PostedInvoice,
   ProductSummary,
   SupplierSummary,
@@ -126,6 +130,33 @@ export function listInvoices(params: {
 
 export function getPosted(id: number): Promise<PostedInvoice> {
   return request("GET", `/invoice/${id}/confirmed`);
+}
+
+export function getLedger(limit: number, offset: number): Promise<LedgerPage> {
+  return request("GET", `/ledger${query({ limit, offset })}`);
+}
+
+export function getBalance(on: string | null): Promise<LedgerBalance> {
+  return request("GET", `/ledger/balance${query({ on })}`);
+}
+
+const LEDGER_PATHS: Record<ManualKind, string> = {
+  sale: "/ledger/sale",
+  write_off: "/ledger/write-off",
+  stocktake: "/ledger/stocktake",
+};
+
+export function addLedgerEntry(kind: ManualKind, body: unknown): Promise<LedgerPosted> {
+  return request("POST", LEDGER_PATHS[kind], body);
+}
+
+
+
+
+// a plain link downloads the file, the browser takes the name from the response
+
+export function reverseEntry(id: number): Promise<LedgerPosted> {
+  return request("POST", `/ledger/${id}/reverse`);
 }
 
 export function searchSuppliers(q: string, limit?: number): Promise<SupplierSummary[]> {
