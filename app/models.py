@@ -93,6 +93,14 @@ class Product(Base):
         ),
         nullable=False,
     )
+    # the price on the shelf, whole rubles, the old price of a revaluation
+    retail_price: Mapped[Money] = mapped_column(
+        CheckConstraint(
+            sqltext="retail_price >= 0 AND retail_price = trunc(retail_price)",
+            name="retail_price",
+        ),
+        nullable=False,
+    )
     created_at: Mapped[DateTimeTz] = mapped_column(
         nullable=False,
         default=func.now(),
@@ -486,5 +494,79 @@ class LedgerEntry(Base):
                 "OR (reverses_id IS NOT NULL AND amount > 0)"
             ),
             name="outflow_sign",
+        ),
+        # a revaluation changes the price of something, the sign depends on the direction
+        CheckConstraint(
+            sqltext=f"kind <> '{LedgerKind.REVALUATION}' OR amount <> 0",
+            name="revaluation_amount",
+        ),
+    )
+
+
+class RevaluationItem(Base):
+    """a product whose stock on the shelf got a new price"""
+
+    __tablename__ = "revaluation_items"
+
+    id: Mapped[BigInt] = mapped_column(
+        primary_key=True,
+        nullable=False,
+    )
+    ledger_entry_id: Mapped[BigInt] = mapped_column(
+        ForeignKey(
+            column="ledger_entries.id",
+        ),
+        nullable=False,
+        index=True,
+    )
+    product_id: Mapped[BigInt] = mapped_column(
+        ForeignKey(
+            column="products.id",
+        ),
+        nullable=False,
+        index=True,
+    )
+    # the invoice line that brought the new price, None for a revaluation by hand
+    invoice_item_id: Mapped[BigInt | None] = mapped_column(
+        ForeignKey(
+            column="invoice_items.id",
+        ),
+        nullable=True,
+    )
+    # counted on the shelf, the old stock only
+    quantity: Mapped[Quantity] = mapped_column(
+        CheckConstraint(
+            sqltext="quantity > 0",
+            name="quantity",
+        ),
+        nullable=False,
+    )
+    old_price: Mapped[Money] = mapped_column(
+        CheckConstraint(
+            sqltext="old_price >= 0 AND old_price = trunc(old_price)",
+            name="old_price",
+        ),
+        nullable=False,
+    )
+    new_price: Mapped[Money] = mapped_column(
+        CheckConstraint(
+            sqltext="new_price >= 0 AND new_price = trunc(new_price)",
+            name="new_price",
+        ),
+        nullable=False,
+    )
+
+    ledger_entry: Mapped[LedgerEntry] = relationship(
+        lazy="raise",
+    )
+    product: Mapped[Product] = relationship(
+        lazy="raise",
+    )
+
+    __table_args__ = (
+        # an unchanged price has nothing to revalue
+        CheckConstraint(
+            sqltext="old_price <> new_price",
+            name="price_changed",
         ),
     )

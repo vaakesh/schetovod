@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useState } from "react";
 
 import { wordDiff } from "../diff";
-import { formatMoney, formatNumber } from "../format";
+import { formatMoney, formatNumber, formatSigned } from "../format";
 import {
   emptyLine,
   toDecimal,
@@ -33,6 +33,8 @@ interface Props {
 const COLUMNS = 13;
 // the issue code of a line with a close catalog product
 const SIMILAR_PRODUCT = "similar_product";
+// the issue code of a line that changes the shelf price of its product
+const PRICE_CHANGED = "price_changed";
 
 interface CatalogProps {
   line: DraftLine | undefined;
@@ -138,6 +140,52 @@ function SimilarHints({ similar, name, onLink }: SimilarProps) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+interface RevalueProps {
+  line: DraftLine | undefined;
+  form: FormLine;
+  onChange: (quantity: string | null) => void;
+}
+
+// the old stock on the shelf, it takes the new price when the invoice is posted
+function RevalueField({ line, form, onChange }: RevalueProps) {
+  const previous = line?.previous_retail_price ?? null;
+  const price = line?.retail_price ?? null;
+  const quantity = form.revalue_quantity;
+  const amount =
+    previous !== null && price !== null && quantity !== null && !Number.isNaN(Number(quantity))
+      ? Number(quantity) * (Number(price) - Number(previous))
+      : null;
+  return (
+    <div className="revalue">
+      <span className="revalue-text">
+        {previous !== null && price !== null ? (
+          <>
+            Цена на полке: {formatNumber(previous)} → <strong>{formatNumber(price)} ₽</strong>
+          </>
+        ) : (
+          "Цена на полке не меняется"
+        )}
+      </span>
+      <label className="revalue-field">
+        Осталось старого товара
+        <input
+          className="cell cell-num cell-short"
+          inputMode="decimal"
+          placeholder="0"
+          value={quantity ?? ""}
+          onChange={(event) => onChange(toDecimal(event.target.value))}
+        />
+        {form.unit && <span className="revalue-unit">{form.unit}</span>}
+      </label>
+      {amount !== null ? (
+        <span className="revalue-amount">переоценка {formatSigned(amount)} ₽</span>
+      ) : (
+        <span className="revalue-hint">пусто, если старого товара нет</span>
+      )}
     </div>
   );
 }
@@ -248,10 +296,14 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
               const issues = draft.issues.filter((issue) => issue.line === position);
               const blocked = issues.some((issue) => issue.blocking);
               const rowClass = blocked ? "row-blocking" : issues.length > 0 ? "row-warning" : "";
-              // a similar product is shown with its own controls
+              // a similar product and a price change are shown with their own controls, not as text
               const listed = issues.filter(
-                (issue) => issue.code !== SIMILAR_PRODUCT,
+                (issue) => issue.code !== SIMILAR_PRODUCT && issue.code !== PRICE_CHANGED,
               );
+              // the field stays once filled, the warning goes away with it
+              const revalue =
+                issues.some((issue) => issue.code === PRICE_CHANGED) ||
+                formLine.revalue_quantity !== null;
               return (
                 <Fragment key={index}>
                   <tr className={`line ${rowClass}`}>
@@ -378,6 +430,20 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                       </button>
                     </td>
                   </tr>
+                  {revalue && (
+                    <tr className={`row-issues ${rowClass}`}>
+                      <td />
+                      <td colSpan={COLUMNS - 1}>
+                        <RevalueField
+                          line={line}
+                          form={formLine}
+                          onChange={(quantity) =>
+                            updateLine(update, index, { revalue_quantity: quantity })
+                          }
+                        />
+                      </td>
+                    </tr>
+                  )}
                   {listed.length > 0 && (
                     <tr className={`row-issues ${rowClass}`}>
                       <td />

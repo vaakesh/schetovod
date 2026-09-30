@@ -281,6 +281,8 @@ class FormLine(FormModel):
         ]
         | None
     )
+    # the old stock on the shelf that takes the new price, a draft saved before has no key
+    revalue_quantity: Quantity | None = None
 
 
 # as printed on the invoice, only to check the lines against
@@ -328,6 +330,8 @@ class DraftLine(BaseModel):
     markup_pct: Decimal | None
     retail_price: Decimal | None
     retail_price_total: Decimal | None
+    # the shelf price of the product when the line changes it, None when it stays
+    previous_retail_price: Decimal | None
     # supplier products with a close name while the line has none, most similar first
     similar: list[SimilarProduct]
 
@@ -366,6 +370,8 @@ class ConfirmedInvoice(BaseModel):
     ledger_entry_id: int
     # the inflow written to the ledger
     retail_total: Decimal
+    # the revaluation of the old stock, None when nothing was revalued
+    revaluation: Decimal | None
     # stock at retail prices after this invoice
     balance: Decimal
 
@@ -452,6 +458,45 @@ class StocktakeCreate(FormModel):
     comment: Text | None
 
 
+class RevaluationLine(FormModel):
+    product_id: Annotated[
+        int,
+        Field(
+            gt=0,
+        ),
+    ]
+    # counted on the shelf
+    quantity: Quantity
+    # whole rubles
+    new_price: Annotated[
+        int,
+        Field(
+            gt=0,
+        ),
+    ]
+
+
+class RevaluationCreate(FormModel):
+    occurred_on: InvoiceDate
+    comment: Text | None
+    lines: Annotated[
+        list[RevaluationLine],
+        Field(
+            min_length=1,
+        ),
+    ]
+
+
+class RevaluationLineOut(BaseModel):
+    product_id: int
+    product_name: str
+    quantity: Decimal
+    old_price: Decimal
+    new_price: Decimal
+    # signed, what the line adds to the stock at retail prices
+    amount: Decimal
+
+
 class LedgerEntryOut(BaseModel):
     id: int
     occurred_on: OutputDate
@@ -487,3 +532,20 @@ class LedgerPosted(BaseModel):
     id: int
     amount: Decimal
     balance: Decimal
+
+
+class LedgerReport(BaseModel):
+    date_from: OutputDate
+    date_to: OutputDate
+    # stock at retail prices at the end of the day before the period
+    opening: Decimal
+    # signed sums of the period by kind, a reversal counts with the kind it cancels
+    invoices: Decimal
+    sales: Decimal
+    write_offs: Decimal
+    stocktakes: Decimal
+    revaluations: Decimal
+    # stock at retail prices at the end of the last day
+    closing: Decimal
+    # in the ledger order
+    entries: list[LedgerEntryOut]

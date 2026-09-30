@@ -54,6 +54,7 @@ export function emptyLine(): FormLine {
     cost_price_total: null,
     product_id: null,
     retail_price: null,
+    revalue_quantity: null,
   };
 }
 

@@ -1,6 +1,6 @@
 [project]
 name = "app"
-version = "0.0.5"
+version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -10,17 +10,18 @@ requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20.0",
     "asyncpg>=0.31.0",
-    "fastapi[standard]>=0.141.1",
-    "openai>=3.16.0",
+    "fastapi[standard]>=0.142.2",
+    "openai>=3.22.1",
+    "openpyxl>=3.1.5",
     "pydantic-settings>=2.15.0",
-    "sqlalchemy[asyncio]>=2.0.54",
+    "sqlalchemy[asyncio]>=2.1.1",
 ]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.16.8",
-    "ty>=0.0.82",
+    "ruff>=0.16.9",
+    "ty>=0.0.84",
 ]
 
 [tool.uv]
-exclude-newer = "2026-09-18T15:00:00Z"
+exclude-newer = "2026-09-30T15:00:00Z"

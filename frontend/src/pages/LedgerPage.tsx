@@ -4,6 +4,7 @@ import { getLedger, reverseEntry } from "../api";
 import type { Ask } from "../components/ConfirmDialog";
 import LedgerEntryDialog from "../components/LedgerEntryDialog";
 import LedgerOperation from "../components/LedgerOperation";
+import RevaluationDialog from "../components/RevaluationDialog";
 import { formatDate, formatMoney, formatSigned } from "../format";
 import { KIND_LABELS } from "../ledger";
 import { message } from "../message";
@@ -29,7 +30,7 @@ export default function LedgerPage({ go, ask }: Props) {
   const [balance, setBalance] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [dialog, setDialog] = useState<ManualKind | null>(null);
+  const [dialog, setDialog] = useState<ManualKind | "revaluation" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -103,6 +104,16 @@ export default function LedgerPage({ go, ask }: Props) {
               {KIND_LABELS[kind]}
             </button>
           ))}
+          <button
+            type="button"
+            className="button button-soft"
+            onClick={() => {
+              setError(null);
+              setDialog("revaluation");
+            }}
+          >
+            {KIND_LABELS.revaluation}
+          </button>
         </div>
       </section>
 
@@ -161,7 +172,16 @@ export default function LedgerPage({ go, ask }: Props) {
         </div>
       )}
 
-      {dialog && (
+      {dialog === "revaluation" && (
+        <RevaluationDialog
+          onClose={() => setDialog(null)}
+          onPosted={() => {
+            setDialog(null);
+            void load();
+          }}
+        />
+      )}
+      {dialog && dialog !== "revaluation" && (
         <LedgerEntryDialog
           kind={dialog}
           onClose={() => setDialog(null)}

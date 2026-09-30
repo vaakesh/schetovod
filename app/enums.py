@@ -12,3 +12,4 @@ class LedgerKind(StrEnum):
     SALE = "sale"
     WRITE_OFF = "write_off"
     STOCKTAKE = "stocktake"
+    REVALUATION = "revaluation"

@@ -1,4 +1,4 @@
-import { formatMoney } from "../format";
+import { formatMoney, formatSigned } from "../format";
 import type { ConfirmedInvoice } from "../types";
 
 interface Props {
@@ -20,6 +20,12 @@ export default function ConfirmedCard({ result, onHome }: Props) {
           <dt>В рознице</dt>
           <dd>+{formatMoney(result.retail_total)} ₽</dd>
         </div>
+        {result.revaluation !== null && (
+          <div>
+            <dt>Переоценка</dt>
+            <dd>{formatSigned(result.revaluation)} ₽</dd>
+          </div>
+        )}
         <div>
           <dt>Остаток</dt>
           <dd>{formatMoney(result.balance)} ₽</dd>

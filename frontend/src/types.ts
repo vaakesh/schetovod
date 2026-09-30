@@ -47,6 +47,8 @@ export interface FormLine {
   cost_price_total: string | null;
   product_id: number | null;
   retail_price: number | null;
+  // the old stock on the shelf that takes the new price
+  revalue_quantity: string | null;
 }
 
 export interface FormTotals {
@@ -88,6 +90,8 @@ export interface DraftLine {
   markup_pct: string | null;
   retail_price: string | null;
   retail_price_total: string | null;
+  // the shelf price of the product when the line changes it
+  previous_retail_price: string | null;
   // catalog products with a close name while the line has none, most similar first
   similar: SimilarProduct[];
 }
@@ -124,6 +128,8 @@ export interface ConfirmedInvoice {
   id: number;
   ledger_entry_id: number;
   retail_total: string;
+  // null when nothing was revalued
+  revaluation: string | null;
   balance: string;
 }
 
@@ -171,10 +177,10 @@ export interface PostedInvoice {
   ledger_entry_id: number;
 }
 
-export type LedgerKind = "invoice" | "sale" | "write_off" | "stocktake";
+export type LedgerKind = "invoice" | "sale" | "write_off" | "stocktake" | "revaluation";
 
-// the kinds entered by hand as one amount
-export type ManualKind = Exclude<LedgerKind, "invoice">;
+// the kinds entered by hand as one amount, a revaluation has its own form
+export type ManualKind = Exclude<LedgerKind, "invoice" | "revaluation">;
 
 export interface LedgerEntry {
   id: number;
@@ -206,6 +212,44 @@ export interface LedgerPosted {
   id: number;
   amount: string;
   balance: string;
+}
+
+export interface RevaluationLine {
+  product_id: number;
+  quantity: string;
+  // whole rubles
+  new_price: number;
+}
+
+export interface RevaluationCreate {
+  occurred_on: string;
+  comment: string | null;
+  lines: RevaluationLine[];
+}
+
+export interface RevaluationLineOut {
+  product_id: number;
+  product_name: string;
+  quantity: string;
+  old_price: string;
+  new_price: string;
+  // signed, what the line adds to the stock
+  amount: string;
+}
+
+export interface LedgerReport {
+  date_from: string;
+  date_to: string;
+  opening: string;
+  // signed sums of the period, a reversal counts with the kind it cancels
+  invoices: string;
+  sales: string;
+  write_offs: string;
+  stocktakes: string;
+  revaluations: string;
+  closing: string;
+  // in the ledger order
+  entries: LedgerEntry[];
 }
 
 export interface InvoiceDraft {

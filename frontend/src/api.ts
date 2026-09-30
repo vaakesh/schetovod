@@ -7,9 +7,12 @@ import type {
   LedgerBalance,
   LedgerPage,
   LedgerPosted,
+  LedgerReport,
   ManualKind,
   PostedInvoice,
   ProductSummary,
+  RevaluationCreate,
+  RevaluationLineOut,
   SupplierSummary,
 } from "./types";
 
@@ -29,6 +32,7 @@ const FIELD_LABELS: Record<string, string> = {
   vat_percent: "НДС",
   cost_price_total: "Сумма к оплате",
   retail_price: "Розничная цена",
+  revalue_quantity: "Осталось старого товара",
   new_price: "Новая цена",
   product_id: "Товар",
   cost_total: "Итог к оплате",
@@ -150,10 +154,22 @@ export function addLedgerEntry(kind: ManualKind, body: unknown): Promise<LedgerP
   return request("POST", LEDGER_PATHS[kind], body);
 }
 
+export function addRevaluation(body: RevaluationCreate): Promise<LedgerPosted> {
+  return request("POST", "/ledger/revaluation", body);
+}
 
+export function getRevaluationLines(entryId: number): Promise<RevaluationLineOut[]> {
+  return request("GET", `/ledger/${entryId}/revaluation`);
+}
 
+export function getReport(dateFrom: string, dateTo: string): Promise<LedgerReport> {
+  return request("GET", `/ledger/report${query({ date_from: dateFrom, date_to: dateTo })}`);
+}
 
 // a plain link downloads the file, the browser takes the name from the response
+export function reportXlsxUrl(dateFrom: string, dateTo: string): string {
+  return `/api/ledger/report.xlsx${query({ date_from: dateFrom, date_to: dateTo })}`;
+}
 
 export function reverseEntry(id: number): Promise<LedgerPosted> {
   return request("POST", `/ledger/${id}/reverse`);

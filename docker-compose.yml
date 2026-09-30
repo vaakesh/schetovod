@@ -63,6 +63,8 @@ services:
 
   cloudbeaver:
     image: dbeaver/cloudbeaver:26.1.0
+    profiles:
+      - tools
     depends_on:
       postgres:
         condition: service_healthy

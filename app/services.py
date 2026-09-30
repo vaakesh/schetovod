@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Annotated, NoReturn
 
@@ -14,6 +14,7 @@ from models import (
     LedgerEntry,
     Product,
     ProductAlias,
+    RevaluationItem,
     Supplier,
 )
 from normalize import (
@@ -34,6 +35,7 @@ from pricing import (
     normalize_name,
     retail_price,
     retail_price_total,
+    revaluation_amount,
 )
 from repositories import (
     InvoiceRepositoryDep,
@@ -57,11 +59,14 @@ from schemas import (
     LedgerEntryOut,
     LedgerPage,
     LedgerPosted,
+    LedgerReport,
     NewSupplier,
     OutflowCreate,
     PostedInvoice,
     PostedLine,
     ProductSummary,
+    RevaluationCreate,
+    RevaluationLineOut,
     SimilarProduct,
     StocktakeCreate,
     SupplierCandidate,
@@ -74,6 +79,8 @@ CANDIDATES_LIMIT = 5
 SIMILAR_LIMIT = 3
 # the issue code of a line with a close catalog product
 SIMILAR_PRODUCT = "similar_product"
+# the issue code of a line that changes the shelf price of its product
+PRICE_CHANGED = "price_changed"
 
 # an existing product by id or a new one by its name key, lines with one key are one product
 type ProductKey = tuple[str, int | str]
@@ -97,6 +104,8 @@ class PlannedLine:
     markup_pct: Decimal | None = None
     retail_price: Decimal | None = None
     retail_price_total: Decimal | None = None
+    # the shelf price of the product when this line changes it
+    previous_retail_price: Decimal | None = None
     similar: list[SimilarProduct] = field(
         default_factory=list,
     )
@@ -352,6 +361,8 @@ class InvoiceService:
         products: dict[ProductKey, Product] = {}
         added_aliases: set[str] = set()
         items: list[InvoiceItem] = []
+        # with the shelf price before this invoice, the product gets the new one below
+        revalued: list[tuple[PlannedLine, Product, InvoiceItem, Decimal]] = []
         for line in plan.lines:
             if line.alias is None or line.form.name is None:
                 raise RuntimeError(
@@ -382,6 +393,16 @@ class InvoiceService:
             items.append(
                 item,
             )
+            if line.form.revalue_quantity is not None:
+                # planned before any line of the invoice updated the product
+                if line.previous_retail_price is None:
+                    raise RuntimeError(
+                        "a ready draft revalues only a changed price",
+                    )
+                revalued.append(
+                    (line, product, item, line.previous_retail_price),
+                )
+
         # the ledger entry may only point to a confirmed invoice, so the status goes first
         draft_invoice.status = InvoiceStatus.CONFIRMED
         await self.invoices.flush()
@@ -396,14 +417,69 @@ class InvoiceService:
                 invoice_status=InvoiceStatus.CONFIRMED,
             ),
         )
+        revaluation = await self._revalue(
+            revalued=revalued,
+            invoice_number=plan.form.invoice_number,
+        )
         balance = await self.ledger.balance()
         await self.invoices.commit()
         return ConfirmedInvoice(
             id=draft_invoice.id,
             ledger_entry_id=entry.id,
             retail_total=retail_total,
+            revaluation=revaluation,
             balance=balance,
         )
+
+    async def _revalue(
+        self,
+        revalued: list[tuple[PlannedLine, Product, InvoiceItem, Decimal]],
+        invoice_number: str | None,
+    ) -> Decimal | None:
+        """the old stock of the lines takes the new price, one entry for the invoice"""
+        items = []
+        for line, product, item, old_price in revalued:
+            if line.form.revalue_quantity is None or line.retail_price is None:
+                raise RuntimeError(
+                    "a revalued line has a quantity and a price",
+                )
+            items.append(
+                RevaluationItem(
+                    product_id=product.id,
+                    invoice_item_id=item.id,
+                    quantity=line.form.revalue_quantity,
+                    old_price=old_price,
+                    new_price=line.retail_price,
+                ),
+            )
+        if not items:
+            return None
+        amount = sum(
+            (
+                revaluation_amount(
+                    quantity=item.quantity,
+                    old_price=item.old_price,
+                    new_price=item.new_price,
+                )
+                for item in items
+            ),
+            start=Decimal(
+                value=0,
+            ),
+        )
+        entry = await self.ledger.create(
+            entry=LedgerEntry(
+                kind=LedgerKind.REVALUATION,
+                amount=amount,
+                comment=f"по накладной № {invoice_number}",
+            ),
+        )
+        for item in items:
+            item.ledger_entry_id = entry.id
+        await self.ledger.add_revaluation_items(
+            items=items,
+        )
+        return amount
 
     async def decline_invoice(
         self,
@@ -454,11 +530,14 @@ class InvoiceService:
                     supplier_id=supplier.id,
                     name=line.form.name,
                     markup_pct=line.markup_pct,
+                    retail_price=line.retail_price,
                 ),
             )
         else:
             if product.markup_pct != line.markup_pct:
                 product.markup_pct = line.markup_pct
+            if product.retail_price != line.retail_price:
+                product.retail_price = line.retail_price
         products[line.key] = product
         return product
 
@@ -634,6 +713,9 @@ class InvoiceService:
             plan=plan,
         )
         _price_lines(
+            plan=plan,
+        )
+        _check_revaluation(
             plan=plan,
         )
 
@@ -1014,6 +1096,79 @@ def _price_lines(plan: DraftPlan) -> None:
                 )
 
 
+def _check_revaluation(plan: DraftPlan) -> None:
+    """a changed shelf price asks for the old stock, one count per product"""
+    for line in plan.lines:
+        if (
+            line.product is not None
+            and line.retail_price is not None
+            and line.retail_price != line.product.retail_price
+        ):
+            line.previous_retail_price = line.product.retail_price
+
+    counted: dict[ProductKey, int] = {}
+    for line in plan.lines:
+        quantity = line.form.revalue_quantity
+        if quantity is None:
+            continue
+        if line.previous_retail_price is None or line.retail_price is None:
+            _block(
+                plan=plan,
+                message="цена на полке не меняется, переоценивать нечего",
+                line=line.position,
+            )
+            continue
+        if line.key is not None:
+            other = counted.setdefault(
+                line.key,
+                line.position,
+            )
+            if other != line.position:
+                _block(
+                    plan=plan,
+                    message=f"переоценка этого товара уже указана в строке {other}",
+                    line=line.position,
+                )
+                continue
+        if not revaluation_amount(
+            quantity=quantity,
+            old_price=line.previous_retail_price,
+            new_price=line.retail_price,
+        ):
+            _block(
+                plan=plan,
+                message="переоценка выходит меньше копейки, проверьте количество",
+                line=line.position,
+            )
+
+    # the warning stays until the old stock of the product is counted in any of its lines
+    warned: set[ProductKey] = set()
+    for line in plan.lines:
+        if (
+            line.previous_retail_price is None
+            or line.retail_price is None
+            or line.key is None
+            or line.key in counted
+            or line.key in warned
+        ):
+            continue
+        warned.add(
+            line.key,
+        )
+        plan.issues.append(
+            Issue(
+                line=line.position,
+                message=(
+                    f"цена на полке меняется с {line.previous_retail_price:.0f} "
+                    f"на {line.retail_price:.0f} ₽, укажите, сколько старого товара "
+                    "осталось, чтобы переоценить"
+                ),
+                blocking=False,
+                code=PRICE_CHANGED,
+            ),
+        )
+
+
 def _candidate(
     supplier: Supplier,
     matched_lines: int,
@@ -1045,6 +1200,7 @@ def _draft_line(
         markup_pct=line.markup_pct,
         retail_price=line.retail_price,
         retail_price_total=line.retail_price_total,
+        previous_retail_price=line.previous_retail_price,
         similar=line.similar,
     )
 
@@ -1126,7 +1282,8 @@ class SupplierService:
                 unit=row.last_item.unit if row.last_item else None,
                 vat_percent=row.last_item.vat_percent if row.last_item else None,
                 cost_price=row.last_item.cost_price if row.last_item else None,
-                retail_price=row.last_item.retail_price if row.last_item else None,
+                # the shelf price, a revaluation may have changed it after the last invoice
+                retail_price=row.product.retail_price,
             )
             for row in rows
         ]
@@ -1231,6 +1388,185 @@ class LedgerService:
             ),
         )
 
+    async def add_revaluation(
+        self,
+        payload: RevaluationCreate,
+    ) -> LedgerPosted:
+        """the stock of the products on the shelf takes the new prices, the markups stay"""
+        await self.ledger.lock()
+        await self._check_date(
+            on=payload.occurred_on,
+        )
+        items: list[RevaluationItem] = []
+        products: list[Product] = []
+        for line in payload.lines:
+            product = await self.products.get(
+                product_id=line.product_id,
+            )
+            if product is None:
+                _invalid(
+                    detail=f"Товара с id {line.product_id} нет",
+                )
+            if product in products:
+                _invalid(
+                    detail=f"Товар «{product.name}» указан дважды",
+                )
+            new_price = Decimal(
+                value=line.new_price,
+            )
+            if new_price == product.retail_price:
+                _invalid(
+                    detail=f"Цена товара «{product.name}» уже {line.new_price} ₽",
+                )
+            products.append(
+                product,
+            )
+            items.append(
+                RevaluationItem(
+                    product_id=product.id,
+                    invoice_item_id=None,
+                    quantity=line.quantity,
+                    old_price=product.retail_price,
+                    new_price=new_price,
+                ),
+            )
+        amount = sum(
+            (
+                revaluation_amount(
+                    quantity=item.quantity,
+                    old_price=item.old_price,
+                    new_price=item.new_price,
+                )
+                for item in items
+            ),
+            start=Decimal(
+                value=0,
+            ),
+        )
+        if not amount:
+            _invalid(
+                detail="Переоценка выходит меньше копейки, проверьте количество",
+            )
+        entry = await self.ledger.create(
+            entry=LedgerEntry(
+                kind=LedgerKind.REVALUATION,
+                occurred_on=payload.occurred_on,
+                amount=amount,
+                comment=payload.comment,
+            ),
+        )
+        for item, product in zip(
+            items,
+            products,
+            strict=True,
+        ):
+            item.ledger_entry_id = entry.id
+            product.retail_price = item.new_price
+        await self.ledger.add_revaluation_items(
+            items=items,
+        )
+        return await self._finish(
+            entry=entry,
+        )
+
+    async def revaluation_lines(
+        self,
+        entry_id: int,
+    ) -> list[RevaluationLineOut]:
+        """the products of a revaluation, a reversal shows the lines it cancels"""
+        entry = await self.ledger.get(
+            entry_id=entry_id,
+        )
+        if entry is None or entry.kind != LedgerKind.REVALUATION:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Переоценка не найдена",
+            )
+        items = await self.ledger.revaluation_items_of(
+            entry_id=entry.reverses_id or entry.id,
+        )
+        # a reversal takes every line back
+        sign = -1 if entry.reverses_id is not None else 1
+        return [
+            RevaluationLineOut(
+                product_id=item.product_id,
+                product_name=item.product.name,
+                quantity=item.quantity,
+                old_price=item.old_price,
+                new_price=item.new_price,
+                amount=sign
+                * revaluation_amount(
+                    quantity=item.quantity,
+                    old_price=item.old_price,
+                    new_price=item.new_price,
+                ),
+            )
+            for item in items
+        ]
+
+    async def report(
+        self,
+        date_from: date,
+        date_to: date,
+    ) -> LedgerReport:
+        if date_from > date_to:
+            _invalid(
+                detail="Начало периода позже его конца",
+            )
+        sums = await self.ledger.sums_by_kind(
+            date_from=date_from,
+            date_to=date_to,
+        )
+        zero = Decimal(
+            value=0,
+        )
+        rows = await self.ledger.history(
+            limit=None,
+            offset=0,
+            date_from=date_from,
+            date_to=date_to,
+            newest_first=False,
+        )
+        return LedgerReport(
+            date_from=date_from,
+            date_to=date_to,
+            opening=await self.ledger.balance(
+                on=date_from
+                - timedelta(
+                    days=1,
+                ),
+            ),
+            invoices=sums.get(
+                LedgerKind.INVOICE,
+                zero,
+            ),
+            sales=sums.get(
+                LedgerKind.SALE,
+                zero,
+            ),
+            write_offs=sums.get(
+                LedgerKind.WRITE_OFF,
+                zero,
+            ),
+            stocktakes=sums.get(
+                LedgerKind.STOCKTAKE,
+                zero,
+            ),
+            revaluations=sums.get(
+                LedgerKind.REVALUATION,
+                zero,
+            ),
+            closing=await self.ledger.balance(
+                on=date_to,
+            ),
+            entries=[
+                _ledger_entry_out(
+                    row=row,
+                )
+                for row in rows
+            ],
+        )
+
     async def reverse(
         self,
         entry_id: int,
@@ -1265,6 +1601,13 @@ class LedgerService:
             _conflict(
                 detail="После этой записи был переучёт, исправьте остаток новым переучётом",
             )
+        if entry.kind == LedgerKind.REVALUATION:
+            for item in await self.ledger.revaluation_items_of(
+                entry_id=entry.id,
+            ):
+                # a price changed again since then is left as it is
+                if item.product.retail_price == item.new_price:
+                    item.product.retail_price = item.old_price
         return await self._post(
             entry=LedgerEntry(
                 kind=entry.kind,

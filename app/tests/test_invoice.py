@@ -18,6 +18,7 @@ from models import (
     LedgerEntry,
     Product,
     ProductAlias,
+    RevaluationItem,
     Supplier,
 )
 from pricing import normalize_name
@@ -84,6 +85,7 @@ class FakeStore:
         self.aliases: list[ProductAlias] = []
         self.items: list[InvoiceItem] = []
         self.entries: list[LedgerEntry] = []
+        self.revaluations: list[RevaluationItem] = []
         self.commits = 0
         self.locks = 0
         # the order of the ledger locks and the draft reads
@@ -120,6 +122,9 @@ class FakeStore:
             name=name,
             markup_pct=Decimal(
                 value=markup_pct,
+            ),
+            retail_price=Decimal(
+                value=retail_price,
             ),
         )
         self.products[product.id] = product
@@ -481,6 +486,45 @@ class FakeLedger:
         )
         return entry
 
+    async def add_revaluation_items(
+        self,
+        items: list[RevaluationItem],
+    ) -> None:
+        for item in items:
+            item.id = self.store.new_id()
+        self.store.revaluations += items
+
+    async def revaluation_items_of(
+        self,
+        entry_id: int,
+    ) -> list[RevaluationItem]:
+        items = [
+            item for item in self.store.revaluations if item.ledger_entry_id == entry_id
+        ]
+        # what selectinload brings in the real repository
+        for item in items:
+            item.product = self.store.products[item.product_id]
+        return items
+
+    async def sums_by_kind(
+        self,
+        date_from: date,
+        date_to: date,
+    ) -> dict[LedgerKind, Decimal]:
+        sums: dict[LedgerKind, Decimal] = {}
+        for entry in self.store.entries:
+            if date_from <= entry.occurred_on <= date_to:
+                sums[entry.kind] = (
+                    sums.get(
+                        entry.kind,
+                        Decimal(
+                            value=0,
+                        ),
+                    )
+                    + entry.amount
+                )
+        return sums
+
     async def get(
         self,
         entry_id: int,
@@ -716,6 +760,7 @@ class ReceiveInvoiceTests(InvoiceApiTestCase):
                         "cost_price_total": "125.00",
                         "product_id": None,
                         "retail_price": None,
+                        "revalue_quantity": None,
                     },
                     {
                         "name": "Соль",
@@ -726,6 +771,7 @@ class ReceiveInvoiceTests(InvoiceApiTestCase):
                         "cost_price_total": "30.00",
                         "product_id": None,
                         "retail_price": None,
+                        "revalue_quantity": None,
                     },
                 ],
             },
@@ -1402,6 +1448,10 @@ class SaveFormTests(InvoiceApiTestCase):
         self.assertEqual(
             first=[issue["message"] for issue in draft["issues"]],
             second=[
+                (
+                    "цена на полке меняется с 65 на 78 ₽, укажите, сколько старого товара "
+                    "осталось, чтобы переоценить"
+                ),
                 "сумма без НДС: в накладной 125.00, по сумме строки 150.00",
                 "цена за единицу: в накладной 50.00, по сумме строки 60.00",
                 "цена без НДС: в накладной 50.00, по сумме строки 60.00",
@@ -1708,6 +1758,7 @@ class ConfirmTests(InvoiceApiTestCase):
                 "id": draft["id"],
                 "ledger_entry_id": entry.id,
                 "retail_total": "365.00",
+                "revaluation": None,
                 "balance": "365.00",
             },
         )
@@ -1873,6 +1924,248 @@ class ConfirmTests(InvoiceApiTestCase):
                     ).status_code,
                     second=404,
                 )
+
+
+class RevaluationOnConfirmTests(InvoiceApiTestCase):
+    def draft_with_prices(
+        self,
+        prices: list[int | None],
+        quantities: list[str | None],
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """the invoice of the known supplier with the given shelf prices and old stock"""
+        draft = self.upload(
+            payload=payload,
+        )
+        form = draft["form"]
+        for line, price, quantity in zip(
+            form["lines"],
+            prices,
+            quantities,
+            strict=True,
+        ):
+            line["retail_price"] = price
+            line["revalue_quantity"] = quantity
+        return self.save(
+            draft=draft,
+            form=form,
+        )
+
+    def confirm(
+        self,
+        draft: dict[str, Any],
+    ) -> dict[str, Any]:
+        response = self.client.post(
+            url=f"/invoice/{draft['id']}/confirm",
+        )
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        return response.json()
+
+    def test_changed_price_asks_for_the_old_stock(self) -> None:
+        self.known_supplier()
+
+        draft = self.draft_with_prices(
+            prices=[70, None],
+            quantities=[None, None],
+        )
+
+        self.assertTrue(
+            expr=draft["ready"],
+        )
+        self.assertEqual(
+            first=[line["previous_retail_price"] for line in draft["lines"]],
+            second=["65", None],
+        )
+        self.assertIn(
+            member={
+                "line": 1,
+                "message": (
+                    "цена на полке меняется с 65 на 70 ₽, укажите, сколько старого товара "
+                    "осталось, чтобы переоценить"
+                ),
+                "blocking": False,
+                "code": "price_changed",
+            },
+            container=draft["issues"],
+        )
+
+    def test_old_stock_is_revalued_with_the_invoice(self) -> None:
+        _, sugar, salt = self.known_supplier()
+        draft = self.draft_with_prices(
+            prices=[70, None],
+            quantities=["4", None],
+        )
+        self.assertEqual(
+            first=[issue["code"] for issue in draft["issues"]],
+            second=[],
+        )
+
+        result = self.confirm(
+            draft=draft,
+        )
+
+        # 2.5 kg at 70 and the salt at 36, then 4 kg on the shelf go up by 5
+        self.assertEqual(
+            first=(result["retail_total"], result["revaluation"], result["balance"]),
+            second=("211.00", "20.00", "231.00"),
+        )
+        _, entry = self.store.entries
+        self.assertEqual(
+            first=(entry.kind, entry.amount, entry.comment),
+            second=(
+                LedgerKind.REVALUATION,
+                Decimal(
+                    value="20.00",
+                ),
+                "по накладной № 00042/А",
+            ),
+        )
+        [item] = self.store.revaluations
+        self.assertEqual(
+            first=(
+                item.ledger_entry_id,
+                item.product_id,
+                item.invoice_item_id,
+                item.quantity,
+                item.old_price,
+                item.new_price,
+            ),
+            second=(
+                entry.id,
+                sugar.id,
+                self.store.items[0].id,
+                Decimal(
+                    value=4,
+                ),
+                Decimal(
+                    value=65,
+                ),
+                Decimal(
+                    value=70,
+                ),
+            ),
+        )
+        self.assertEqual(
+            first=(sugar.retail_price, salt.retail_price),
+            second=(
+                Decimal(
+                    value=70,
+                ),
+                Decimal(
+                    value=36,
+                ),
+            ),
+        )
+
+    def test_new_price_without_old_stock_only_moves_the_shelf_price(self) -> None:
+        _, sugar, _ = self.known_supplier()
+
+        result = self.confirm(
+            draft=self.draft_with_prices(
+                prices=[70, None],
+                quantities=[None, None],
+            ),
+        )
+
+        self.assertIsNone(
+            obj=result["revaluation"],
+        )
+        self.assertEqual(
+            first=(
+                [entry.kind for entry in self.store.entries],
+                self.store.revaluations,
+            ),
+            second=([LedgerKind.INVOICE], []),
+        )
+        self.assertEqual(
+            first=sugar.retail_price,
+            second=Decimal(
+                value=70,
+            ),
+        )
+
+    def test_new_product_gets_its_shelf_price(self) -> None:
+        draft = self.upload()
+        form = draft["form"]
+        form["lines"][0]["retail_price"] = 65
+        form["lines"][1]["retail_price"] = 40
+        self.confirm(
+            draft=self.save(
+                draft=draft,
+                form=form,
+            ),
+        )
+
+        self.assertEqual(
+            first=[product.retail_price for product in self.store.products.values()],
+            second=[65, 40],
+        )
+
+    def test_wrong_old_stock_is_blocking(self) -> None:
+        self.known_supplier()
+        payload = invoice_payload()
+        payload["items"].append(
+            payload["items"][0] | {"line_no": "3"},
+        )
+        payload["totals"] = {"base_total": None, "cost_total": "280.00"}
+        cases = [
+            (
+                [None, None, None],
+                [None, "2", None],
+                [(2, "цена на полке не меняется, переоценивать нечего")],
+            ),
+            (
+                [70, None, None],
+                ["4", None, "1"],
+                [(3, "переоценка этого товара уже указана в строке 1")],
+            ),
+            (
+                [66, None, None],
+                ["0.001", None, None],
+                [(1, "переоценка выходит меньше копейки, проверьте количество")],
+            ),
+        ]
+        for prices, quantities, expected in cases:
+            with self.subTest(
+                quantities=quantities,
+            ):
+                draft = self.draft_with_prices(
+                    prices=prices,
+                    quantities=quantities,
+                    payload=payload,
+                )
+
+                self.assertEqual(
+                    first=self.blocking(
+                        draft=draft,
+                    ),
+                    second=expected,
+                )
+
+    def test_draft_saved_before_the_revaluation_still_opens(self) -> None:
+        self.known_supplier()
+        draft = self.upload()
+        form = draft["form"]
+        for line in form["lines"]:
+            del line["revalue_quantity"]
+        self.store.invoices[draft["id"]].form = form
+
+        response = self.client.get(
+            url=f"/invoice/{draft['id']}",
+        )
+
+        self.assertEqual(
+            first=response.status_code,
+            second=200,
+            msg=response.text,
+        )
+        self.assertTrue(
+            expr=response.json()["ready"],
+        )
 
 
 class InvoiceListTests(InvoiceApiTestCase):
@@ -2257,7 +2550,8 @@ class ProductSearchTests(InvoiceApiTestCase):
                     "unit": None,
                     "vat_percent": None,
                     "cost_price": None,
-                    "retail_price": None,
+                    # the shelf price is known before the product is ever posted
+                    "retail_price": "65",
                 },
                 {
                     "id": salt.id,
@@ -2266,7 +2560,7 @@ class ProductSearchTests(InvoiceApiTestCase):
                     "unit": None,
                     "vat_percent": None,
                     "cost_price": None,
-                    "retail_price": None,
+                    "retail_price": "36",
                 },
             ],
         )

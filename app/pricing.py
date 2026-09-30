@@ -83,6 +83,18 @@ def markup_for_price(
     )
 
 
+def revaluation_amount(
+    quantity: Decimal,
+    old_price: Decimal,
+    new_price: Decimal,
+) -> Decimal:
+    """how the stock at retail prices changes when the shelf gets the new price"""
+    return (quantity * (new_price - old_price)).quantize(
+        KOPECK,
+        rounding=ROUND_HALF_UP,
+    )
+
+
 def retail_price_total(
     retail_price: Decimal,
     quantity: Decimal,

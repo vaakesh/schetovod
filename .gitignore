@@ -1,7 +1,9 @@
 # secrets
 .env
 .env.*
+!.env.example
 .openai*
+!.openai-token.example
 
 # notes, images, documents
 *.md

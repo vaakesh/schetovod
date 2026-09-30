@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import exists, func, literal, or_, select, tuple_
+from sqlalchemy import exists, func, or_, select, tuple_
 from sqlalchemy.orm import aliased, selectinload
 
 from db import SessionDep
@@ -16,6 +16,7 @@ from models import (
     LedgerEntry,
     Product,
     ProductAlias,
+    RevaluationItem,
     Supplier,
 )
 
@@ -237,6 +238,63 @@ class LedgerRepository:
     async def commit(self) -> None:
         await self.session.commit()
 
+    async def add_revaluation_items(
+        self,
+        items: list[RevaluationItem],
+    ) -> None:
+        self.session.add_all(
+            instances=items,
+        )
+        await self.session.flush()
+
+    async def revaluation_items_of(
+        self,
+        entry_id: int,
+    ) -> list[RevaluationItem]:
+        """with their products"""
+        result = await self.session.scalars(
+            statement=select(
+                RevaluationItem,
+            )
+            .where(
+                RevaluationItem.ledger_entry_id == entry_id,
+            )
+            .order_by(
+                RevaluationItem.id,
+            )
+            .options(
+                selectinload(
+                    RevaluationItem.product,
+                ),
+            ),
+        )
+        return list(
+            result,
+        )
+
+    async def sums_by_kind(
+        self,
+        date_from: date,
+        date_to: date,
+    ) -> dict[LedgerKind, Decimal]:
+        """signed sums of the days, a reversal has the kind of the entry it cancels"""
+        result = await self.session.execute(
+            statement=select(
+                LedgerEntry.kind,
+                func.sum(
+                    LedgerEntry.amount,
+                ),
+            )
+            .where(
+                LedgerEntry.occurred_on >= date_from,
+                LedgerEntry.occurred_on <= date_to,
+            )
+            .group_by(
+                LedgerEntry.kind,
+            ),
+        )
+        return {kind: amount for kind, amount in result.tuples()}
+
     async def lock(self) -> None:
         """serializes the writers, a stocktake must see the balance it replaces"""
         await self.session.execute(
@@ -333,12 +391,8 @@ class LedgerRepository:
                             LedgerEntry.id,
                         )
                         > tuple_(
-                            literal(
-                                value=entry.occurred_on,
-                            ),
-                            literal(
-                                value=entry.id,
-                            ),
+                            entry.occurred_on,
+                            entry.id,
                         ),
                     ),
                 ),

@@ -8,6 +8,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -16,6 +17,7 @@ from pydantic import ValidationError
 
 from config import settings
 from enums import InvoiceStatus, LedgerKind
+from report_xlsx import report_filename, report_workbook
 from schemas import (
     ConfirmedInvoice,
     DraftForm,
@@ -26,9 +28,12 @@ from schemas import (
     LedgerBalance,
     LedgerPage,
     LedgerPosted,
+    LedgerReport,
     OutflowCreate,
     PostedInvoice,
     ProductSummary,
+    RevaluationCreate,
+    RevaluationLineOut,
     StocktakeCreate,
     SupplierSummary,
 )
@@ -54,6 +59,11 @@ PageOffset = Annotated[
         ge=0,
     ),
 ]
+ReportDate = Annotated[
+    InvoiceDate,
+    Query(),
+]
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @app.get(
@@ -319,6 +329,81 @@ async def add_stocktake(
 ) -> LedgerPosted:
     return await service.add_stocktake(
         payload=payload,
+    )
+
+
+@app.post(
+    path="/ledger/revaluation",
+    response_model=LedgerPosted,
+)
+async def add_revaluation(
+    payload: RevaluationCreate,
+    service: LedgerServiceDep,
+) -> LedgerPosted:
+    return await service.add_revaluation(
+        payload=payload,
+    )
+
+
+@app.get(
+    path="/ledger/{entry_id}/revaluation",
+    response_model=list[RevaluationLineOut],
+)
+async def revaluation_lines(
+    entry_id: int,
+    service: LedgerServiceDep,
+) -> list[RevaluationLineOut]:
+    return await service.revaluation_lines(
+        entry_id=entry_id,
+    )
+
+
+@app.get(
+    path="/ledger/report",
+    response_model=LedgerReport,
+)
+async def ledger_report(
+    service: LedgerServiceDep,
+    date_from: ReportDate,
+    date_to: ReportDate,
+) -> LedgerReport:
+    return await service.report(
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@app.get(
+    path="/ledger/report.xlsx",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                XLSX_MEDIA_TYPE: {},
+            },
+        },
+    },
+)
+async def ledger_report_xlsx(
+    service: LedgerServiceDep,
+    date_from: ReportDate,
+    date_to: ReportDate,
+) -> Response:
+    report = await service.report(
+        date_from=date_from,
+        date_to=date_to,
+    )
+    filename = report_filename(
+        report=report,
+    )
+    return Response(
+        content=report_workbook(
+            report=report,
+        ),
+        media_type=XLSX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
     )
 
 
