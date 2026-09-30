@@ -1,13 +1,26 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from functools import cache
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from sqlalchemy import MetaData
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from config import settings
+
+DATABASE_CONNECTION_MESSAGE = (
+    "Не удалось подключиться к базе данных. "
+    "Проверьте настройки PostgreSQL в .env и доступность сервера базы данных."
+)
+DATABASE_CONNECTION_ERRORS = (
+    DBAPIError,
+    SQLAlchemyTimeoutError,
+    OSError,
+    TimeoutError,
+)
 
 # postgres style names for constraints and indexes,
 # a check constraint gets its short name from the model, e.g. "quantity"
@@ -41,12 +54,19 @@ async def get_session(
             dependency=get_engine,
         ),
     ],
-) -> AsyncIterator[AsyncSession]:
+) -> AsyncGenerator[AsyncSession]:
     # a new session per request, closed after the response
     async with AsyncSession(
         bind=engine,
         expire_on_commit=False,
     ) as session:
+        try:
+            await session.connection()
+        except DATABASE_CONNECTION_ERRORS as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=DATABASE_CONNECTION_MESSAGE,
+            ) from error
         yield session
 
 

@@ -1,14 +1,16 @@
 import asyncio
+from contextlib import aclosing
 from logging.config import fileConfig
 
 from alembic import context
+from alembic.util.exc import CommandError
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import models  # noqa: F401  registers tables in Base.metadata
 from config import settings
-from db import Base
+from db import DATABASE_CONNECTION_ERRORS, DATABASE_CONNECTION_MESSAGE, Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -74,10 +76,22 @@ async def run_async_migrations() -> None:
         poolclass=pool.NullPool,
     )
 
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
+    try:
+        try:
+            connection = await connectable.connect()
+        except DATABASE_CONNECTION_ERRORS as error:
+            raise CommandError(
+                DATABASE_CONNECTION_MESSAGE,
+            ) from error
 
-    await connectable.dispose()
+        async with aclosing(
+            thing=connection,
+        ):
+            await connection.run_sync(
+                fn=do_run_migrations,
+            )
+    finally:
+        await connectable.dispose()
 
 
 def run_migrations_online() -> None:
