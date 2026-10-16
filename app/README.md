@@ -27,5 +27,5 @@ Vite по умолчанию проксирует `/api` на `http://127.0.0.1:
 uv run ruff check .
 uv run ruff format --check .
 uv run ty check
-uv run python -m unittest discover -s tests
+uv run pytest
 ```

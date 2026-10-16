@@ -19,9 +19,18 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
     "ruff>=0.16.9",
     "ty>=0.0.84",
 ]
 
 [tool.uv]
 exclude-newer = "2026-09-30T15:00:00Z"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["--import-mode=importlib", "--strict-config", "--strict-markers"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

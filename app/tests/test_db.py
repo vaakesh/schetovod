@@ -1,18 +1,53 @@
-import unittest
-from unittest.mock import AsyncMock, patch
+from collections.abc import Iterator
+from contextlib import aclosing
+from unittest.mock import AsyncMock
 
+import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from db import DATABASE_CONNECTION_MESSAGE, get_engine, get_session
-from main import app
+import db
+from db import get_engine, get_session
 
 
-class DatabaseConnectionApiTests(unittest.TestCase):
-    def test_connection_failures_return_service_unavailable(self) -> None:
-        errors = (
+@pytest.fixture
+def engine() -> AsyncMock:
+    return AsyncMock(
+        spec=AsyncEngine,
+    )
+
+
+@pytest.fixture
+def session(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    session = AsyncMock(
+        spec=AsyncSession,
+    )
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = False
+    monkeypatch.setattr(
+        target=db,
+        name="AsyncSession",
+        value=lambda **kwargs: session,
+    )
+    return session
+
+
+@pytest.fixture
+def database_client(test_app: FastAPI, engine: AsyncMock) -> Iterator[TestClient]:
+    test_app.dependency_overrides[get_engine] = lambda: engine
+    with TestClient(
+        app=test_app,
+    ) as client:
+        yield client
+
+
+class TestDatabaseConnection:
+    @pytest.mark.parametrize(
+        argnames="error",
+        argvalues=[
             ConnectionRefusedError(),
             TimeoutError(),
             SQLAlchemyTimeoutError(),
@@ -23,88 +58,57 @@ class DatabaseConnectionApiTests(unittest.TestCase):
                     "password authentication failed for user schetovod",
                 ),
             ),
-        )
-        engine = AsyncMock(
-            spec=AsyncEngine,
-        )
-        app.dependency_overrides[get_engine] = lambda: engine
-        self.addCleanup(
-            app.dependency_overrides.clear,
-        )
+        ],
+        ids=["refused", "timeout", "pool-timeout", "authentication"],
+    )
+    def test_returns_503_when_connection_fails(
+        self,
+        database_client: TestClient,
+        session: AsyncMock,
+        error: Exception,
+    ) -> None:
+        session.connection.side_effect = error
 
-        for error in errors:
-            with self.subTest(
-                error=type(
-                    error,
-                ).__name__,
-            ):
-                session = AsyncMock(
-                    spec=AsyncSession,
-                )
-                session.__aenter__.return_value = session
-                session.connection.side_effect = error
-
-                with (
-                    patch(
-                        target="db.AsyncSession",
-                        return_value=session,
-                    ),
-                    TestClient(
-                        app=app,
-                    ) as client,
-                ):
-                    response = client.get(
-                        url="/invoice",
-                    )
-
-                self.assertEqual(
-                    first=response.status_code,
-                    second=503,
-                )
-                self.assertEqual(
-                    first=response.json(),
-                    second={"detail": DATABASE_CONNECTION_MESSAGE},
-                )
-                session.execute.assert_not_awaited()
-                session.__aexit__.assert_awaited_once()
-
-
-class DatabaseSessionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_successful_connection_yields_session(self) -> None:
-        session = AsyncMock(
-            spec=AsyncSession,
-        )
-        session.__aenter__.return_value = session
-        engine = AsyncMock(
-            spec=AsyncEngine,
+        response = database_client.get(
+            url="/invoice",
         )
 
-        with patch(
-            target="db.AsyncSession",
-            return_value=session,
-        ):
-            dependency = get_session(
+        assert response.status_code == 503
+        assert response.json() == {
+            "detail": (
+                "Не удалось подключиться к базе данных. "
+                "Проверьте настройки PostgreSQL в .env и доступность сервера базы данных."
+            ),
+        }
+        session.execute.assert_not_awaited()
+        session.__aexit__.assert_awaited_once()
+
+
+class TestGetSession:
+    async def test_yields_session_when_connection_succeeds(
+        self,
+        engine: AsyncMock,
+        session: AsyncMock,
+    ) -> None:
+        async with aclosing(
+            thing=get_session(
                 engine=engine,
+            ),
+        ) as dependency:
+            result = await anext(
+                dependency,
             )
-            try:
-                self.assertIs(
-                    expr1=await anext(
-                        dependency,
-                    ),
-                    expr2=session,
-                )
-                session.connection.assert_awaited_once()
-            finally:
-                await dependency.aclose()
+
+            assert result is session
+            session.connection.assert_awaited_once()
 
         session.__aexit__.assert_awaited_once()
 
-    async def test_query_errors_are_not_reported_as_connection_failures(self) -> None:
-        session = AsyncMock(
-            spec=AsyncSession,
-        )
-        session.__aenter__.return_value = session
-        session.__aexit__.return_value = False
+    async def test_propagates_query_errors_without_reporting_connection_failure(
+        self,
+        engine: AsyncMock,
+        session: AsyncMock,
+    ) -> None:
         error = IntegrityError(
             statement="INSERT INTO supplier",
             params=None,
@@ -112,25 +116,21 @@ class DatabaseSessionTests(unittest.IsolatedAsyncioTestCase):
                 "duplicate key value violates unique constraint",
             ),
         )
-        engine = AsyncMock(
-            spec=AsyncEngine,
-        )
 
-        with patch(
-            target="db.AsyncSession",
-            return_value=session,
-        ):
-            dependency = get_session(
+        async with aclosing(
+            thing=get_session(
                 engine=engine,
-            )
+            ),
+        ) as dependency:
             await anext(
                 dependency,
             )
-            with self.assertRaises(
+            with pytest.raises(
                 expected_exception=IntegrityError,
-            ):
+            ) as raised:
                 await dependency.athrow(
                     error,
                 )
 
+        assert raised.value is error
         session.__aexit__.assert_awaited_once()

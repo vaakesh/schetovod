@@ -1,6 +1,7 @@
-import unittest
 from decimal import Decimal
 from typing import Any
+
+import pytest
 
 from normalize import (
     LinePrices,
@@ -104,105 +105,101 @@ def read_messages(fields: dict[str, Any]) -> list[str]:
         quantity=item.quantity,
     )
     # every read mismatch is only worth a look
-    assert all(not issue.blocking for issue in issues)
+    assert all(
+        (not issue.blocking for issue in issues),
+    )
     return [issue.message for issue in issues]
 
 
-class LinePricesTests(unittest.TestCase):
+class TestLinePrices:
     def test_derives_every_price_from_the_total_with_vat(self) -> None:
-        self.assertEqual(
-            first=rounded(
-                prices=prices_of(
-                    item=make_item(
-                        fields=REAL_LINES[0],
-                    ),
+        assert rounded(
+            prices=prices_of(
+                item=make_item(
+                    fields=REAL_LINES[0],
                 ),
             ),
-            second=(
-                Decimal(
-                    value="4250.00",
-                ),
-                Decimal(
-                    value="425.00",
-                ),
-                Decimal(
-                    value="3863.64",
-                ),
-                Decimal(
-                    value="386.36",
-                ),
+        ) == (
+            Decimal(
+                value="4250.00",
+            ),
+            Decimal(
+                value="425.00",
+            ),
+            Decimal(
+                value="3863.64",
+            ),
+            Decimal(
+                value="386.36",
             ),
         )
 
-    def test_without_vat_takes_the_total_from_either_field(self) -> None:
-        for field in ("cost_price_total", "base_price_total"):
-            with self.subTest(
-                field=field,
-            ):
-                self.assertEqual(
-                    first=rounded(
-                        prices=prices_of(
-                            item=make_item(
-                                fields={"quantity": "6", field: "324.00"},
-                            ),
-                        ),
-                    ),
-                    second=(
-                        Decimal(
-                            value="324.00",
-                        ),
-                        Decimal(
-                            value="54.00",
-                        ),
-                        Decimal(
-                            value="324.00",
-                        ),
-                        Decimal(
-                            value="54.00",
-                        ),
-                    ),
-                )
+    @pytest.mark.parametrize(
+        argnames="field",
+        argvalues=("cost_price_total", "base_price_total"),
+    )
+    def test_without_vat_takes_the_total_from_either_field(
+        self,
+        field: str,
+    ) -> None:
+        assert rounded(
+            prices=prices_of(
+                item=make_item(
+                    fields={"quantity": "6", field: "324.00"},
+                ),
+            ),
+        ) == (
+            Decimal(
+                value="324.00",
+            ),
+            Decimal(
+                value="54.00",
+            ),
+            Decimal(
+                value="324.00",
+            ),
+            Decimal(
+                value="54.00",
+            ),
+        )
 
     def test_with_vat_the_total_without_it_is_never_the_source(self) -> None:
         item = make_item(
             fields={"base_price_total": "100.00", "vat_percent": "20"},
         )
-        self.assertEqual(
-            first=rounded(
-                prices=prices_of(
-                    item=item,
-                ),
+        assert rounded(
+            prices=prices_of(
+                item=item,
             ),
-            second=(None, None, None, None),
-        )
+        ) == (None, None, None, None)
 
     def test_without_quantity_derives_only_totals(self) -> None:
-        self.assertEqual(
-            first=rounded(
-                prices=line_prices(
-                    cost_total=Decimal(
-                        value="120.00",
-                    ),
-                    vat_percent=Decimal(
-                        value=20,
-                    ),
-                    quantity=None,
-                ),
-            ),
-            second=(
-                Decimal(
+        assert rounded(
+            prices=line_prices(
+                cost_total=Decimal(
                     value="120.00",
                 ),
-                None,
-                Decimal(
-                    value="100.00",
+                vat_percent=Decimal(
+                    value=20,
                 ),
-                None,
+                quantity=None,
             ),
+        ) == (
+            Decimal(
+                value="120.00",
+            ),
+            None,
+            Decimal(
+                value="100.00",
+            ),
+            None,
         )
 
-    def test_printed_total_without_vat_may_be_read_as_without_vat(self) -> None:
-        for items, totals, field in (
+
+class TestPrintedCostTotalField:
+    @pytest.mark.parametrize(
+        argnames=("items", "totals", "field"),
+        argvalues=(
             ([{}], {"cost_total": None, "base_total": "1.00"}, "base_total"),
             ([{}], {"cost_total": "1.00", "base_total": None}, "cost_total"),
             (
@@ -210,63 +207,70 @@ class LinePricesTests(unittest.TestCase):
                 {"cost_total": None, "base_total": "1.00"},
                 "cost_total",
             ),
-        ):
-            with self.subTest(
-                totals=totals,
-                items=items,
-            ):
-                invoice = InvoiceExtraction.model_validate(
-                    obj={
-                        "supplier": {"name": None, "inn": None},
-                        "invoice_number": None,
-                        "invoice_date": None,
-                        "items": [
-                            make_item(
-                                fields=item,
-                            ).model_dump(
-                                mode="json",
-                            )
-                            for item in items
-                        ],
-                        "totals": totals,
-                    },
-                )
-                self.assertEqual(
-                    first=printed_cost_total_field(
-                        invoice=invoice,
-                    ),
-                    second=field,
-                )
+        ),
+    )
+    def test_printed_total_without_vat_may_be_read_as_without_vat(
+        self,
+        items: list[dict[str, Any]],
+        totals: dict[str, str | None],
+        field: str,
+    ) -> None:
+        invoice = InvoiceExtraction.model_validate(
+            obj={
+                "supplier": {"name": None, "inn": None},
+                "invoice_number": None,
+                "invoice_date": None,
+                "items": [
+                    make_item(
+                        fields=item,
+                    ).model_dump(
+                        mode="json",
+                    )
+                    for item in items
+                ],
+                "totals": totals,
+            },
+        )
+        assert (
+            printed_cost_total_field(
+                invoice=invoice,
+            )
+            == field
+        )
 
 
-class CheckReadPricesTests(unittest.TestCase):
-    def test_real_invoice_fits_rounding(self) -> None:
-        for fields in REAL_LINES:
-            with self.subTest(
+class TestCheckReadPrices:
+    @pytest.mark.parametrize(
+        argnames="fields",
+        argvalues=REAL_LINES,
+    )
+    def test_real_invoice_fits_rounding(
+        self,
+        fields: dict[str, Any],
+    ) -> None:
+        assert (
+            read_messages(
                 fields=fields,
-            ):
-                self.assertEqual(
-                    first=read_messages(
-                        fields=fields,
-                    ),
-                    second=[],
-                )
+            )
+            == []
+        )
 
     def test_price_from_a_rounded_total_of_a_small_quantity_fits(self) -> None:
         # 33.33 × 0.2 = 6.666 is printed as 6.67, which gives back 33.35
-        self.assertEqual(
-            first=read_messages(
+        assert (
+            read_messages(
                 fields={
                     "quantity": "0.2",
                     "cost_price": "33.33",
                     "cost_price_total": "6.67",
                 },
-            ),
-            second=[],
+            )
+            == []
         )
 
-    def test_misread_values_are_warnings(self) -> None:
-        for fields, message in (
+    @pytest.mark.parametrize(
+        argnames=("fields", "message"),
+        argvalues=(
             (
                 {
                     "quantity": "2.5",
@@ -296,19 +300,19 @@ class CheckReadPricesTests(unittest.TestCase):
                 {"cost_price_total": "100.00", "base_price_total": "90.00"},
                 "сумма без НДС: в накладной 90.00, по сумме строки 100.00",
             ),
-        ):
-            with self.subTest(
-                message=message,
-            ):
-                self.assertEqual(
-                    first=read_messages(
-                        fields=fields,
-                    ),
-                    second=[message],
-                )
+        ),
+    )
+    def test_misread_values_are_warnings(
+        self,
+        fields: dict[str, Any],
+        message: str,
+    ) -> None:
+        assert read_messages(
+            fields=fields,
+        ) == [message]
 
 
-class CheckTotalsTests(unittest.TestCase):
+class TestCheckTotals:
     def check(
         self,
         cost_total: str | None,
@@ -338,59 +342,48 @@ class CheckTotalsTests(unittest.TestCase):
                 )
                 for item in items
             ],
-            with_vat=any(item.vat_percent for item in items),
+            with_vat=any(
+                (item.vat_percent for item in items),
+            ),
         )
-        self.assertTrue(
-            expr=all(not issue.blocking for issue in issues),
+        assert all(
+            (not issue.blocking for issue in issues),
         )
         return [issue.message for issue in issues]
 
     def test_real_invoice_fits_rounding(self) -> None:
-        self.assertEqual(
-            first=self.check(
+        assert (
+            self.check(
                 cost_total="6230.00",
                 base_total="5663.64",
                 lines=REAL_LINES,
-            ),
-            second=[],
+            )
+            == []
         )
 
     def test_mismatches_are_warnings(self) -> None:
-        self.assertEqual(
-            first=self.check(
-                cost_total="35.00",
-                base_total="31.00",
-                lines=[
-                    {"cost_price_total": "12.00", "vat_percent": "20"},
-                    {"cost_price_total": "24.00", "vat_percent": "20"},
-                ],
-            ),
-            second=[
-                "итог к оплате: в накладной 35.00, по строкам 36.00",
-                "итог без НДС: в накладной 31.00, по строкам 30.00",
+        assert self.check(
+            cost_total="35.00",
+            base_total="31.00",
+            lines=[
+                {"cost_price_total": "12.00", "vat_percent": "20"},
+                {"cost_price_total": "24.00", "vat_percent": "20"},
             ],
-        )
+        ) == [
+            "итог к оплате: в накладной 35.00, по строкам 36.00",
+            "итог без НДС: в накладной 31.00, по строкам 30.00",
+        ]
 
     def test_without_vat_the_total_is_checked_once(self) -> None:
-        self.assertEqual(
-            first=self.check(
-                cost_total="35.00",
-                base_total="35.00",
-                lines=[{"cost_price_total": "30.00"}],
-            ),
-            second=["итог к оплате: в накладной 35.00, по строкам 30.00"],
-        )
+        assert self.check(
+            cost_total="35.00",
+            base_total="35.00",
+            lines=[{"cost_price_total": "30.00"}],
+        ) == ["итог к оплате: в накладной 35.00, по строкам 30.00"]
 
     def test_missing_total_is_a_warning(self) -> None:
-        self.assertEqual(
-            first=self.check(
-                cost_total=None,
-                base_total=None,
-                lines=[{"cost_price_total": "10.00"}],
-            ),
-            second=["итог в накладной не указан, посчитанный итог сверить не с чем"],
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert self.check(
+            cost_total=None,
+            base_total=None,
+            lines=[{"cost_price_total": "10.00"}],
+        ) == ["итог в накладной не указан, посчитанный итог сверить не с чем"]
