@@ -120,6 +120,18 @@ export interface ProductSummary {
   retail_price: string | null;
 }
 
+export interface CatalogProduct extends ProductSummary {
+  supplier_id: number;
+  // other names the product was printed with, the name itself is not repeated
+  spellings: string[];
+}
+
+export interface Catalog {
+  // every supplier, including the ones without products yet
+  suppliers: SupplierSummary[];
+  products: CatalogProduct[];
+}
+
 export interface SupplierCandidate extends SupplierSummary {
   matched_lines: number;
 }
@@ -225,6 +237,21 @@ export interface RevaluationCreate {
   occurred_on: string;
   comment: string | null;
   lines: RevaluationLine[];
+}
+
+export interface ProductRevaluation {
+  occurred_on: string;
+  // the old stock counted on the shelf
+  quantity: string;
+  comment: string | null;
+}
+
+export interface ProductEdit {
+  // the old name stays as another spelling of the product
+  name: string;
+  retail_price: number;
+  // null when there is no old stock, the price then changes without a ledger entry
+  revaluation: ProductRevaluation | null;
 }
 
 export interface RevaluationLineOut {

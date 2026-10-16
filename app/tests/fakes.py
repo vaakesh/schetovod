@@ -16,6 +16,7 @@ from models import (
 )
 from pricing import normalize_name
 from repositories import (
+    CatalogRow,
     InvoiceRow,
     LedgerRow,
     ProductRow,
@@ -312,6 +313,12 @@ class FakeSuppliers:
         )
         return found[:limit]
 
+    async def list_all(self) -> list[Supplier]:
+        return sorted(
+            self.store.suppliers.values(),
+            key=lambda supplier: (supplier.name, supplier.id),
+        )
+
     async def rank_by_aliases(
         self,
         aliases: Collection[str],
@@ -445,6 +452,33 @@ class FakeProducts:
                 ),
             )
             for product in found[:limit]
+        ]
+
+    async def catalog(self) -> list[CatalogRow]:
+        products = sorted(
+            self.store.products.values(),
+            key=lambda product: (product.name, product.id),
+        )
+        return [
+            CatalogRow(
+                product=product,
+                last_item=next(
+                    (
+                        item
+                        for item in reversed(
+                            self.store.items,
+                        )
+                        if item.product_id == product.id
+                    ),
+                    None,
+                ),
+                aliases=[
+                    alias
+                    for alias in self.store.aliases
+                    if alias.product_id == product.id
+                ],
+            )
+            for product in products
         ]
 
 

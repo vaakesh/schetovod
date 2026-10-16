@@ -1592,6 +1592,123 @@ button {
   margin-top: 16px;
 }
 
+/* catalog */
+
+.catalog-hint {
+  margin: 0;
+  color: var(--muted);
+}
+
+.catalog-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.catalog-supplier {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 24px;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.catalog-supplier:not(:disabled):hover {
+  background: #fbfbfc;
+}
+
+.catalog-supplier:disabled {
+  cursor: default;
+}
+
+.catalog-supplier:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 20px;
+}
+
+.catalog-chevron {
+  transition: transform 0.15s;
+}
+
+.catalog-chevron.open {
+  transform: rotate(90deg);
+}
+
+.catalog-supplier-name {
+  font-weight: 600;
+}
+
+.catalog-count {
+  margin-left: auto;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--line);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+.catalog-group .catalog-table thead th {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.catalog-name {
+  min-width: 260px;
+}
+
+.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.sort-button:hover,
+.sort-button.active {
+  color: var(--text);
+}
+
+.sort-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* the arrow keeps its room, a header does not shift when the order moves to it */
+.sort-arrow {
+  display: inline-block;
+  width: 10px;
+}
+
+.catalog-product {
+  display: block;
+  font-weight: 500;
+}
+
+.catalog-spellings {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* posted invoice */
 
 .supplier-static {
@@ -1895,6 +2012,11 @@ a.button {
   width: min(640px, calc(100% - 32px));
 }
 
+/* a printed product name is long, the whole of it should be visible while it is corrected */
+.modal-product {
+  width: min(720px, calc(100% - 32px));
+}
+
 .field-row {
   display: flex;
   flex-wrap: wrap;
@@ -2019,7 +2141,8 @@ a.button {
 
 @media (prefers-reduced-motion: reduce) {
   .brand,
-  .confirmed-home {
+  .confirmed-home,
+  .catalog-chevron {
     transition: none;
   }
 }
@@ -2104,6 +2227,15 @@ a.button {
 
   .supplier-static {
     text-align: left;
+  }
+
+  .catalog-supplier {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+
+  .catalog-supplier:focus-visible {
+    border-radius: 16px;
   }
 }
 

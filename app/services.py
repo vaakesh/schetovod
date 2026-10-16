@@ -42,9 +42,12 @@ from repositories import (
     LedgerRepositoryDep,
     LedgerRow,
     ProductRepositoryDep,
+    ProductRow,
     SupplierRepositoryDep,
 )
 from schemas import (
+    Catalog,
+    CatalogProduct,
     ConfirmedInvoice,
     DraftForm,
     DraftLine,
@@ -64,6 +67,7 @@ from schemas import (
     OutflowCreate,
     PostedInvoice,
     PostedLine,
+    ProductEdit,
     ProductSummary,
     RevaluationCreate,
     RevaluationLineOut,
@@ -1181,6 +1185,27 @@ def _candidate(
     )
 
 
+def _supplier_summary(supplier: Supplier) -> SupplierSummary:
+    return SupplierSummary(
+        id=supplier.id,
+        name=supplier.name,
+        inn=supplier.inn,
+    )
+
+
+def _product_summary(row: ProductRow) -> ProductSummary:
+    return ProductSummary(
+        id=row.product.id,
+        name=row.product.name,
+        markup_pct=row.product.markup_pct,
+        unit=row.last_item.unit if row.last_item else None,
+        vat_percent=row.last_item.vat_percent if row.last_item else None,
+        cost_price=row.last_item.cost_price if row.last_item else None,
+        # the shelf price, a revaluation may have changed it after the last invoice
+        retail_price=row.product.retail_price,
+    )
+
+
 def _draft_line(
     line: PlannedLine,
     catalog_known: bool,
@@ -1275,15 +1300,8 @@ class SupplierService:
             limit=limit,
         )
         return [
-            ProductSummary(
-                id=row.product.id,
-                name=row.product.name,
-                markup_pct=row.product.markup_pct,
-                unit=row.last_item.unit if row.last_item else None,
-                vat_percent=row.last_item.vat_percent if row.last_item else None,
-                cost_price=row.last_item.cost_price if row.last_item else None,
-                # the shelf price, a revaluation may have changed it after the last invoice
-                retail_price=row.product.retail_price,
+            _product_summary(
+                row=row,
             )
             for row in rows
         ]
@@ -1298,13 +1316,45 @@ class SupplierService:
             limit=limit,
         )
         return [
-            SupplierSummary(
-                id=supplier.id,
-                name=supplier.name,
-                inn=supplier.inn,
+            _supplier_summary(
+                supplier=supplier,
             )
             for supplier in suppliers
         ]
+
+    async def catalog(self) -> Catalog:
+        suppliers = await self.suppliers.list_all()
+        rows = await self.products.catalog()
+        products = []
+        for row in rows:
+            name_key = normalize_name(
+                name=row.product.name,
+            )
+            products.append(
+                CatalogProduct(
+                    **_product_summary(
+                        row=row,
+                    ).model_dump(),
+                    supplier_id=row.product.supplier_id,
+                    spellings=[
+                        alias.alias_raw
+                        for alias in sorted(
+                            row.aliases,
+                            key=lambda alias: alias.id,
+                        )
+                        if alias.alias_normalized != name_key
+                    ],
+                ),
+            )
+        return Catalog(
+            suppliers=[
+                _supplier_summary(
+                    supplier=supplier,
+                )
+                for supplier in suppliers
+            ],
+            products=products,
+        )
 
 
 class LedgerService:
@@ -1430,6 +1480,117 @@ class LedgerService:
                     new_price=new_price,
                 ),
             )
+        return await self._finish(
+            entry=await self._post_revaluation(
+                occurred_on=payload.occurred_on,
+                comment=payload.comment,
+                items=items,
+                products=products,
+            ),
+        )
+
+    async def edit_product(
+        self,
+        product_id: int,
+        payload: ProductEdit,
+    ) -> LedgerPosted | None:
+        """a corrected name keeps the old one as a spelling, a new price revalues the old stock"""
+        if payload.revaluation is not None:
+            await self.ledger.lock()
+            await self._check_date(
+                on=payload.revaluation.occurred_on,
+            )
+        product = await self.products.get(
+            product_id=product_id,
+        )
+        if product is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Товар не найден",
+            )
+        new_price = Decimal(
+            value=payload.retail_price,
+        )
+        if payload.revaluation is not None and new_price == product.retail_price:
+            _invalid(
+                detail=f"Цена уже {payload.retail_price} ₽, переоценивать нечего",
+            )
+        name = payload.name.strip()
+        if name != product.name:
+            await self._rename(
+                product=product,
+                name=name,
+            )
+        if payload.revaluation is None:
+            product.retail_price = new_price
+            await self.ledger.commit()
+            return None
+        return await self._finish(
+            entry=await self._post_revaluation(
+                occurred_on=payload.revaluation.occurred_on,
+                comment=payload.revaluation.comment,
+                items=[
+                    RevaluationItem(
+                        product_id=product.id,
+                        invoice_item_id=None,
+                        quantity=payload.revaluation.quantity,
+                        old_price=product.retail_price,
+                        new_price=new_price,
+                    ),
+                ],
+                products=[
+                    product,
+                ],
+            ),
+        )
+
+    async def _rename(
+        self,
+        product: Product,
+        name: str,
+    ) -> None:
+        """both spellings find the product on the next invoices"""
+        key = normalize_name(
+            name=name,
+        )
+        # the old spelling first, a name differing only in case or quotes has the same key
+        spellings = {
+            normalize_name(
+                name=product.name,
+            ): product.name,
+            key: name,
+        }
+        known = await self.products.find_by_aliases(
+            supplier_id=product.supplier_id,
+            aliases=spellings.keys(),
+        )
+        other = known.get(
+            key,
+        )
+        if other is not None and other.id != product.id:
+            _conflict(
+                detail=f"Название «{name}» уже у товара «{other.name}»",
+            )
+        for alias_key, spelling in spellings.items():
+            if alias_key not in known:
+                await self.products.add_alias(
+                    alias=ProductAlias(
+                        product_id=product.id,
+                        supplier_id=product.supplier_id,
+                        alias_normalized=alias_key,
+                        alias_raw=spelling,
+                    ),
+                )
+        product.name = name
+
+    async def _post_revaluation(
+        self,
+        occurred_on: date,
+        comment: str | None,
+        items: list[RevaluationItem],
+        products: list[Product],
+    ) -> LedgerEntry:
+        """the entry for the items, the products take the new prices"""
         amount = sum(
             (
                 revaluation_amount(
@@ -1450,9 +1611,9 @@ class LedgerService:
         entry = await self.ledger.create(
             entry=LedgerEntry(
                 kind=LedgerKind.REVALUATION,
-                occurred_on=payload.occurred_on,
+                occurred_on=occurred_on,
                 amount=amount,
-                comment=payload.comment,
+                comment=comment,
             ),
         )
         for item, product in zip(
@@ -1465,9 +1626,7 @@ class LedgerService:
         await self.ledger.add_revaluation_items(
             items=items,
         )
-        return await self._finish(
-            entry=entry,
-        )
+        return entry
 
     async def revaluation_lines(
         self,

@@ -1,4 +1,5 @@
 import type {
+  Catalog,
   ConfirmedInvoice,
   DraftForm,
   InvoiceDraft,
@@ -10,6 +11,7 @@ import type {
   LedgerReport,
   ManualKind,
   PostedInvoice,
+  ProductEdit,
   ProductSummary,
   RevaluationCreate,
   RevaluationLineOut,
@@ -181,6 +183,16 @@ export function searchSuppliers(q: string, limit?: number): Promise<SupplierSumm
 
 export function searchProducts(supplierId: number, q: string): Promise<ProductSummary[]> {
   return request("GET", `/supplier/${supplierId}/products${query({ q: q.trim() })}`);
+}
+
+// every supplier with every product, without paging
+export function getCatalog(): Promise<Catalog> {
+  return request("GET", "/catalog");
+}
+
+// null when the price changed without a revaluation
+export function editProduct(id: number, body: ProductEdit): Promise<LedgerPosted | null> {
+  return request("PUT", `/product/${id}`, body);
 }
 
 export function receiveInvoice(body: unknown): Promise<InvoiceDraft> {

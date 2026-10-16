@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import exists, func, or_, select, tuple_
+from sqlalchemy import Select, exists, func, or_, select, tuple_
 from sqlalchemy.orm import aliased, selectinload
 
 from db import SessionDep
@@ -49,6 +49,11 @@ class ProductRow:
     product: Product
     # the last posted line of the product, None while it was never posted
     last_item: InvoiceItem | None
+
+
+@dataclass
+class CatalogRow(ProductRow):
+    aliases: list[ProductAlias]
 
 
 class InvoiceRepository:
@@ -621,6 +626,19 @@ class SupplierRepository:
             result,
         )
 
+    async def list_all(self) -> list[Supplier]:
+        result = await self.session.scalars(
+            statement=select(
+                Supplier,
+            ).order_by(
+                Supplier.name,
+                Supplier.id,
+            ),
+        )
+        return list(
+            result,
+        )
+
     async def rank_by_aliases(
         self,
         aliases: Collection[str],
@@ -775,30 +793,8 @@ class ProductRepository:
         limit: int,
     ) -> list[ProductRow]:
         """supplier products by a part of the name or of any spelling, all of them without a query"""
-        # the newest line of every product, items exist only for confirmed invoices
-        last_item_id = (
-            select(
-                func.max(
-                    InvoiceItem.id,
-                ),
-            )
-            .where(
-                InvoiceItem.product_id == Product.id,
-            )
-            .scalar_subquery()
-        )
-        last_item = aliased(
-            InvoiceItem,
-        )
         statement = (
-            select(
-                Product,
-                last_item,
-            )
-            .outerjoin(
-                target=last_item,
-                onclause=last_item.id == last_item_id,
-            )
+            select_with_last_item()
             .where(
                 Product.supplier_id == supplier_id,
             )
@@ -843,6 +839,57 @@ class ProductRepository:
             )
             for product, item in result.tuples()
         ]
+
+    async def catalog(self) -> list[CatalogRow]:
+        """every product of every supplier with all its spellings"""
+        result = await self.session.execute(
+            statement=select_with_last_item()
+            .options(
+                selectinload(
+                    Product.aliases,
+                ),
+            )
+            .order_by(
+                Product.name,
+                Product.id,
+            ),
+        )
+        return [
+            CatalogRow(
+                product=product,
+                last_item=item,
+                aliases=list(
+                    product.aliases,
+                ),
+            )
+            for product, item in result.tuples()
+        ]
+
+
+def select_with_last_item() -> Select[Product, InvoiceItem]:
+    """products with their last posted line, the line is None while a product was never posted"""
+    # the newest line of every product, items exist only for confirmed invoices
+    last_item_id = (
+        select(
+            func.max(
+                InvoiceItem.id,
+            ),
+        )
+        .where(
+            InvoiceItem.product_id == Product.id,
+        )
+        .scalar_subquery()
+    )
+    last_item = aliased(
+        InvoiceItem,
+    )
+    return select(
+        Product,
+        last_item,
+    ).outerjoin(
+        target=last_item,
+        onclause=last_item.id == last_item_id,
+    )
 
 
 InvoiceRepositoryDep = Annotated[

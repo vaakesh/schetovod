@@ -4,6 +4,7 @@ import { receiveInvoice, recognizeInvoice } from "./api";
 import { useConfirm } from "./components/ConfirmDialog";
 import UploadForm, { type UploadKind } from "./components/UploadForm";
 import { message } from "./message";
+import CatalogPage from "./pages/CatalogPage";
 import DraftPage from "./pages/DraftPage";
 import InvoicesPage from "./pages/InvoicesPage";
 import LedgerPage from "./pages/LedgerPage";
@@ -112,6 +113,8 @@ export default function App() {
         );
       case "posted":
         return <PostedInvoicePage key={route.id} id={route.id} go={go} />;
+      case "catalog":
+        return <CatalogPage />;
       case "ledger":
         return <LedgerPage go={go} ask={ask} />;
       case "report":
@@ -159,8 +162,9 @@ export default function App() {
             {tab(
               { page: "invoices" },
               "Накладные",
-              route.page !== "ledger" && route.page !== "report",
+              route.page !== "catalog" && route.page !== "ledger" && route.page !== "report",
             )}
+            {tab({ page: "catalog" }, "Товары", route.page === "catalog")}
             {tab({ page: "ledger" }, "Журнал", route.page === "ledger")}
             {tab({ page: "report" }, "Отчёт", route.page === "report")}
           </nav>

@@ -360,6 +360,18 @@ class ProductSummary(BaseModel):
     retail_price: Decimal | None
 
 
+class CatalogProduct(ProductSummary):
+    supplier_id: int
+    # other names the product was printed with, the name itself is not repeated
+    spellings: list[str]
+
+
+class Catalog(BaseModel):
+    # every supplier, including the ones without products yet
+    suppliers: list[SupplierSummary]
+    products: list[CatalogProduct]
+
+
 class SupplierCandidate(SupplierSummary):
     # lines of this invoice that match the supplier product names
     matched_lines: int
@@ -485,6 +497,27 @@ class RevaluationCreate(FormModel):
             min_length=1,
         ),
     ]
+
+
+class ProductRevaluation(FormModel):
+    occurred_on: InvoiceDate
+    # the old stock counted on the shelf
+    quantity: Quantity
+    comment: Text | None
+
+
+class ProductEdit(FormModel):
+    # the old name stays as another spelling of the product
+    name: Text
+    # whole rubles
+    retail_price: Annotated[
+        int,
+        Field(
+            gt=0,
+        ),
+    ]
+    # None when there is no old stock, the price then changes without a ledger entry
+    revaluation: ProductRevaluation | None
 
 
 class RevaluationLineOut(BaseModel):

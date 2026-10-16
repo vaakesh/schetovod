@@ -19,6 +19,7 @@ from config import settings
 from enums import InvoiceStatus, LedgerKind
 from report_xlsx import report_filename, report_workbook
 from schemas import (
+    Catalog,
     ConfirmedInvoice,
     DraftForm,
     InvoiceDate,
@@ -31,6 +32,7 @@ from schemas import (
     LedgerReport,
     OutflowCreate,
     PostedInvoice,
+    ProductEdit,
     ProductSummary,
     RevaluationCreate,
     RevaluationLineOut,
@@ -114,6 +116,31 @@ async def search_products(
         supplier_id=supplier_id,
         query=q.strip() if q else None,
         limit=limit,
+    )
+
+
+@app.get(
+    path="/catalog",
+    response_model=Catalog,
+)
+async def catalog(
+    service: SupplierServiceDep,
+) -> Catalog:
+    return await service.catalog()
+
+
+@app.put(
+    path="/product/{product_id}",
+    response_model=LedgerPosted | None,
+)
+async def edit_product(
+    product_id: int,
+    payload: ProductEdit,
+    service: LedgerServiceDep,
+) -> LedgerPosted | None:
+    return await service.edit_product(
+        product_id=product_id,
+        payload=payload,
     )
 
 
