@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useState } from "react";
+import { Fragment, useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import { wordDiff } from "../diff";
 import { formatMoney, formatNumber, formatSigned } from "../format";
@@ -35,6 +35,63 @@ const COLUMNS = 13;
 const SIMILAR_PRODUCT = "similar_product";
 // the issue code of a line that changes the shelf price of its product
 const PRICE_CHANGED = "price_changed";
+
+interface NameProps {
+  index: number;
+  value: string | null;
+  onChange: (value: string | null) => void;
+}
+
+function NameField({ index, value, onChange }: NameProps) {
+  const field = useRef<HTMLTextAreaElement>(null);
+  const resize = useCallback(() => {
+    const element = field.current;
+    if (!element) {
+      return;
+    }
+    element.style.height = "auto";
+    const border = element.offsetHeight - element.clientHeight;
+    element.style.height = `${element.scrollHeight + border}px`;
+  }, []);
+
+  useLayoutEffect(resize, [resize, value]);
+
+  useLayoutEffect(() => {
+    const element = field.current;
+    if (!element) {
+      return;
+    }
+    let width = 0;
+    let frame = 0;
+    const observer = new ResizeObserver((entries) => {
+      const nextWidth = entries[0]?.contentRect.width;
+      // changing the height also notifies the observer, only a new width needs a resize
+      if (nextWidth === undefined || nextWidth === width) {
+        return;
+      }
+      width = nextWidth;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(resize);
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [resize]);
+
+  return (
+    <textarea
+      ref={field}
+      className="cell cell-name"
+      data-name-index={index}
+      rows={1}
+      value={value ?? ""}
+      placeholder="Название"
+      onChange={(event) => onChange(toText(event.target.value))}
+    />
+  );
+}
 
 interface CatalogProps {
   line: DraftLine | undefined;
@@ -144,6 +201,31 @@ function SimilarHints({ similar, name, onLink }: SimilarProps) {
   );
 }
 
+// the cost with VAT against the last delivery of the product, shown only when it changed
+function CostChange({ line }: { line: DraftLine | undefined }) {
+  const previous = line?.previous_cost_price ?? null;
+  const cost = line?.cost_price ?? null;
+  if (previous === null || cost === null) {
+    return null;
+  }
+  const diff = Number(cost) - Number(previous);
+  // to a tenth of a percent, a free previous delivery has no percent
+  const share = Number(previous) > 0 ? Math.round((Math.abs(diff) / Number(previous)) * 1000) / 10 : null;
+  const percent = share === null ? "" : ` (${diff > 0 ? "+" : "−"}${formatNumber(share)}%)`;
+  return (
+    <span
+      className={diff > 0 ? "cost-change cost-up" : "cost-change cost-down"}
+      title="Цена с НДС в прошлой поставке"
+    >
+      <span>было {formatMoney(previous)}</span>
+      <span>
+        {formatSigned(diff)}
+        {percent}
+      </span>
+    </span>
+  );
+}
+
 interface RevalueProps {
   line: DraftLine | undefined;
   form: FormLine;
@@ -192,17 +274,18 @@ function RevalueField({ line, form, onChange }: RevalueProps) {
 
 export default function LinesTable({ draft, form, dirty, update }: Props) {
   const supplierId = form.supplier !== null && "id" in form.supplier ? form.supplier.id : null;
-  const [picker, setPicker] = useState<{ index: number; anchor: HTMLElement } | null>(null);
+  const [picker, setPicker] = useState<{ lineNo: number; anchor: HTMLElement } | null>(null);
   const [pickedNames, setPickedNames] = useState<Record<number, string>>({});
   const closePicker = useCallback(() => setPicker(null), []);
+  const linesByNumber = new Map(draft.lines.map((line) => [line.line, line]));
 
-  function pick(index: number, product: ProductSummary) {
+  function pick(lineNo: number, product: ProductSummary) {
     setPickedNames((names) => ({ ...names, [product.id]: product.name }));
     // a line typed by hand takes the catalog values, a printed one keeps what was printed
     update((current) => ({
       ...current,
-      lines: current.lines.map((line, position) =>
-        position === index
+      lines: current.lines.map((line) =>
+        line.line_no === lineNo
           ? {
               ...line,
               product_id: product.id,
@@ -223,7 +306,11 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
     }
     const step = event.shiftKey ? -1 : 1;
     let target = index + step;
-    while (target >= 0 && target < form.lines.length && !draft.lines[target]?.new_product) {
+    while (
+      target >= 0 &&
+      target < form.lines.length &&
+      !linesByNumber.get(form.lines[target]!.line_no)?.new_product
+    ) {
       target += step;
     }
     const input = event.currentTarget
@@ -239,7 +326,12 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
 
   function addLine(button: HTMLElement) {
     const index = form.lines.length;
-    update((current) => ({ ...current, lines: [...current.lines, emptyLine()] }));
+    // reserve the source numbers even when their rows have been removed
+    const sourceMax =
+      Math.max(0, ...draft.extraction.items.map((item) => Number(item.line_no ?? 0))) +
+      draft.extraction.items.filter((item) => item.line_no === null).length;
+    const lineNo = Math.max(sourceMax, ...form.lines.map((line) => line.line_no)) + 1;
+    update((current) => ({ ...current, lines: [...current.lines, emptyLine(lineNo)] }));
     if (supplierId === null) {
       return;
     }
@@ -248,7 +340,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
     requestAnimationFrame(() => {
       const cell = table?.querySelector(`[data-name-index="${index}"]`)?.closest("td");
       if (cell) {
-        setPicker({ index, anchor: cell });
+        setPicker({ lineNo, anchor: cell });
       }
     });
   }
@@ -290,9 +382,8 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
           </thead>
           <tbody>
             {form.lines.map((formLine, index) => {
-              const position = index + 1;
-              // computed lines follow the saved form lines one to one
-              const line = draft.lines[index];
+              const position = formLine.line_no;
+              const line = linesByNumber.get(position);
               const issues = draft.issues.filter((issue) => issue.line === position);
               const blocked = issues.some((issue) => issue.blocking);
               const rowClass = blocked ? "row-blocking" : issues.length > 0 ? "row-warning" : "";
@@ -305,19 +396,14 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                 issues.some((issue) => issue.code === PRICE_CHANGED) ||
                 formLine.revalue_quantity !== null;
               return (
-                <Fragment key={index}>
+                <Fragment key={position}>
                   <tr className={`line ${rowClass}`}>
                     <td className="num index">{position}</td>
-                    <td>
-                      <textarea
-                        className="cell cell-name"
-                        data-name-index={index}
-                        rows={1}
-                        value={formLine.name ?? ""}
-                        placeholder="Название"
-                        onChange={(event) =>
-                          updateLine(update, index, { name: toText(event.target.value) })
-                        }
+                    <td className="line-name">
+                      <NameField
+                        index={index}
+                        value={formLine.name}
+                        onChange={(name) => updateLine(update, index, { name })}
                       />
                       <LineCatalog
                         line={line}
@@ -326,7 +412,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                           formLine.product_id !== null ? pickedNames[formLine.product_id] : undefined
                         }
                         canPick={supplierId !== null}
-                        onOpen={(anchor) => setPicker({ index, anchor })}
+                        onOpen={(anchor) => setPicker({ lineNo: position, anchor })}
                         onUnlink={() => updateLine(update, index, { product_id: null })}
                       />
                       {formLine.product_id === null && formLine.name && line?.similar.length ? (
@@ -374,7 +460,10 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                         }
                       />
                     </td>
-                    <td className="num computed">{formatMoney(line?.cost_price ?? null)}</td>
+                    <td className="num computed">
+                      {formatMoney(line?.cost_price ?? null)}
+                      <CostChange line={line} />
+                    </td>
                     <td className="num computed">{formatMoney(line?.base_price_total ?? null)}</td>
                     <td>
                       <input
@@ -473,14 +562,16 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
           <TotalsBlock draft={draft} />
         </table>
       </div>
-      {picker && supplierId !== null && (
-        <ProductPicker
-          supplierId={supplierId}
-          anchor={picker.anchor}
-          onPick={(product) => pick(picker.index, product)}
-          onClose={closePicker}
-        />
-      )}
+      {picker &&
+        supplierId !== null &&
+        form.lines.some((line) => line.line_no === picker.lineNo) && (
+          <ProductPicker
+            supplierId={supplierId}
+            anchor={picker.anchor}
+            onPick={(product) => pick(picker.lineNo, product)}
+            onClose={closePicker}
+          />
+        )}
     </section>
   );
 }

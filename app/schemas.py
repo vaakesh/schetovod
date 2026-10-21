@@ -15,6 +15,7 @@ from enums import InvoiceStatus, LedgerKind
 
 DECIMAL_PATTERN = r"[0-9]+(?:\.[0-9]+)?"
 LINE_NO_PATTERN = r"[0-9]+"
+MAX_LINE_NO = 2_147_483_647
 DATE_PATTERN = r"[0-9]{2}-[0-9]{2}-[0-9]{4}"
 
 
@@ -142,7 +143,7 @@ LineNo = Annotated[
     int,
     Field(
         gt=0,
-        le=2_147_483_647,
+        le=MAX_LINE_NO,
     ),
     BeforeValidator(
         func=parse_line_no,
@@ -255,6 +256,17 @@ class NewSupplier(FormModel):
 
 
 class FormLine(FormModel):
+    # saved drafts without this field keep their current numbering
+    line_no: (
+        Annotated[
+            int,
+            Field(
+                gt=0,
+                le=MAX_LINE_NO,
+            ),
+        ]
+        | None
+    ) = None
     name: Text | None
     quantity: Quantity | None
     unit: Text | None
@@ -300,7 +312,7 @@ class DraftForm(FormModel):
 
 
 class Issue(BaseModel):
-    # 1-based position in the form lines, None means the issue is about the whole invoice
+    # stable line number, None means the issue is about the whole invoice
     line: int | None
     message: str
     # a blocking issue prevents confirming the invoice, the others are worth a look
@@ -317,7 +329,7 @@ class SimilarProduct(BaseModel):
 
 
 class DraftLine(BaseModel):
-    # 1-based position in the form lines
+    # stable line number from the form
     line: int
     # derived from the line total and rounded to kopecks
     cost_price: Decimal | None
@@ -330,6 +342,8 @@ class DraftLine(BaseModel):
     markup_pct: Decimal | None
     retail_price: Decimal | None
     retail_price_total: Decimal | None
+    # the cost with VAT of the last delivery of the product, None when it is the same or unknown
+    previous_cost_price: Decimal | None
     # the shelf price of the product when the line changes it, None when it stays
     previous_retail_price: Decimal | None
     # supplier products with a close name while the line has none, most similar first
@@ -346,7 +360,16 @@ class DraftTotals(BaseModel):
 class SupplierSummary(BaseModel):
     id: int
     name: str
+    # printed in the reports instead of the full name
+    short_name: str | None
     inn: str | None
+
+
+class SupplierEdit(FormModel):
+    name: Text
+    # None prints the full name in the reports
+    short_name: Text | None
+    inn: Inn | None
 
 
 class ProductSummary(BaseModel):
@@ -364,6 +387,8 @@ class CatalogProduct(ProductSummary):
     supplier_id: int
     # other names the product was printed with, the name itself is not repeated
     spellings: list[str]
+    # a shelf tag with the current retail price is hanging
+    has_price_tag: bool
 
 
 class Catalog(BaseModel):
@@ -414,6 +439,8 @@ class InvoiceListItem(BaseModel):
     supplier_name: str | None
     # the inflow at retail prices, None until the invoice is confirmed
     retail_total: Decimal | None
+    # owed to the supplier and not paid yet, None until the invoice is confirmed
+    debt: Decimal | None
     lines: int
     created_at: datetime
 
@@ -440,15 +467,42 @@ class PostedLine(BaseModel):
     retail_price_total: Decimal
 
 
+class PaymentOut(BaseModel):
+    id: int
+    paid_on: OutputDate
+    amount: Decimal
+    comment: str | None
+
+
 class PostedInvoice(BaseModel):
     id: int
     invoice_number: str
     invoice_date: OutputDate
     supplier: SupplierSummary
     lines: list[PostedLine]
+    # owed to the supplier
     cost_total: Decimal
     retail_total: Decimal
     ledger_entry_id: int
+    paid: Decimal
+    debt: Decimal
+    payments: list[PaymentOut]
+
+
+class InvoiceConfirm(FormModel):
+    # the day the goods came, the inflow goes into the ledger on it
+    occurred_on: InvoiceDate
+
+
+class PaymentCreate(FormModel):
+    paid_on: InvoiceDate
+    amount: Annotated[
+        Money,
+        Field(
+            gt=0,
+        ),
+    ]
+    comment: Text | None
 
 
 # the ledger input has the strict formats of the form
@@ -463,9 +517,37 @@ class OutflowCreate(FormModel):
     comment: Text | None
 
 
+class SaleCreate(FormModel):
+    occurred_on: InvoiceDate
+    # goes into the till
+    cash: Money
+    # goes straight to the bank account, only the stock goes down by it
+    card: Money
+    comment: Text | None
+
+
+class CashOutCreate(FormModel):
+    occurred_on: InvoiceDate
+    amount: Annotated[
+        Money,
+        Field(
+            gt=0,
+        ),
+    ]
+    # what the money was taken for, there are no separate kinds of spending
+    comment: Text
+
+
 class StocktakeCreate(FormModel):
     occurred_on: InvoiceDate
     # stock at retail prices as counted, the balance becomes this amount
+    counted: Money
+    comment: Text | None
+
+
+class CashCountCreate(FormModel):
+    occurred_on: InvoiceDate
+    # cash in the till as counted, the cash balance becomes this amount
     counted: Money
     comment: Text | None
 
@@ -520,6 +602,17 @@ class ProductEdit(FormModel):
     revaluation: ProductRevaluation | None
 
 
+class PriceTagMark(FormModel):
+    has_price_tag: bool
+    # the price the user saw, a tag hung for an older price is not the current one
+    retail_price: Annotated[
+        int,
+        Field(
+            ge=0,
+        ),
+    ]
+
+
 class RevaluationLineOut(BaseModel):
     product_id: int
     product_name: str
@@ -536,8 +629,11 @@ class LedgerEntryOut(BaseModel):
     kind: LedgerKind
     # signed, positive brings stock in
     amount: Decimal
-    # the running balance in the ledger order, including this entry
+    # signed, positive brings cash into the till
+    cash: Decimal
+    # the running balances in the ledger order, including this entry
     balance_after: Decimal
+    cash_after: Decimal
     comment: str | None
     # the entry this one cancels
     reverses_id: int | None
@@ -550,6 +646,7 @@ class LedgerEntryOut(BaseModel):
 
 class LedgerPage(BaseModel):
     balance: Decimal
+    cash_balance: Decimal
     entries: list[LedgerEntryOut]
     has_more: bool
 
@@ -557,14 +654,20 @@ class LedgerPage(BaseModel):
 class LedgerBalance(BaseModel):
     # stock at retail prices at the end of the day, or now
     balance: Decimal
-    # the day of the latest stocktake, nothing may be dated before it
+    # cash in the till at the end of the day, or now
+    cash_balance: Decimal
+    # the day of the latest stocktake, no stock entry may be dated before it
     closed_on: OutputDate | None
+    # the day of the latest cash count, no cash entry may be dated before it
+    cash_closed_on: OutputDate | None
 
 
 class LedgerPosted(BaseModel):
     id: int
     amount: Decimal
+    cash: Decimal
     balance: Decimal
+    cash_balance: Decimal
 
 
 class LedgerReport(BaseModel):
@@ -572,7 +675,7 @@ class LedgerReport(BaseModel):
     date_to: OutputDate
     # stock at retail prices at the end of the day before the period
     opening: Decimal
-    # signed sums of the period by kind, a reversal counts with the kind it cancels
+    # signed stock sums of the period by kind, a reversal counts with the kind it cancels
     invoices: Decimal
     sales: Decimal
     write_offs: Decimal
@@ -580,5 +683,74 @@ class LedgerReport(BaseModel):
     revaluations: Decimal
     # stock at retail prices at the end of the last day
     closing: Decimal
+    # cash in the till at the end of the day before the period
+    cash_opening: Decimal
+    # the sales split into what went into the till and what went to the bank account
+    sales_cash: Decimal
+    sales_card: Decimal
+    # signed cash sums of the period by kind
+    cash_ins: Decimal
+    cash_outs: Decimal
+    cash_counts: Decimal
+    # cash in the till at the end of the last day
+    cash_closing: Decimal
     # in the ledger order
     entries: list[LedgerEntryOut]
+
+
+class ReportInvoice(BaseModel):
+    supplier_name: str
+    invoice_number: str
+    # owed to the supplier
+    cost_total: Decimal
+    # the inflow at retail prices
+    retail_total: Decimal
+    # paid by the end of the period
+    paid: Decimal
+
+
+class CashNote(BaseModel):
+    kind: LedgerKind
+    # signed, positive brings cash into the till
+    cash: Decimal
+    comment: str | None
+
+
+class ReportDay(BaseModel):
+    day: OutputDate
+    invoices: list[ReportInvoice]
+    sales_cash: Decimal
+    sales_card: Decimal
+    # signed, the cash ins, the cash outs and the cash counts of the day
+    cash_moves: Decimal
+    # what each of them was, the reversed ones and the reversals are left out
+    cash_notes: list[CashNote]
+    # the balances at the end of the day
+    cash_after: Decimal
+    balance_after: Decimal
+
+
+class SupplierDebt(BaseModel):
+    supplier_name: str
+    invoice_number: str
+    # a confirmed invoice always has it
+    invoice_date: OutputDate | None
+    cost_total: Decimal
+    paid: Decimal
+    debt: Decimal
+
+
+class PeriodReport(BaseModel):
+    """the period day by day, for the printed report"""
+
+    date_from: OutputDate
+    date_to: OutputDate
+    # the balances at the end of the day before the period
+    opening: Decimal
+    cash_opening: Decimal
+    # only the days with entries
+    days: list[ReportDay]
+    # paid to the suppliers on the days of the period, for any invoices
+    paid_in_period: Decimal
+    # unpaid at the end of the period
+    debts: list[SupplierDebt]

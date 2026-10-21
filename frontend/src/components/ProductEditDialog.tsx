@@ -154,6 +154,10 @@ export default function ProductEditDialog({ product, onClose, onSaved }: Props) 
               </div>
             )}
 
+            {priceChanged && product.has_price_tag && (
+              <p className="modal-text">Отметка о ценнике снимется — повесьте новый.</p>
+            )}
+
             {priceChanged && (
               <dl className="stocktake-preview">
                 <div>

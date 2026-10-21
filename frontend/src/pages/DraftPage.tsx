@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 
-import { confirmInvoice, declineInvoice, getDraft, saveForm } from "../api";
+import { declineInvoice, getDraft, saveForm } from "../api";
 import ActionBar from "../components/ActionBar";
 import type { Ask } from "../components/ConfirmDialog";
 import ConfirmedCard from "../components/ConfirmedCard";
+import InvoiceConfirmDialog from "../components/InvoiceConfirmDialog";
 import InvoiceHeader from "../components/InvoiceHeader";
 import IssuesList from "../components/IssuesList";
 import LinesTable from "../components/LinesTable";
@@ -28,7 +29,12 @@ function mergeSuppliers(known: SupplierSummary[], draft: InvoiceDraft): Supplier
   const merged = new Map(known.map((supplier) => [supplier.id, supplier]));
   for (const supplier of [draft.supplier, ...draft.supplier_candidates]) {
     if (supplier) {
-      merged.set(supplier.id, { id: supplier.id, name: supplier.name, inn: supplier.inn });
+      merged.set(supplier.id, {
+        id: supplier.id,
+        name: supplier.name,
+        short_name: supplier.short_name,
+        inn: supplier.inn,
+      });
     }
   }
   return [...merged.values()];
@@ -39,6 +45,8 @@ export default function DraftPage({ id, initial, ask, setGuard, onHome, onDeclin
   const [form, setForm] = useState<DraftForm | null>(null);
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
   const [confirmed, setConfirmed] = useState<ConfirmedInvoice | null>(null);
+  // the dialog asking the day the goods came
+  const [confirming, setConfirming] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -99,14 +107,12 @@ export default function DraftPage({ id, initial, ask, setGuard, onHome, onDeclin
       }
     });
 
-  const confirm = () =>
-    run(async () => {
-      if (draft) {
-        setConfirmed(await confirmInvoice(draft.id));
-        // the draft is gone, a reload opens the posted invoice
-        replaceRoute({ page: "posted", id: draft.id });
-      }
-    });
+  const confirm = (result: ConfirmedInvoice) => {
+    setConfirming(false);
+    setConfirmed(result);
+    // the draft is gone, a reload opens the posted invoice
+    replaceRoute({ page: "posted", id: result.id });
+  };
 
   const decline = async () => {
     if (!draft) {
@@ -181,9 +187,17 @@ export default function DraftPage({ id, initial, ask, setGuard, onHome, onDeclin
         error={actionError}
         onSave={save}
         onReset={() => setForm(draft.form)}
-        onConfirm={confirm}
+        onConfirm={() => setConfirming(true)}
         onDecline={decline}
       />
+      {confirming && (
+        <InvoiceConfirmDialog
+          invoiceId={draft.id}
+          invoiceDate={draft.form.invoice_date}
+          onClose={() => setConfirming(false)}
+          onConfirmed={confirm}
+        />
+      )}
     </main>
   );
 }

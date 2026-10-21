@@ -12,6 +12,7 @@ from db import get_session
 from enums import InvoiceStatus, LedgerKind
 from main import app
 from models import (
+    LedgerEntry,
     ProductAlias,
 )
 from pricing import normalize_name
@@ -39,6 +40,7 @@ class TestReceiveInvoice(InvoiceApi):
             "totals": {"cost_total": "155.00", "base_total": "155.00"},
             "lines": [
                 {
+                    "line_no": 1,
                     "name": "Сахар-песок 1 кг",
                     "quantity": "2.500",
                     "unit": "кг",
@@ -49,6 +51,7 @@ class TestReceiveInvoice(InvoiceApi):
                     "revalue_quantity": None,
                 },
                 {
+                    "line_no": 2,
                     "name": "Соль",
                     "quantity": "1",
                     "unit": "шт",
@@ -144,6 +147,7 @@ class TestReceiveInvoice(InvoiceApi):
         assert draft["supplier"] == {
             "id": supplier.id,
             "name": supplier.name,
+            "short_name": None,
             "inn": supplier.inn,
         }
         assert [
@@ -708,7 +712,8 @@ class TestSaveForm(InvoiceApi):
         form = draft["form"]
         form["lines"] = [
             form["lines"][1],
-            form["lines"][1] | {"name": "Перец", "retail_price": 50},
+            # a new line comes without a number and gets the next free one
+            form["lines"][1] | {"line_no": None, "name": "Перец", "retail_price": 50},
         ]
         form["totals"] = {"cost_total": "60.00", "base_total": None}
 
@@ -912,14 +917,6 @@ class TestSaveForm(InvoiceApi):
 
 
 class TestConfirm(InvoiceApi):
-    def confirm(
-        self,
-        draft: dict[str, Any],
-    ) -> Any:
-        return self.client.post(
-            url=f"/invoice/{draft['id']}/confirm",
-        )
-
     def test_posts_with_new_supplier_products_and_aliases(self) -> None:
         payload = invoice_payload()
         # the same product twice, spelled differently
@@ -1125,8 +1122,12 @@ class TestConfirm(InvoiceApi):
         )
         assert declined.status_code == 204
 
+        # decline takes no body and ignores it
         response = self.client.post(
             url=f"/invoice/{draft['id']}/{action}",
+            json={
+                "occurred_on": "16-10-2026",
+            },
         )
 
         assert response.status_code == 404
@@ -1161,9 +1162,11 @@ class TestRevaluationOnConfirm(InvoiceApi):
     def confirm(
         self,
         draft: dict[str, Any],
+        occurred_on: str | None = None,
     ) -> dict[str, Any]:
-        response = self.client.post(
-            url=f"/invoice/{draft['id']}/confirm",
+        response = super().confirm(
+            draft=draft,
+            occurred_on=occurred_on,
         )
         assert response.status_code == 200, response.text
         return response.json()
@@ -1267,6 +1270,51 @@ class TestRevaluationOnConfirm(InvoiceApi):
             value=70,
         )
 
+    def test_revaluation_is_dated_with_the_inflow(self) -> None:
+        self.known_supplier()
+
+        self.confirm(
+            draft=self.draft_with_prices(
+                prices=[70, None],
+                quantities=["4", None],
+            ),
+            occurred_on="14-10-2026",
+        )
+
+        assert [(entry.kind, entry.occurred_on) for entry in self.store.entries] == [
+            (
+                LedgerKind.INVOICE,
+                date(
+                    year=2026,
+                    month=10,
+                    day=14,
+                ),
+            ),
+            (
+                LedgerKind.REVALUATION,
+                date(
+                    year=2026,
+                    month=10,
+                    day=14,
+                ),
+            ),
+        ]
+
+    def test_only_a_new_shelf_price_resets_the_price_tag(self) -> None:
+        _, sugar, salt = self.known_supplier()
+        sugar.has_price_tag = True
+        salt.has_price_tag = True
+
+        self.confirm(
+            draft=self.draft_with_prices(
+                prices=[70, None],
+                quantities=[None, None],
+            ),
+        )
+
+        # the salt got a new cost with the same shelf price, its tag is still right
+        assert (sugar.has_price_tag, salt.has_price_tag) == (False, True)
+
     def test_new_product_gets_its_shelf_price(self) -> None:
         draft = self.upload()
         form = draft["form"]
@@ -1282,6 +1330,10 @@ class TestRevaluationOnConfirm(InvoiceApi):
         assert [product.retail_price for product in self.store.products.values()] == [
             65,
             40,
+        ]
+        assert [product.has_price_tag for product in self.store.products.values()] == [
+            False,
+            False,
         ]
 
     @pytest.mark.parametrize(
@@ -1349,13 +1401,315 @@ class TestRevaluationOnConfirm(InvoiceApi):
         assert response.json()["ready"]
 
 
+class TestPostingDate(InvoiceApi):
+    def test_posted_on_the_day_the_goods_came(self) -> None:
+        """the goods may come days before the invoice is posted"""
+        self.known_supplier()
+        draft = self.upload()
+
+        response = self.confirm(
+            draft=draft,
+            occurred_on="14-10-2026",
+        )
+
+        assert response.status_code == 200, response.text
+        # the clock says 16-10-2026
+        assert [entry.occurred_on for entry in self.store.entries] == [
+            date(
+                year=2026,
+                month=10,
+                day=14,
+            ),
+        ]
+
+    def test_future_day_is_rejected(self) -> None:
+        self.known_supplier()
+        draft = self.upload()
+
+        response = self.confirm(
+            draft=draft,
+            occurred_on="17-10-2026",
+        )
+
+        assert response.status_code == 422, response.text
+        assert response.json()["detail"] == "Дата не может быть в будущем"
+        assert self.store.entries == []
+        assert self.store.invoices[draft["id"]].status == InvoiceStatus.DRAFT
+
+    def test_day_before_the_stocktake_is_rejected(self) -> None:
+        self.known_supplier()
+        self.store.entries.append(
+            LedgerEntry(
+                id=self.store.new_id(),
+                kind=LedgerKind.STOCKTAKE,
+                amount=Decimal(
+                    value=0,
+                ),
+                cash=Decimal(
+                    value=0,
+                ),
+                occurred_on=date(
+                    year=2026,
+                    month=10,
+                    day=15,
+                ),
+            ),
+        )
+        draft = self.upload()
+
+        response = self.confirm(
+            draft=draft,
+            occurred_on="14-10-2026",
+        )
+
+        assert response.status_code == 409, response.text
+        assert response.json()["detail"] == "Период закрыт переучётом от 15-10-2026"
+        assert len(self.store.entries) == 1
+        assert self.store.invoices[draft["id"]].status == InvoiceStatus.DRAFT
+
+
+class TestCostChange(InvoiceApi):
+    def test_line_shows_the_cost_of_the_last_delivery(self) -> None:
+        self.known_supplier()
+        assert (
+            self.confirm(
+                draft=self.upload(),
+            ).status_code
+            == 200
+        )
+        payload = invoice_payload()
+        payload["invoice_number"] = "00043/А"
+        # the sugar comes at 60 instead of 50, the salt at the same 30
+        payload["items"][0] |= {
+            "cost_price_total": "150.00",
+            "base_price_total": "150.00",
+        }
+        payload["totals"] = {"base_total": "180.00", "cost_total": None}
+
+        draft = self.upload(
+            payload=payload,
+        )
+
+        assert [
+            (line["cost_price"], line["previous_cost_price"]) for line in draft["lines"]
+        ] == [
+            ("60.00", "50.00"),
+            ("30.00", None),
+        ]
+
+    def test_never_posted_product_has_no_previous_cost(self) -> None:
+        self.known_supplier()
+
+        draft = self.upload()
+
+        assert [line["previous_cost_price"] for line in draft["lines"]] == [None, None]
+
+
+class TestPayments(InvoiceApi):
+    def confirmed(self) -> int:
+        self.known_supplier()
+        draft = self.upload()
+        response = self.confirm(
+            draft=draft,
+        )
+        assert response.status_code == 200, response.text
+        return draft["id"]
+
+    def pay(
+        self,
+        invoice_id: int,
+        amount: str,
+        paid_on: str = "16-10-2026",
+        expected: int = 200,
+    ) -> dict[str, Any]:
+        response = self.client.post(
+            url=f"/invoice/{invoice_id}/payments",
+            json={
+                "paid_on": paid_on,
+                "amount": amount,
+                "comment": None,
+            },
+        )
+        assert response.status_code == expected, response.text
+        return response.json()
+
+    def test_paid_in_parts(self) -> None:
+        invoice_id = self.confirmed()
+
+        unpaid = self.client.get(
+            url=f"/invoice/{invoice_id}/confirmed",
+        ).json()
+        part = self.pay(
+            invoice_id=invoice_id,
+            amount="100.00",
+            paid_on="15-10-2026",
+        )
+        rest = self.pay(
+            invoice_id=invoice_id,
+            amount="55.00",
+        )
+
+        assert (unpaid["cost_total"], unpaid["paid"], unpaid["debt"]) == (
+            "155.00",
+            "0",
+            "155.00",
+        )
+        assert (part["paid"], part["debt"]) == ("100.00", "55.00")
+        assert (rest["paid"], rest["debt"]) == ("155.00", "0.00")
+        assert [
+            (payment["paid_on"], payment["amount"]) for payment in rest["payments"]
+        ] == [
+            ("15-10-2026", "100.00"),
+            ("16-10-2026", "55.00"),
+        ]
+        # paying does not touch the till
+        assert all(entry.cash == 0 for entry in self.store.entries)
+
+    def test_overpayment_is_rejected(self) -> None:
+        invoice_id = self.confirmed()
+        self.pay(
+            invoice_id=invoice_id,
+            amount="100.00",
+        )
+
+        response = self.pay(
+            invoice_id=invoice_id,
+            amount="55.01",
+            expected=422,
+        )
+
+        assert (
+            response["detail"] == "Оплата больше долга по накладной, осталось 55.00 ₽"
+        )
+        assert len(self.store.payments) == 1
+
+    def test_future_date_is_rejected(self) -> None:
+        invoice_id = self.confirmed()
+
+        response = self.pay(
+            invoice_id=invoice_id,
+            amount="10.00",
+            paid_on="17-10-2026",
+            expected=422,
+        )
+
+        assert response["detail"] == "Дата оплаты не может быть в будущем"
+
+    def test_draft_cannot_be_paid(self) -> None:
+        draft = self.upload()
+
+        self.pay(
+            invoice_id=draft["id"],
+            amount="10.00",
+            expected=404,
+        )
+
+        assert self.store.payments == []
+
+    def test_payment_is_deleted(self) -> None:
+        invoice_id = self.confirmed()
+        paid = self.pay(
+            invoice_id=invoice_id,
+            amount="100.00",
+        )
+
+        response = self.client.delete(
+            url=f"/invoice/{invoice_id}/payments/{paid['payments'][0]['id']}",
+        )
+        missing = self.client.delete(
+            url=f"/invoice/{invoice_id}/payments/{paid['payments'][0]['id']}",
+        )
+
+        assert response.status_code == 200, response.text
+        assert (response.json()["debt"], response.json()["payments"]) == ("155.00", [])
+        assert missing.status_code == 404
+
+    def test_unpaid_filter_and_debt_sort(self) -> None:
+        paid = self.confirmed()
+        ids = [paid]
+        for number in ("43", "44"):
+            payload = invoice_payload()
+            payload["invoice_number"] = number
+            draft = self.upload(
+                payload=payload,
+            )
+            response = self.confirm(
+                draft=draft,
+            )
+            assert response.status_code == 200, response.text
+            ids.append(
+                draft["id"],
+            )
+        _, owes_more, owes_less = ids
+        payload = invoice_payload()
+        payload["invoice_number"] = "45"
+        draft = self.upload(
+            payload=payload,
+        )
+        for invoice_id, amount in (
+            (paid, "155.00"),
+            (owes_more, "100.00"),
+            (owes_less, "150.00"),
+        ):
+            self.pay(
+                invoice_id=invoice_id,
+                amount=amount,
+            )
+
+        def listed(params: dict[str, str]) -> list[tuple[int, str | None]]:
+            items = self.client.get(
+                url="/invoice",
+                params=params,
+            ).json()["items"]
+            return [(item["id"], item["debt"]) for item in items]
+
+        assert listed(
+            params={"unpaid": "true"},
+        ) == [
+            (owes_less, "5.00"),
+            (owes_more, "55.00"),
+        ]
+        assert listed(
+            params={"unpaid": "true", "sort": "debt"},
+        ) == [
+            (owes_more, "55.00"),
+            (owes_less, "5.00"),
+        ]
+        # a paid invoice owes nothing, a draft owes nothing yet and goes last
+        assert listed(
+            params={"sort": "debt"},
+        ) == [
+            (owes_more, "55.00"),
+            (owes_less, "5.00"),
+            (paid, "0.00"),
+            (draft["id"], None),
+        ]
+
+    def test_list_shows_the_debt(self) -> None:
+        invoice_id = self.confirmed()
+        self.upload()
+        self.pay(
+            invoice_id=invoice_id,
+            amount="100.00",
+        )
+
+        items = self.client.get(
+            url="/invoice",
+        ).json()["items"]
+
+        assert [(item["status"], item["debt"]) for item in items] == [
+            ("draft", None),
+            ("confirmed", "55.00"),
+        ]
+
+
 class TestInvoiceList(InvoiceApi):
     def confirmed(self) -> dict[str, Any]:
         """an invoice of the known supplier, posted at the current markups"""
         self.known_supplier()
         draft = self.upload()
-        response = self.client.post(
-            url=f"/invoice/{draft['id']}/confirm",
+        response = self.confirm(
+            draft=draft,
         )
         assert response.status_code == 200, response.text
         return draft
@@ -1563,8 +1917,8 @@ class TestSimilarProduct(InvoiceApi):
             form=form,
         )
 
-        response = self.client.post(
-            url=f"/invoice/{draft['id']}/confirm",
+        response = self.confirm(
+            draft=draft,
         )
 
         assert response.status_code == 200, response.text
@@ -1606,7 +1960,12 @@ class TestSupplierSearch(InvoiceApi):
         assert self.search(
             params={"q": " молочный "},
         ) == [
-            {"id": self.dvor.id, "name": "ООО «Молочный двор»", "inn": "7707083893"},
+            {
+                "id": self.dvor.id,
+                "name": "ООО «Молочный двор»",
+                "short_name": None,
+                "inn": "7707083893",
+            },
         ]
 
     def test_finds_by_the_start_of_the_inn(self) -> None:
@@ -1617,24 +1976,44 @@ class TestSupplierSearch(InvoiceApi):
 
         assert response.status_code == 200
         assert response.json() == [
-            {"id": self.petrov.id, "name": "ИП Петров", "inn": "471909695290"}
+            {
+                "id": self.petrov.id,
+                "name": "ИП Петров",
+                "short_name": None,
+                "inn": "471909695290",
+            }
         ]
 
     def test_without_a_query_lists_everyone_by_name(self) -> None:
         assert self.search(
             params={},
         ) == [
-            {"id": self.market.id, "name": "Агроторг", "inn": None},
-            {"id": self.petrov.id, "name": "ИП Петров", "inn": "471909695290"},
-            {"id": self.dvor.id, "name": "ООО «Молочный двор»", "inn": "7707083893"},
+            {"id": self.market.id, "name": "Агроторг", "short_name": None, "inn": None},
+            {
+                "id": self.petrov.id,
+                "name": "ИП Петров",
+                "short_name": None,
+                "inn": "471909695290",
+            },
+            {
+                "id": self.dvor.id,
+                "name": "ООО «Молочный двор»",
+                "short_name": None,
+                "inn": "7707083893",
+            },
         ]
 
     def test_limits_number_of_suppliers(self) -> None:
         assert self.search(
             params={"limit": 2},
         ) == [
-            {"id": self.market.id, "name": "Агроторг", "inn": None},
-            {"id": self.petrov.id, "name": "ИП Петров", "inn": "471909695290"},
+            {"id": self.market.id, "name": "Агроторг", "short_name": None, "inn": None},
+            {
+                "id": self.petrov.id,
+                "name": "ИП Петров",
+                "short_name": None,
+                "inn": "471909695290",
+            },
         ]
 
 
@@ -1723,8 +2102,8 @@ class TestProductSearch(InvoiceApi):
         supplier, sugar, _ = self.known_supplier()
         draft = self.upload()
         assert (
-            self.client.post(
-                url=f"/invoice/{draft['id']}/confirm",
+            self.confirm(
+                draft=draft,
             ).status_code
             == 200
         )
@@ -1750,6 +2129,67 @@ class TestProductSearch(InvoiceApi):
         )
 
         assert response.status_code == 404
+
+
+class TestSupplierEdit(InvoiceApi):
+    def edit(
+        self,
+        supplier_id: int,
+        short_name: str | None,
+    ) -> Any:
+        return self.client.put(
+            url=f"/supplier/{supplier_id}",
+            json={
+                "name": "ООО «Поставщик»",
+                "short_name": short_name,
+                "inn": INN,
+            },
+        )
+
+    def test_sets_and_clears_the_short_name(self) -> None:
+        supplier, _, _ = self.known_supplier()
+
+        response = self.edit(
+            supplier_id=supplier.id,
+            short_name="Поставщик",
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {
+            "id": supplier.id,
+            "name": "ООО «Поставщик»",
+            "short_name": "Поставщик",
+            "inn": INN,
+        }
+        assert supplier.short_name == "Поставщик"
+        assert self.store.commits == 1
+
+        response = self.edit(
+            supplier_id=supplier.id,
+            short_name=None,
+        )
+
+        assert response.status_code == 200, response.text
+        assert supplier.short_name is None
+
+    def test_blank_short_name_is_rejected(self) -> None:
+        supplier, _, _ = self.known_supplier()
+
+        response = self.edit(
+            supplier_id=supplier.id,
+            short_name="   ",
+        )
+
+        assert response.status_code == 422, response.text
+        assert supplier.short_name is None
+
+    def test_returns_404_for_an_unknown_supplier(self) -> None:
+        response = self.edit(
+            supplier_id=999,
+            short_name="Поставщик",
+        )
+
+        assert response.status_code == 404, response.text
 
 
 class TestCatalog(InvoiceApi):
@@ -1783,9 +2223,14 @@ class TestCatalog(InvoiceApi):
         catalog = self.catalog()
 
         assert catalog["suppliers"] == [
-            {"id": other.id, "name": "Агроторг", "inn": None},
-            {"id": empty.id, "name": "ИП Петров", "inn": None},
-            {"id": supplier.id, "name": "ООО «Поставщик»", "inn": INN},
+            {"id": other.id, "name": "Агроторг", "short_name": None, "inn": None},
+            {"id": empty.id, "name": "ИП Петров", "short_name": None, "inn": None},
+            {
+                "id": supplier.id,
+                "name": "ООО «Поставщик»",
+                "short_name": None,
+                "inn": INN,
+            },
         ]
         assert [
             (product["id"], product["supplier_id"]) for product in catalog["products"]
@@ -1810,8 +2255,8 @@ class TestCatalog(InvoiceApi):
         )
         draft = self.upload()
         assert (
-            self.client.post(
-                url=f"/invoice/{draft['id']}/confirm",
+            self.confirm(
+                draft=draft,
             ).status_code
             == 200
         )
@@ -1827,4 +2272,5 @@ class TestCatalog(InvoiceApi):
             "supplier_id": supplier.id,
             # the spelling that is the name itself is not repeated
             "spellings": ["Песок «Русский» 1кг"],
+            "has_price_tag": False,
         }

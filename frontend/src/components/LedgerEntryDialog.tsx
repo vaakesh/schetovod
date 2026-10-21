@@ -14,33 +14,72 @@ interface Props {
 }
 
 const TITLES: Record<ManualKind, string> = {
-  sale: "Касса",
+  sale: "Продажа",
   write_off: "Списание",
   stocktake: "Переучёт",
+  cash_in: "Внесение в кассу",
+  cash_out: "Выдача из кассы",
+  cash_count: "Сверка кассы",
 };
 
 const COMMENT_HINTS: Record<ManualKind, string> = {
   sale: "Например, выручка за смену",
-  write_off: "Например, забрал владелец",
+  write_off: "Например, бой или просрочка",
   stocktake: "Например, плановый переучёт",
+  cash_in: "Например, размен",
+  cash_out: "Например, забрал владелец или накладная № 17",
+  cash_count: "Например, пересчёт в конце смены",
 };
+
+const AMOUNT_LABELS: Record<ManualKind, string> = {
+  sale: "Наличные, ₽",
+  write_off: "Сумма, ₽",
+  stocktake: "Насчитали, ₽",
+  cash_in: "Сумма, ₽",
+  cash_out: "Сумма, ₽",
+  cash_count: "В кассе по факту, ₽",
+};
+
+// the till kinds never touch the stock, a sale touches both
+const CASH_ONLY: ManualKind[] = ["cash_in", "cash_out", "cash_count"];
 
 // rubles with at most two decimals, the api rejects anything else
 const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
+// the later of the closing days, a date input compares as text
+function latest(days: (string | null | undefined)[]): string {
+  return days.map((day) => toInputDate(day ?? null)).reduce((a, b) => (a > b ? a : b), "");
+}
+
 export default function LedgerEntryDialog({ kind, onClose, onPosted }: Props) {
   const [date, setDate] = useState(todayInput);
   const [amount, setAmount] = useState("");
+  const [card, setCard] = useState("");
   const [comment, setComment] = useState("");
   const [books, setBooks] = useState<LedgerBalance | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const stocktake = kind === "stocktake";
-  const value = toDecimal(amount);
-  const valid = value !== null && AMOUNT.test(value) && (stocktake || Number(value) > 0);
+  const sale = kind === "sale";
+  const count = kind === "stocktake" || kind === "cash_count";
+  // an empty part of a sale is zero, the other part may hold the whole sale
+  const value = toDecimal(amount) ?? (sale ? "0" : null);
+  const cardValue = toDecimal(card) ?? "0";
+  const total = Number(value) + (sale ? Number(cardValue) : 0);
+  const commentRequired = kind === "cash_out";
+  const valid =
+    value !== null &&
+    AMOUNT.test(value) &&
+    (!sale || AMOUNT.test(cardValue)) &&
+    (count || total > 0) &&
+    (!commentRequired || toText(comment) !== null);
 
-  // the balance on the chosen day and the day the period is closed on
+  const touchesStock = !CASH_ONLY.includes(kind);
+  const touchesCash = CASH_ONLY.includes(kind) || (sale && Number(value) > 0);
+  const minDate = latest([touchesStock ? books?.closed_on : null, touchesCash ? books?.cash_closed_on : null]);
+  const expected = kind === "cash_count" ? books?.cash_balance : books?.balance;
+
+  // the balances on the chosen day and the days the periods are closed on
   useEffect(() => {
     let current = true;
     getBalance(fromInputDate(date))
@@ -51,6 +90,14 @@ export default function LedgerEntryDialog({ kind, onClose, onPosted }: Props) {
     };
   }, [date]);
 
+  function body(): Record<string, string | null> {
+    const base = { occurred_on: fromInputDate(date), comment: toText(comment) };
+    if (sale) {
+      return { ...base, cash: value, card: cardValue };
+    }
+    return { ...base, [count ? "counted" : "amount"]: value };
+  }
+
   async function submit() {
     if (!valid || busy) {
       return;
@@ -58,11 +105,7 @@ export default function LedgerEntryDialog({ kind, onClose, onPosted }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await addLedgerEntry(kind, {
-        occurred_on: fromInputDate(date),
-        [stocktake ? "counted" : "amount"]: value,
-        comment: toText(comment),
-      });
+      await addLedgerEntry(kind, body());
       onPosted();
     } catch (reason) {
       setError(message(reason));
@@ -89,37 +132,64 @@ export default function LedgerEntryDialog({ kind, onClose, onPosted }: Props) {
                 required
                 value={date}
                 max={todayInput()}
-                min={toInputDate(books?.closed_on ?? null) || undefined}
+                min={minDate || undefined}
                 onChange={(event) => setDate(event.target.value)}
               />
             </label>
-            <label className="field">
-              <span className="field-label">{stocktake ? "Насчитали, ₽" : "Сумма, ₽"}</span>
-              <input
-                className="input input-money"
-                inputMode="decimal"
-                autoFocus
-                placeholder="0,00"
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-              />
-            </label>
-            {stocktake && books && (
+            <div className={sale ? "field-pair" : undefined}>
+              <label className="field">
+                <span className="field-label">{AMOUNT_LABELS[kind]}</span>
+                <input
+                  className="input input-money"
+                  inputMode="decimal"
+                  autoFocus
+                  placeholder="0,00"
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                />
+              </label>
+              {sale && (
+                <label className="field">
+                  <span className="field-label">Безнал, ₽</span>
+                  <input
+                    className="input input-money"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={card}
+                    onChange={(event) => setCard(event.target.value)}
+                  />
+                </label>
+              )}
+            </div>
+            {sale && (
+              <dl className="stocktake-preview">
+                <div>
+                  <dt>Всего продано</dt>
+                  <dd>{valid ? `${formatMoney(total)} ₽` : "—"}</dd>
+                </div>
+                <div>
+                  <dt>В кассу</dt>
+                  <dd>{valid ? `${formatMoney(value)} ₽` : "—"}</dd>
+                </div>
+              </dl>
+            )}
+            {count && expected !== undefined && (
               <dl className="stocktake-preview">
                 <div>
                   <dt>По учёту</dt>
-                  <dd>{formatMoney(books.balance)} ₽</dd>
+                  <dd>{formatMoney(expected)} ₽</dd>
                 </div>
                 <div>
                   <dt>Расхождение</dt>
-                  <dd>{valid ? `${formatSigned(Number(value) - Number(books.balance))} ₽` : "—"}</dd>
+                  <dd>{valid ? `${formatSigned(Number(value) - Number(expected))} ₽` : "—"}</dd>
                 </div>
               </dl>
             )}
             <label className="field">
-              <span className="field-label">Комментарий</span>
+              <span className="field-label">{commentRequired ? "На что" : "Комментарий"}</span>
               <input
                 className="input"
+                required={commentRequired}
                 placeholder={COMMENT_HINTS[kind]}
                 value={comment}
                 onChange={(event) => setComment(event.target.value)}

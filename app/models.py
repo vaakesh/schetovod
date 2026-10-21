@@ -6,6 +6,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     UniqueConstraint,
+    false,
     func,
     text,
 )
@@ -36,6 +37,10 @@ class Supplier(Base):
     # as printed on the first invoice
     name: Mapped[str] = mapped_column(
         nullable=False,
+    )
+    # a short name for the reports, the full name is printed there without it
+    short_name: Mapped[str | None] = mapped_column(
+        nullable=True,
     )
     # looked up by inn first, without it the user picks a supplier by name or adds one
     inn: Mapped[str | None] = mapped_column(
@@ -100,6 +105,12 @@ class Product(Base):
             name="retail_price",
         ),
         nullable=False,
+    )
+    # a shelf tag with the current retail price is hanging, any new price resets it
+    has_price_tag: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+        server_default=false(),
     )
     created_at: Mapped[DateTimeTz] = mapped_column(
         nullable=False,
@@ -231,6 +242,10 @@ class Invoice(Base):
         lazy="raise",
     )
     items: Mapped[list[InvoiceItem]] = relationship(
+        back_populates="invoice",
+        lazy="raise",
+    )
+    payments: Mapped[list[InvoicePayment]] = relationship(
         back_populates="invoice",
         lazy="raise",
     )
@@ -397,6 +412,49 @@ class InvoiceItem(Base):
     )
 
 
+class InvoicePayment(Base):
+    """money paid to the supplier for a confirmed invoice, the till is not touched"""
+
+    __tablename__ = "invoice_payments"
+
+    id: Mapped[BigInt] = mapped_column(
+        primary_key=True,
+        nullable=False,
+    )
+    invoice_id: Mapped[BigInt] = mapped_column(
+        ForeignKey(
+            column="invoices.id",
+        ),
+        nullable=False,
+        index=True,
+    )
+    paid_on: Mapped[date] = mapped_column(
+        nullable=False,
+        default=today,
+        server_default=func.current_date(),
+    )
+    amount: Mapped[Money] = mapped_column(
+        CheckConstraint(
+            sqltext="amount > 0",
+            name="amount",
+        ),
+        nullable=False,
+    )
+    comment: Mapped[str | None] = mapped_column(
+        nullable=True,
+    )
+    created_at: Mapped[DateTimeTz] = mapped_column(
+        nullable=False,
+        default=func.now(),
+        server_default=func.now(),
+    )
+
+    invoice: Mapped[Invoice] = relationship(
+        back_populates="payments",
+        lazy="raise",
+    )
+
+
 class LedgerEntry(Base):
     __tablename__ = "ledger_entries"
 
@@ -421,9 +479,15 @@ class LedgerEntry(Base):
         ledger_kind_enum,
         nullable=False,
     )
-    # signed
+    # signed, the stock at retail prices
     amount: Mapped[Money] = mapped_column(
         nullable=False,
+    )
+    # signed, the cash in the till, zero for an entry that does not touch it
+    cash: Mapped[Money] = mapped_column(
+        nullable=False,
+        default=0,
+        server_default="0",
     )
     comment: Mapped[str | None] = mapped_column(
         nullable=True,
@@ -499,6 +563,46 @@ class LedgerEntry(Base):
         CheckConstraint(
             sqltext=f"kind <> '{LedgerKind.REVALUATION}' OR amount <> 0",
             name="revaluation_amount",
+        ),
+        # the till operations move money only, the stock stays
+        CheckConstraint(
+            sqltext=(
+                f"kind NOT IN ('{LedgerKind.CASH_IN}', '{LedgerKind.CASH_OUT}', "
+                f"'{LedgerKind.CASH_COUNT}') OR amount = 0"
+            ),
+            name="cash_only",
+        ),
+        # only a sale and the till operations touch the till
+        CheckConstraint(
+            sqltext=(
+                f"kind NOT IN ('{LedgerKind.INVOICE}', '{LedgerKind.WRITE_OFF}', "
+                f"'{LedgerKind.STOCKTAKE}', '{LedgerKind.REVALUATION}') OR cash = 0"
+            ),
+            name="no_cash",
+        ),
+        # the cash part of a sale goes into the till and is at most the whole sale,
+        # the reversal flips both signs
+        CheckConstraint(
+            sqltext=(
+                f"kind <> '{LedgerKind.SALE}' OR (cash * amount <= 0 AND abs(cash) <= abs(amount))"
+            ),
+            name="sale_cash",
+        ),
+        CheckConstraint(
+            sqltext=(
+                f"kind <> '{LedgerKind.CASH_IN}' "
+                "OR (reverses_id IS NULL AND cash > 0) "
+                "OR (reverses_id IS NOT NULL AND cash < 0)"
+            ),
+            name="cash_in_sign",
+        ),
+        CheckConstraint(
+            sqltext=(
+                f"kind <> '{LedgerKind.CASH_OUT}' "
+                "OR (reverses_id IS NULL AND cash < 0) "
+                "OR (reverses_id IS NOT NULL AND cash > 0)"
+            ),
+            name="cash_out_sign",
         ),
     )
 

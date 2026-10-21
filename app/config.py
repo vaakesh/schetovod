@@ -41,7 +41,8 @@ class Settings(BaseSettings):
         "high",
         "xhigh",
         "max",
-    ] = "xhigh"
+    ] = "high"
+    openai_image_crops: bool = True
     # a long reasoning over several pages takes minutes
     openai_timeout: float = 600
 

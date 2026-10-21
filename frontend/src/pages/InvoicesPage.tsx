@@ -5,7 +5,7 @@ import UploadForm, { type UploadKind } from "../components/UploadForm";
 import { formatDate, formatMoney, formatText } from "../format";
 import { message } from "../message";
 import type { Route } from "../router";
-import type { InvoiceListItem, InvoiceStatus } from "../types";
+import type { InvoiceListItem, InvoiceSort, InvoiceStatus } from "../types";
 
 interface Props {
   go: (route: Route) => void;
@@ -17,11 +17,19 @@ interface Props {
 
 const PAGE = 50;
 
-const FILTERS: { status: InvoiceStatus | null; label: string }[] = [
-  { status: null, label: "Все" },
-  { status: "draft", label: "Черновики" },
-  { status: "confirmed", label: "Проведённые" },
-  { status: "declined", label: "Отклонённые" },
+interface Filter {
+  status: InvoiceStatus | null;
+  // only the confirmed invoices not paid in full
+  unpaid: boolean;
+  label: string;
+}
+
+const FILTERS: Filter[] = [
+  { status: null, unpaid: false, label: "Все" },
+  { status: "draft", unpaid: false, label: "Черновики" },
+  { status: "confirmed", unpaid: false, label: "Проведённые" },
+  { status: "confirmed", unpaid: true, label: "Неоплаченные" },
+  { status: "declined", unpaid: false, label: "Отклонённые" },
 ];
 
 const STATUS_LABELS: Record<InvoiceStatus, string> = {
@@ -42,7 +50,8 @@ function target(item: InvoiceListItem): Route | null {
 }
 
 export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, notice }: Props) {
-  const [status, setStatus] = useState<InvoiceStatus | null>(null);
+  const [filter, setFilter] = useState<Filter>(FILTERS[0]!);
+  const [sort, setSort] = useState<InvoiceSort>("newest");
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<InvoiceListItem[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -50,13 +59,14 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
   const [error, setError] = useState<string | null>(null);
 
   const query = search.trim();
+  const { status, unpaid } = filter;
 
   // the search waits for a pause in typing, a late answer to an old query is dropped
   useEffect(() => {
     let current = true;
     const timer = window.setTimeout(
       () => {
-        listInvoices({ status, q: query, limit: PAGE, offset: 0 })
+        listInvoices({ status, unpaid, q: query, sort, limit: PAGE, offset: 0 })
           .then((page) => {
             if (current) {
               setItems(page.items);
@@ -72,7 +82,7 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
       current = false;
       window.clearTimeout(timer);
     };
-  }, [status, query]);
+  }, [status, unpaid, query, sort]);
 
   async function more() {
     if (!items) {
@@ -80,7 +90,14 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
     }
     setLoadingMore(true);
     try {
-      const page = await listInvoices({ status, q: query, limit: PAGE, offset: items.length });
+      const page = await listInvoices({
+        status,
+        unpaid,
+        q: query,
+        sort,
+        limit: PAGE,
+        offset: items.length,
+      });
       setItems([...items, ...page.items]);
       setHasMore(page.has_more);
     } catch (reason) {
@@ -100,7 +117,7 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
   }
 
   // nothing uploaded yet, the page is only the drop areas
-  if (items !== null && items.length === 0 && status === null && !query && !error) {
+  if (items !== null && items.length === 0 && status === null && !unpaid && !query && !error) {
     return (
       <main className="page page-empty">
         {notice && <p className="hero-notice">{notice}</p>}
@@ -117,16 +134,16 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
 
       <div className="list-head">
         <div className="segments" role="tablist">
-          {FILTERS.map((filter) => (
+          {FILTERS.map((option) => (
             <button
-              key={filter.label}
+              key={option.label}
               type="button"
               role="tab"
-              aria-selected={status === filter.status}
-              className={status === filter.status ? "segment active" : "segment"}
-              onClick={() => setStatus(filter.status)}
+              aria-selected={filter === option}
+              className={filter === option ? "segment active" : "segment"}
+              onClick={() => setFilter(option)}
             >
-              {filter.label}
+              {option.label}
             </button>
           ))}
         </div>
@@ -155,6 +172,19 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
                 <th>Продавец</th>
                 <th className="num">Строк</th>
                 <th className="num">В рознице</th>
+                <th className="num">
+                  {/* the second click goes back to the newest first */}
+                  <button
+                    type="button"
+                    className={sort === "debt" ? "sort-button active" : "sort-button"}
+                    onClick={() => setSort(sort === "debt" ? "newest" : "debt")}
+                  >
+                    Долг
+                    <span className="sort-arrow" aria-hidden="true">
+                      {sort === "debt" ? "↓" : ""}
+                    </span>
+                  </button>
+                </th>
                 <th>Статус</th>
               </tr>
             </thead>
@@ -179,6 +209,10 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
                     <td className="num muted-cell">{item.lines}</td>
                     <td className="num strong">
                       {item.retail_total === null ? "" : `${formatMoney(item.retail_total)} ₽`}
+                    </td>
+                    {/* a paid invoice leaves the cell empty, only what is owed stands out */}
+                    <td className="num nowrap">
+                      {item.debt !== null && Number(item.debt) > 0 && `${formatMoney(item.debt)} ₽`}
                     </td>
                     <td>
                       <span className={`status-dot status-${item.status}`}>

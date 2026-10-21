@@ -664,6 +664,10 @@ button {
   min-width: 260px;
 }
 
+.lines td.line-name {
+  min-width: 260px;
+}
+
 .lines th,
 .lines td {
   padding: 16px 12px;
@@ -745,6 +749,24 @@ button {
 
 .computed.strong {
   color: var(--text);
+}
+
+/* the cost of the last delivery under the new one */
+.cost-change {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.cost-up {
+  color: var(--bad);
+}
+
+.cost-down {
+  color: var(--accent);
 }
 
 .row-issues td {
@@ -1038,10 +1060,10 @@ button {
 
 .cell-name {
   display: block;
+  overflow: hidden;
   resize: none;
   font-weight: 500;
   line-height: 1.45;
-  field-sizing: content;
 }
 
 .cell-required {
@@ -1059,16 +1081,9 @@ button {
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  opacity: 0;
   transition:
-    opacity 0.15s,
     color 0.15s,
     background 0.15s;
-}
-
-.line:hover .row-delete,
-.row-delete:focus {
-  opacity: 1;
 }
 
 .row-delete:hover {
@@ -1418,6 +1433,54 @@ button {
   white-space: nowrap;
 }
 
+/* the payments to the supplier under a posted invoice */
+
+.payments {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 20px 24px;
+}
+
+.payments-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.payments-debt {
+  color: var(--bad);
+}
+
+.payments-list th,
+.payments-list td {
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+
+.payments-list th:first-child,
+.payments-list td:first-child {
+  padding-left: 0;
+}
+
+.payments-list th:last-child,
+.payments-list td:last-child {
+  padding-right: 0;
+}
+
+.payments-list tbody tr + tr td {
+  border-top: 1px solid var(--line);
+}
+
+.payments-form {
+  align-items: flex-end;
+}
+
+.payments-form .input-money {
+  width: 160px;
+}
+
 /* invoice list */
 
 .dropzone-slim {
@@ -1621,6 +1684,40 @@ button {
   transition: background 0.15s;
 }
 
+/* the group header and the edit button next to it, a button cannot hold another one */
+.catalog-supplier-row {
+  display: flex;
+  align-items: center;
+}
+
+.catalog-supplier-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin-right: 12px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.catalog-supplier-edit:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.catalog-supplier-edit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .catalog-supplier:not(:disabled):hover {
   background: #fbfbfc;
 }
@@ -1667,6 +1764,31 @@ button {
   min-width: 260px;
 }
 
+/* the checkbox sits in the middle of its own wide cell, easy to hit on a phone */
+.list .catalog-tag {
+  width: 72px;
+  text-align: center;
+  vertical-align: middle;
+  cursor: default;
+}
+
+/* the price tag column is the last one in both views */
+.list.catalog-table th:last-child {
+  text-align: center;
+}
+
+.catalog-tag-box {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.catalog-tag-box:disabled {
+  cursor: wait;
+}
+
 .sort-button {
   display: inline-flex;
   align-items: center;
@@ -1707,6 +1829,31 @@ button {
   display: block;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* each spelling on a line of its own */
+.catalog-spellings-label,
+.catalog-spelling {
+  display: block;
+}
+
+.catalog-spellings-more {
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.catalog-spellings-more:hover {
+  text-decoration: underline;
+}
+
+.catalog-spellings-more:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* posted invoice */
@@ -1753,6 +1900,25 @@ button {
   line-height: 1.1;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
+}
+
+/* the stock and the till, the till goes under the stock when both do not fit */
+.ledger-balances {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 48px;
+}
+
+.ledger-balances .ledger-balance {
+  white-space: nowrap;
+}
+
+/* the stock actions above the till actions */
+.ledger-action-groups {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
 }
 
 .ledger-actions {
@@ -1855,6 +2021,13 @@ button {
   flex-direction: column;
   gap: 14px;
   margin-top: 20px;
+}
+
+/* two amounts side by side, the cash and the cashless part of a sale */
+.field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 .field {
@@ -2103,9 +2276,22 @@ a.button {
   gap: 12px;
 }
 
-.report-totals {
+/* the stock and the till next to each other */
+.report-books {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
   margin-bottom: 24px;
+}
+
+.report-totals {
   padding: 8px 20px;
+}
+
+.report-totals .report-aside dt,
+.report-totals .report-aside dd {
+  font-size: 13px;
 }
 
 .report-totals dl {
@@ -2221,8 +2407,24 @@ a.button {
     font-size: 32px;
   }
 
+  .ledger-balances {
+    gap: 24px;
+  }
+
+  .ledger-action-groups {
+    align-items: stretch;
+  }
+
+  .ledger-actions {
+    flex-wrap: wrap;
+  }
+
   .ledger-actions .button {
     flex: 1;
+  }
+
+  .report-books {
+    grid-template-columns: 1fr;
   }
 
   .supplier-static {

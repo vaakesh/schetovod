@@ -45,8 +45,9 @@ export function todayInput(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-export function emptyLine(): FormLine {
+export function emptyLine(lineNo: number): FormLine {
   return {
+    line_no: lineNo,
     name: null,
     quantity: null,
     unit: null,

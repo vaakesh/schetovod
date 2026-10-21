@@ -16,12 +16,16 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from config import settings
-from enums import InvoiceStatus, LedgerKind
+from enums import InvoiceSort, InvoiceStatus
+from report_pdf import report_pdf, report_pdf_filename
 from report_xlsx import report_filename, report_workbook
 from schemas import (
+    CashCountCreate,
+    CashOutCreate,
     Catalog,
     ConfirmedInvoice,
     DraftForm,
+    InvoiceConfirm,
     InvoiceDate,
     InvoiceDraft,
     InvoiceExtraction,
@@ -31,12 +35,17 @@ from schemas import (
     LedgerPosted,
     LedgerReport,
     OutflowCreate,
+    PaymentCreate,
+    PeriodReport,
     PostedInvoice,
+    PriceTagMark,
     ProductEdit,
     ProductSummary,
     RevaluationCreate,
     RevaluationLineOut,
+    SaleCreate,
     StocktakeCreate,
+    SupplierEdit,
     SupplierSummary,
 )
 from services import InvoiceServiceDep, LedgerServiceDep, SupplierServiceDep
@@ -66,6 +75,7 @@ ReportDate = Annotated[
     Query(),
 ]
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+PDF_MEDIA_TYPE = "application/pdf"
 
 
 @app.get(
@@ -75,13 +85,18 @@ XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 async def list_invoices(
     service: InvoiceServiceDep,
     status: InvoiceStatus | None = None,
+    # only the confirmed invoices not paid in full
+    unpaid: bool = False,
     q: str | None = None,
+    sort: InvoiceSort = InvoiceSort.NEWEST,
     limit: PageLimit = 50,
     offset: PageOffset = 0,
 ) -> InvoiceList:
     return await service.list_invoices(
         status=status,
+        unpaid=unpaid,
         query=q.strip() if q else None,
+        sort=sort,
         limit=limit,
         offset=offset,
     )
@@ -99,6 +114,21 @@ async def search_suppliers(
     return await service.search(
         query=q.strip() if q else None,
         limit=limit,
+    )
+
+
+@app.put(
+    path="/supplier/{supplier_id}",
+    response_model=SupplierSummary,
+)
+async def edit_supplier(
+    supplier_id: int,
+    payload: SupplierEdit,
+    service: SupplierServiceDep,
+) -> SupplierSummary:
+    return await service.edit_supplier(
+        supplier_id=supplier_id,
+        payload=payload,
     )
 
 
@@ -139,6 +169,21 @@ async def edit_product(
     service: LedgerServiceDep,
 ) -> LedgerPosted | None:
     return await service.edit_product(
+        product_id=product_id,
+        payload=payload,
+    )
+
+
+@app.put(
+    path="/product/{product_id}/price-tag",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def mark_price_tag(
+    product_id: int,
+    payload: PriceTagMark,
+    service: LedgerServiceDep,
+) -> None:
+    await service.mark_price_tag(
         product_id=product_id,
         payload=payload,
     )
@@ -186,7 +231,7 @@ async def recognize_invoice(
             obj=extracted,
         )
     except ValidationError as error:
-        # the model output is not saved anywhere else, the log shows what was rejected
+        # the raw model output is archived, the log shows the validation errors
         logger.warning(
             "recognized invoice did not pass validation\nerrors: %s\nextracted: %s",
             error.errors(
@@ -246,6 +291,36 @@ async def get_posted(
     )
 
 
+@app.post(
+    path="/invoice/{invoice_id}/payments",
+    response_model=PostedInvoice,
+)
+async def add_payment(
+    invoice_id: int,
+    payload: PaymentCreate,
+    service: InvoiceServiceDep,
+) -> PostedInvoice:
+    return await service.add_payment(
+        invoice_id=invoice_id,
+        payload=payload,
+    )
+
+
+@app.delete(
+    path="/invoice/{invoice_id}/payments/{payment_id}",
+    response_model=PostedInvoice,
+)
+async def delete_payment(
+    invoice_id: int,
+    payment_id: int,
+    service: InvoiceServiceDep,
+) -> PostedInvoice:
+    return await service.delete_payment(
+        invoice_id=invoice_id,
+        payment_id=payment_id,
+    )
+
+
 @app.put(
     path="/invoice/{invoice_id}",
     response_model=InvoiceDraft,
@@ -267,10 +342,12 @@ async def save_form(
 )
 async def confirm_invoice(
     invoice_id: int,
+    payload: InvoiceConfirm,
     service: InvoiceServiceDep,
 ) -> ConfirmedInvoice:
     return await service.confirm_invoice(
         invoice_id=invoice_id,
+        occurred_on=payload.occurred_on,
     )
 
 
@@ -323,11 +400,10 @@ async def ledger_balance(
     response_model=LedgerPosted,
 )
 async def add_sale(
-    payload: OutflowCreate,
+    payload: SaleCreate,
     service: LedgerServiceDep,
 ) -> LedgerPosted:
-    return await service.add_outflow(
-        kind=LedgerKind.SALE,
+    return await service.add_sale(
         payload=payload,
     )
 
@@ -340,8 +416,46 @@ async def add_write_off(
     payload: OutflowCreate,
     service: LedgerServiceDep,
 ) -> LedgerPosted:
-    return await service.add_outflow(
-        kind=LedgerKind.WRITE_OFF,
+    return await service.add_write_off(
+        payload=payload,
+    )
+
+
+@app.post(
+    path="/ledger/cash-in",
+    response_model=LedgerPosted,
+)
+async def add_cash_in(
+    payload: OutflowCreate,
+    service: LedgerServiceDep,
+) -> LedgerPosted:
+    return await service.add_cash_in(
+        payload=payload,
+    )
+
+
+@app.post(
+    path="/ledger/cash-out",
+    response_model=LedgerPosted,
+)
+async def add_cash_out(
+    payload: CashOutCreate,
+    service: LedgerServiceDep,
+) -> LedgerPosted:
+    return await service.add_cash_out(
+        payload=payload,
+    )
+
+
+@app.post(
+    path="/ledger/cash-count",
+    response_model=LedgerPosted,
+)
+async def add_cash_count(
+    payload: CashCountCreate,
+    service: LedgerServiceDep,
+) -> LedgerPosted:
+    return await service.add_cash_count(
         payload=payload,
     )
 
@@ -428,6 +542,55 @@ async def ledger_report_xlsx(
             report=report,
         ),
         media_type=XLSX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
+
+
+@app.get(
+    path="/ledger/report/days",
+    response_model=PeriodReport,
+)
+async def ledger_period_report(
+    service: LedgerServiceDep,
+    date_from: ReportDate,
+    date_to: ReportDate,
+) -> PeriodReport:
+    return await service.period_report(
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@app.get(
+    path="/ledger/report.pdf",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                PDF_MEDIA_TYPE: {},
+            },
+        },
+    },
+)
+async def ledger_report_pdf(
+    service: LedgerServiceDep,
+    date_from: ReportDate,
+    date_to: ReportDate,
+) -> Response:
+    report = await service.period_report(
+        date_from=date_from,
+        date_to=date_to,
+    )
+    filename = report_pdf_filename(
+        report=report,
+    )
+    return Response(
+        content=report_pdf(
+            report=report,
+        ),
+        media_type=PDF_MEDIA_TYPE,
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
         },

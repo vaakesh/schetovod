@@ -5,14 +5,15 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import Select, exists, func, or_, select, tuple_
-from sqlalchemy.orm import aliased, selectinload
+from sqlalchemy import ScalarSelect, Select, case, exists, func, or_, select, tuple_
+from sqlalchemy.orm import InstrumentedAttribute, aliased, selectinload
 
 from db import SessionDep
-from enums import InvoiceStatus, LedgerKind
+from enums import InvoiceSort, InvoiceStatus, LedgerKind
 from models import (
     Invoice,
     InvoiceItem,
+    InvoicePayment,
     LedgerEntry,
     Product,
     ProductAlias,
@@ -32,16 +33,30 @@ class InvoiceRow:
     # None until the invoice is confirmed
     retail_total: Decimal | None
     lines: int
+    # owed to the supplier, None until the invoice is confirmed
+    cost_total: Decimal | None
+    paid: Decimal
+
+
+@dataclass
+class DebtRow:
+    invoice: Invoice
+    supplier_name: str
+    supplier_short_name: str | None
+    cost_total: Decimal
+    paid: Decimal
 
 
 @dataclass
 class LedgerRow:
     entry: LedgerEntry
-    # the running balance in the ledger order, including this entry
+    # the running balances in the ledger order, including this entry
     balance_after: Decimal
+    cash_after: Decimal
     reversed_by_id: int | None
     invoice_number: str | None
     supplier_name: str | None
+    supplier_short_name: str | None
 
 
 @dataclass
@@ -110,11 +125,14 @@ class InvoiceRepository:
     async def search(
         self,
         status: InvoiceStatus | None,
+        unpaid: bool,
         query: str | None,
+        sort: InvoiceSort,
         limit: int,
         offset: int,
     ) -> list[InvoiceRow]:
-        """newest uploads first, the supplier is searched by name and the invoice by number"""
+        """the supplier is searched by name and the invoice by number,
+        unpaid leaves the confirmed invoices with a debt"""
         # a draft without a chosen supplier shows the name the model read
         supplier_name = func.coalesce(
             Supplier.name,
@@ -126,12 +144,35 @@ class InvoiceRepository:
                 Invoice.extracted["items"],
             ),
         )
+        cost_total = _cost_total()
+        paid = _paid_total(
+            on=None,
+        )
+        # only a confirmed invoice owes anything
+        debt = case(
+            (
+                Invoice.status == InvoiceStatus.CONFIRMED,
+                cost_total - paid,
+            ),
+            else_=None,
+        )
+        order = (
+            Invoice.created_at.desc(),
+            Invoice.id.desc(),
+        )
+        if sort == InvoiceSort.DEBT:
+            order = (
+                debt.desc().nulls_last(),
+                *order,
+            )
         statement = (
             select(
                 Invoice,
                 supplier_name,
                 LedgerEntry.amount,
                 lines,
+                cost_total,
+                paid,
             )
             .outerjoin(
                 target=Supplier,
@@ -142,8 +183,7 @@ class InvoiceRepository:
                 onclause=LedgerEntry.invoice_id == Invoice.id,
             )
             .order_by(
-                Invoice.created_at.desc(),
-                Invoice.id.desc(),
+                *order,
             )
             .limit(
                 limit=limit,
@@ -152,6 +192,10 @@ class InvoiceRepository:
                 offset=offset,
             )
         )
+        if unpaid:
+            statement = statement.where(
+                debt > 0,
+            )
         if status is not None:
             statement = statement.where(
                 Invoice.status == status,
@@ -178,8 +222,11 @@ class InvoiceRepository:
                 supplier_name=name,
                 retail_total=amount,
                 lines=count,
+                # a draft has no lines yet, its sum would be the sum of nothing
+                cost_total=cost if invoice.status == InvoiceStatus.CONFIRMED else None,
+                paid=paid,
             )
-            for invoice, name, amount, count in result.tuples()
+            for invoice, name, amount, count, cost, paid in result.tuples()
         ]
 
     async def get_confirmed(
@@ -206,6 +253,197 @@ class InvoiceRepository:
                 ),
             ),
         )
+
+    async def lock_confirmed(
+        self,
+        invoice_id: int,
+    ) -> Invoice | None:
+        """the row lock keeps two payments from overpaying the invoice together"""
+        return await self.session.scalar(
+            statement=select(
+                Invoice,
+            )
+            .where(
+                Invoice.id == invoice_id,
+                Invoice.status == InvoiceStatus.CONFIRMED,
+            )
+            .with_for_update(),
+        )
+
+    async def cost_totals(
+        self,
+        invoice_ids: Collection[int],
+    ) -> dict[int, Decimal]:
+        """owed to the supplier for each invoice, the sum of its lines"""
+        result = await self.session.execute(
+            statement=select(
+                InvoiceItem.invoice_id,
+                func.sum(
+                    InvoiceItem.cost_price_total,
+                ),
+            )
+            .where(
+                InvoiceItem.invoice_id.in_(
+                    other=invoice_ids,
+                ),
+            )
+            .group_by(
+                InvoiceItem.invoice_id,
+            ),
+        )
+        return {invoice_id: total for invoice_id, total in result.tuples()}
+
+    async def paid_totals(
+        self,
+        invoice_ids: Collection[int],
+        on: date | None,
+    ) -> dict[int, Decimal]:
+        """paid for each invoice up to the end of the day, an unpaid one is missing"""
+        statement = (
+            select(
+                InvoicePayment.invoice_id,
+                func.sum(
+                    InvoicePayment.amount,
+                ),
+            )
+            .where(
+                InvoicePayment.invoice_id.in_(
+                    other=invoice_ids,
+                ),
+            )
+            .group_by(
+                InvoicePayment.invoice_id,
+            )
+        )
+        if on is not None:
+            statement = statement.where(
+                InvoicePayment.paid_on <= on,
+            )
+        result = await self.session.execute(
+            statement=statement,
+        )
+        return {invoice_id: total for invoice_id, total in result.tuples()}
+
+    async def paid_between(
+        self,
+        date_from: date,
+        date_to: date,
+    ) -> Decimal:
+        """paid to the suppliers on the days, for any invoices"""
+        total = await self.session.scalar(
+            statement=select(
+                func.coalesce(
+                    func.sum(
+                        InvoicePayment.amount,
+                    ),
+                    0,
+                ),
+            ).where(
+                InvoicePayment.paid_on >= date_from,
+                InvoicePayment.paid_on <= date_to,
+            ),
+        )
+        return Decimal(
+            value=total or 0,
+        )
+
+    async def debts(
+        self,
+        on: date,
+    ) -> list[DebtRow]:
+        """invoices posted by the end of the day and not paid in full by then, the oldest first"""
+        cost_total = _cost_total()
+        paid = _paid_total(
+            on=on,
+        )
+        result = await self.session.execute(
+            statement=select(
+                Invoice,
+                Supplier.name,
+                Supplier.short_name,
+                cost_total,
+                paid,
+            )
+            .join(
+                target=Supplier,
+                onclause=Supplier.id == Invoice.supplier_id,
+            )
+            .join(
+                target=LedgerEntry,
+                onclause=LedgerEntry.invoice_id == Invoice.id,
+            )
+            .where(
+                LedgerEntry.occurred_on <= on,
+                cost_total > paid,
+            )
+            .order_by(
+                Invoice.invoice_date,
+                Invoice.id,
+            ),
+        )
+        return [
+            DebtRow(
+                invoice=invoice,
+                supplier_name=name,
+                supplier_short_name=short_name,
+                cost_total=cost,
+                paid=paid_sum,
+            )
+            for invoice, name, short_name, cost, paid_sum in result.tuples()
+        ]
+
+    async def payments_of(
+        self,
+        invoice_id: int,
+    ) -> list[InvoicePayment]:
+        result = await self.session.scalars(
+            statement=select(
+                InvoicePayment,
+            )
+            .where(
+                InvoicePayment.invoice_id == invoice_id,
+            )
+            .order_by(
+                InvoicePayment.paid_on,
+                InvoicePayment.id,
+            ),
+        )
+        return list(
+            result,
+        )
+
+    async def get_payment(
+        self,
+        invoice_id: int,
+        payment_id: int,
+    ) -> InvoicePayment | None:
+        return await self.session.scalar(
+            statement=select(
+                InvoicePayment,
+            ).where(
+                InvoicePayment.id == payment_id,
+                InvoicePayment.invoice_id == invoice_id,
+            ),
+        )
+
+    async def add_payment(
+        self,
+        payment: InvoicePayment,
+    ) -> InvoicePayment:
+        self.session.add(
+            instance=payment,
+        )
+        await self.session.flush()
+        return payment
+
+    async def delete_payment(
+        self,
+        payment: InvoicePayment,
+    ) -> None:
+        await self.session.delete(
+            instance=payment,
+        )
+        await self.session.flush()
 
     async def flush(self) -> None:
         await self.session.flush()
@@ -282,12 +520,36 @@ class LedgerRepository:
         date_from: date,
         date_to: date,
     ) -> dict[LedgerKind, Decimal]:
-        """signed sums of the days, a reversal has the kind of the entry it cancels"""
+        """signed stock sums of the days, a reversal has the kind of the entry it cancels"""
+        return await self._sums_by_kind(
+            column=LedgerEntry.amount,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+    async def cash_sums_by_kind(
+        self,
+        date_from: date,
+        date_to: date,
+    ) -> dict[LedgerKind, Decimal]:
+        """signed cash sums of the days, a reversal has the kind of the entry it cancels"""
+        return await self._sums_by_kind(
+            column=LedgerEntry.cash,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+    async def _sums_by_kind(
+        self,
+        column: InstrumentedAttribute[Decimal],
+        date_from: date,
+        date_to: date,
+    ) -> dict[LedgerKind, Decimal]:
         result = await self.session.execute(
             statement=select(
                 LedgerEntry.kind,
                 func.sum(
-                    LedgerEntry.amount,
+                    column,
                 ),
             )
             .where(
@@ -336,10 +598,30 @@ class LedgerRepository:
         on: date | None = None,
     ) -> Decimal:
         """stock at retail prices, the sum of the signed entries up to the end of the day"""
+        return await self._total(
+            column=LedgerEntry.amount,
+            on=on,
+        )
+
+    async def cash_balance(
+        self,
+        on: date | None = None,
+    ) -> Decimal:
+        """cash in the till up to the end of the day"""
+        return await self._total(
+            column=LedgerEntry.cash,
+            on=on,
+        )
+
+    async def _total(
+        self,
+        column: InstrumentedAttribute[Decimal],
+        on: date | None,
+    ) -> Decimal:
         statement = select(
             func.coalesce(
                 func.sum(
-                    LedgerEntry.amount,
+                    column,
                 ),
                 0,
             ),
@@ -369,28 +651,37 @@ class LedgerRepository:
             ),
         )
 
-    async def last_stocktake_on(self) -> date | None:
-        """the day of the latest stocktake in force, nothing may be dated before it"""
+    async def last_count_on(
+        self,
+        kind: LedgerKind,
+    ) -> date | None:
+        """the day of the latest stocktake or cash count in force,
+        nothing it counted may be dated before it"""
         return await self.session.scalar(
             statement=select(
                 func.max(
                     LedgerEntry.occurred_on,
                 ),
             ).where(
-                *_stocktake_in_force(),
+                *_count_in_force(
+                    kind=kind,
+                ),
             ),
         )
 
-    async def has_stocktake_after(
+    async def has_count_after(
         self,
         entry: LedgerEntry,
+        kind: LedgerKind,
     ) -> bool:
-        """a stocktake in force comes later in the ledger order"""
+        """a stocktake or a cash count in force comes later in the ledger order"""
         return bool(
             await self.session.scalar(
                 statement=select(
                     exists().where(
-                        *_stocktake_in_force(),
+                        *_count_in_force(
+                            kind=kind,
+                        ),
                         tuple_(
                             LedgerEntry.occurred_on,
                             LedgerEntry.id,
@@ -428,6 +719,18 @@ class LedgerRepository:
                 .label(
                     name="balance_after",
                 ),
+                func.sum(
+                    LedgerEntry.cash,
+                )
+                .over(
+                    order_by=(
+                        LedgerEntry.occurred_on,
+                        LedgerEntry.id,
+                    ),
+                )
+                .label(
+                    name="cash_after",
+                ),
             )
         ).subquery()
         reversal = aliased(
@@ -449,9 +752,11 @@ class LedgerRepository:
             select(
                 LedgerEntry,
                 running.c.balance_after,
+                running.c.cash_after,
                 reversal.id,
                 Invoice.invoice_number,
                 Supplier.name,
+                Supplier.short_name,
             )
             .join(
                 target=running,
@@ -494,21 +799,31 @@ class LedgerRepository:
             LedgerRow(
                 entry=entry,
                 balance_after=balance_after,
+                cash_after=cash_after,
                 reversed_by_id=reversed_by_id,
                 invoice_number=invoice_number,
                 supplier_name=supplier_name,
+                supplier_short_name=supplier_short_name,
             )
-            for entry, balance_after, reversed_by_id, invoice_number, supplier_name in result.tuples()
+            for (
+                entry,
+                balance_after,
+                cash_after,
+                reversed_by_id,
+                invoice_number,
+                supplier_name,
+                supplier_short_name,
+            ) in result.tuples()
         ]
 
 
-def _stocktake_in_force() -> tuple:
-    """a stocktake that is neither a reversal nor reversed itself"""
+def _count_in_force(kind: LedgerKind) -> tuple:
+    """a stocktake or a cash count that is neither a reversal nor reversed itself"""
     reversal = aliased(
         LedgerEntry,
     )
     return (
-        LedgerEntry.kind == LedgerKind.STOCKTAKE,
+        LedgerEntry.kind == kind,
         LedgerEntry.reverses_id.is_(
             other=None,
         ),
@@ -638,6 +953,9 @@ class SupplierRepository:
         return list(
             result,
         )
+
+    async def commit(self) -> None:
+        await self.session.commit()
 
     async def rank_by_aliases(
         self,
@@ -840,6 +1158,26 @@ class ProductRepository:
             for product, item in result.tuples()
         ]
 
+    async def last_cost_prices(
+        self,
+        product_ids: Collection[int],
+    ) -> dict[int, Decimal]:
+        """the cost price of the last posted line of each product, never posted ones are left out"""
+        if not product_ids:
+            return {}
+        result = await self.session.execute(
+            statement=select_with_last_item().where(
+                Product.id.in_(
+                    other=product_ids,
+                ),
+            ),
+        )
+        return {
+            product.id: item.cost_price
+            for product, item in result.tuples()
+            if item is not None
+        }
+
     async def catalog(self) -> list[CatalogRow]:
         """every product of every supplier with all its spellings"""
         result = await self.session.execute(
@@ -864,6 +1202,43 @@ class ProductRepository:
             )
             for product, item in result.tuples()
         ]
+
+
+def _cost_total() -> ScalarSelect[Decimal]:
+    """owed to the supplier for the invoice of the outer query, zero without lines"""
+    return (
+        select(
+            func.coalesce(
+                func.sum(
+                    InvoiceItem.cost_price_total,
+                ),
+                0,
+            ),
+        )
+        .where(
+            InvoiceItem.invoice_id == Invoice.id,
+        )
+        .scalar_subquery()
+    )
+
+
+def _paid_total(on: date | None) -> ScalarSelect[Decimal]:
+    """paid for the invoice of the outer query up to the end of the day, or ever"""
+    statement = select(
+        func.coalesce(
+            func.sum(
+                InvoicePayment.amount,
+            ),
+            0,
+        ),
+    ).where(
+        InvoicePayment.invoice_id == Invoice.id,
+    )
+    if on is not None:
+        statement = statement.where(
+            InvoicePayment.paid_on <= on,
+        )
+    return statement.scalar_subquery()
 
 
 def select_with_last_item() -> Select[Product, InvoiceItem]:

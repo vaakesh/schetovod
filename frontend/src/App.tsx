@@ -114,7 +114,7 @@ export default function App() {
       case "posted":
         return <PostedInvoicePage key={route.id} id={route.id} go={go} />;
       case "catalog":
-        return <CatalogPage />;
+        return <CatalogPage ask={ask} />;
       case "ledger":
         return <LedgerPage go={go} ask={ask} />;
       case "report":

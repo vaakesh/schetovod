@@ -6,7 +6,7 @@ import LedgerEntryDialog from "../components/LedgerEntryDialog";
 import LedgerOperation from "../components/LedgerOperation";
 import RevaluationDialog from "../components/RevaluationDialog";
 import { formatDate, formatMoney, formatSigned } from "../format";
-import { KIND_LABELS } from "../ledger";
+import { KIND_LABELS, touchesCash, touchesStock } from "../ledger";
 import { message } from "../message";
 import type { Route } from "../router";
 import type { LedgerEntry, ManualKind } from "../types";
@@ -18,7 +18,8 @@ interface Props {
 
 const PAGE = 50;
 
-const ACTIONS: ManualKind[] = ["sale", "write_off", "stocktake"];
+const STOCK_ACTIONS: ManualKind[] = ["sale", "write_off", "stocktake"];
+const CASH_ACTIONS: ManualKind[] = ["cash_in", "cash_out", "cash_count"];
 
 // an invoice is never reversed, a reversal and a reversed entry are final
 function reversible(entry: LedgerEntry): boolean {
@@ -28,6 +29,7 @@ function reversible(entry: LedgerEntry): boolean {
 export default function LedgerPage({ go, ask }: Props) {
   const [entries, setEntries] = useState<LedgerEntry[] | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
+  const [cashBalance, setCashBalance] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [dialog, setDialog] = useState<ManualKind | "revaluation" | null>(null);
@@ -38,11 +40,28 @@ export default function LedgerPage({ go, ask }: Props) {
       const page = await getLedger(PAGE, 0);
       setEntries(page.entries);
       setBalance(page.balance);
+      setCashBalance(page.cash_balance);
       setHasMore(page.has_more);
     } catch (reason) {
       setError(message(reason));
     }
   }, []);
+
+  function action(kind: ManualKind) {
+    return (
+      <button
+        key={kind}
+        type="button"
+        className="button button-soft"
+        onClick={() => {
+          setError(null);
+          setDialog(kind);
+        }}
+      >
+        {KIND_LABELS[kind]}
+      </button>
+    );
+  }
 
   useEffect(() => {
     void load();
@@ -86,34 +105,31 @@ export default function LedgerPage({ go, ask }: Props) {
   return (
     <main className="page">
       <section className="ledger-head">
-        <div>
-          <div className="ledger-label">Остаток в рознице</div>
-          <div className="ledger-balance">{balance === null ? "—" : `${formatMoney(balance)} ₽`}</div>
+        <div className="ledger-balances">
+          <div>
+            <div className="ledger-label">Товар в рознице</div>
+            <div className="ledger-balance">{balance === null ? "—" : `${formatMoney(balance)} ₽`}</div>
+          </div>
+          <div>
+            <div className="ledger-label">В кассе</div>
+            <div className="ledger-balance">{cashBalance === null ? "—" : `${formatMoney(cashBalance)} ₽`}</div>
+          </div>
         </div>
-        <div className="ledger-actions">
-          {ACTIONS.map((kind) => (
+        <div className="ledger-action-groups">
+          <div className="ledger-actions">
+            {STOCK_ACTIONS.map(action)}
             <button
-              key={kind}
               type="button"
               className="button button-soft"
               onClick={() => {
                 setError(null);
-                setDialog(kind);
+                setDialog("revaluation");
               }}
             >
-              {KIND_LABELS[kind]}
+              {KIND_LABELS.revaluation}
             </button>
-          ))}
-          <button
-            type="button"
-            className="button button-soft"
-            onClick={() => {
-              setError(null);
-              setDialog("revaluation");
-            }}
-          >
-            {KIND_LABELS.revaluation}
-          </button>
+          </div>
+          <div className="ledger-actions">{CASH_ACTIONS.map(action)}</div>
         </div>
       </section>
 
@@ -128,11 +144,14 @@ export default function LedgerPage({ go, ask }: Props) {
           <table className="list ledger">
             <thead>
               <tr>
+                <th className="num">№</th>
                 <th>Дата</th>
                 <th>Операция</th>
                 <th>Комментарий</th>
-                <th className="num">Сумма</th>
+                <th className="num">Товар</th>
                 <th className="num">Остаток</th>
+                <th className="num">Касса</th>
+                <th className="num">В кассе</th>
                 <th />
               </tr>
             </thead>
@@ -141,13 +160,17 @@ export default function LedgerPage({ go, ask }: Props) {
                 const cancelled = entry.reverses_id !== null || entry.reversed_by_id !== null;
                 return (
                   <tr key={entry.id} className={cancelled ? "list-row cancelled" : "list-row"}>
+                    {/* the number a reversal refers to */}
+                    <td className="num muted-cell nowrap">{entry.id}</td>
                     <td className="nowrap">{formatDate(entry.occurred_on)}</td>
                     <td className="op">
                       <LedgerOperation entry={entry} go={go} />
                     </td>
                     <td className="ledger-comment">{entry.comment}</td>
-                    <td className="num strong nowrap">{formatSigned(entry.amount)}</td>
+                    <td className="num strong nowrap">{touchesStock(entry) && formatSigned(entry.amount)}</td>
                     <td className="num muted-cell nowrap">{formatMoney(entry.balance_after)}</td>
+                    <td className="num strong nowrap">{touchesCash(entry) && formatSigned(entry.cash)}</td>
+                    <td className="num muted-cell nowrap">{formatMoney(entry.cash_after)}</td>
                     <td className="row-actions">
                       {reversible(entry) && (
                         <button type="button" className="row-action" onClick={() => reverse(entry)}>

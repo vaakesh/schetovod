@@ -79,13 +79,28 @@ export default function LedgerOperation({ entry, go }: Props) {
       <span className="op-title">
         {KIND_LABELS[entry.kind]}
         {entry.reverses_id !== null && <span className="tag-soft">сторно №{entry.reverses_id}</span>}
-        {entry.reversed_by_id !== null && <span className="tag-soft">сторнирована</span>}
+        {entry.reversed_by_id !== null && (
+          <span className="tag-soft">сторнирована записью №{entry.reversed_by_id}</span>
+        )}
       </span>
       {/* what was counted and what the books said, the entry is the difference */}
       {entry.kind === "stocktake" && entry.reverses_id === null && (
         <span className="op-meta">
           насчитали {formatMoney(entry.balance_after)} · по учёту{" "}
           {formatMoney(Number(entry.balance_after) - Number(entry.amount))}
+        </span>
+      )}
+      {entry.kind === "cash_count" && entry.reverses_id === null && (
+        <span className="op-meta">
+          в кассе {formatMoney(entry.cash_after)} · по учёту{" "}
+          {formatMoney(Number(entry.cash_after) - Number(entry.cash))}
+        </span>
+      )}
+      {/* the sale takes the whole amount from the stock, the till gets the cash part */}
+      {entry.kind === "sale" && entry.reverses_id === null && (
+        <span className="op-meta">
+          наличные {formatMoney(entry.cash)} · безнал{" "}
+          {formatMoney(-Number(entry.amount) - Number(entry.cash))}
         </span>
       )}
       {entry.kind === "revaluation" && <RevaluationLines entryId={entry.id} />}

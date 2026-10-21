@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { getPosted } from "../api";
+import PaymentsBlock from "../components/PaymentsBlock";
 import { formatDate, formatMoney, formatNumber, formatText } from "../format";
 import { message } from "../message";
 import type { Route } from "../router";
@@ -130,6 +131,8 @@ export default function PostedInvoicePage({ id, go }: Props) {
           </table>
         </div>
       </section>
+
+      <PaymentsBlock invoice={invoice} onChange={setInvoice} />
 
       <p className="page-meta">
         <a

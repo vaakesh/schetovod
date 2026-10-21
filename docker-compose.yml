@@ -16,6 +16,8 @@ services:
       OPENAI_TOKEN_FILE: /run/secrets/openai_token
     secrets:
       - openai_token
+    volumes:
+      - ./invoices:/invoices
     ports:
       - "127.0.0.1:${APP_PORT:?Set APP_PORT in .env}:8000"
     healthcheck:
@@ -43,7 +45,7 @@ services:
       app:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}:80"
+      - "0.0.0.0:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}:80"
 
   postgres:
     image: postgres:18.4

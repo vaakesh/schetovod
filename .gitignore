@@ -36,6 +36,7 @@ htmlcov/
 .DS_Store
 
 invoices/
+sources/
 skills-lock.json
 .agents
 .claude

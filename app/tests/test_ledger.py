@@ -41,6 +41,9 @@ class LedgerApi(InvoiceApi):
             amount=Decimal(
                 value=amount,
             ),
+            cash=Decimal(
+                value=0,
+            ),
             occurred_on=shifted(
                 days=shift,
             ),
@@ -66,16 +69,65 @@ class LedgerApi(InvoiceApi):
     def sale(
         self,
         amount: str,
+        cash: str = "0.00",
         shift: int = 0,
         expected: int = 200,
     ) -> dict[str, Any]:
+        """the whole sale, the cash part goes into the till and the rest is cashless"""
+        card = Decimal(
+            value=amount,
+        ) - Decimal(
+            value=cash,
+        )
         return self.post(
             url="/ledger/sale",
             payload={
                 "occurred_on": day(
                     shift=shift,
                 ),
+                "cash": cash,
+                "card": str(
+                    card,
+                ),
+                "comment": None,
+            },
+            expected=expected,
+        )
+
+    def cash(
+        self,
+        kind: str,
+        amount: str,
+        comment: str | None = None,
+        shift: int = 0,
+        expected: int = 200,
+    ) -> dict[str, Any]:
+        """a cash-in or a cash-out"""
+        return self.post(
+            url=f"/ledger/{kind}",
+            payload={
+                "occurred_on": day(
+                    shift=shift,
+                ),
                 "amount": amount,
+                "comment": comment,
+            },
+            expected=expected,
+        )
+
+    def cash_count(
+        self,
+        counted: str,
+        shift: int = 0,
+        expected: int = 200,
+    ) -> dict[str, Any]:
+        return self.post(
+            url="/ledger/cash-count",
+            payload={
+                "occurred_on": day(
+                    shift=shift,
+                ),
+                "counted": counted,
                 "comment": None,
             },
             expected=expected,
@@ -165,29 +217,267 @@ class TestOutflow(LedgerApi):
         assert self.store.locks == 2
 
     @pytest.mark.parametrize(
-        argnames=("amount", "shift", "location"),
+        argnames=("amount", "cash", "shift", "detail"),
         argvalues=[
-            ("0", 0, ["body", "amount"]),
-            ("10.00", 1, None),
+            ("0", "0.00", 0, "Укажите выручку наличными или безналом"),
+            ("10.00", "0.00", 1, "Дата не может быть в будущем"),
+            # more cash than the whole sale leaves a negative cashless part
+            ("10.00", "15.00", 0, ["body", "card"]),
         ],
     )
     def test_returns_422_when_sale_amount_or_date_is_invalid(
         self,
         amount: str,
+        cash: str,
         shift: int,
-        location: list[str] | None,
+        detail: str | list[str],
     ) -> None:
         response = self.sale(
             amount=amount,
+            cash=cash,
             shift=shift,
             expected=422,
         )
 
-        if location is None:
-            assert response == {"detail": "Дата не может быть в будущем"}
+        if isinstance(
+            detail,
+            str,
+        ):
+            assert response == {"detail": detail}
         else:
-            assert [error["loc"] for error in response["detail"]] == [location]
+            assert [error["loc"] for error in response["detail"]] == [detail]
         assert self.store.entries == []
+
+
+class TestCash(LedgerApi):
+    def test_the_till_follows_the_takings_and_the_payments(self) -> None:
+        self.stock(
+            amount="200000.00",
+        )
+
+        sale = self.sale(
+            amount="40000.00",
+            cash="15000.00",
+        )
+        taken = self.cash(
+            kind="cash-out",
+            amount="10000.00",
+            comment="забрал владелец",
+        )
+        put = self.cash(
+            kind="cash-in",
+            amount="20000.00",
+        )
+        paid = self.cash(
+            kind="cash-out",
+            amount="3200.00",
+            comment="накладная № 17",
+        )
+
+        # the cashless part is gone to the bank, only the cash stays in the till
+        assert (
+            sale["amount"],
+            sale["balance"],
+            sale["cash"],
+            sale["cash_balance"],
+        ) == (
+            "-40000.00",
+            "160000.00",
+            "15000.00",
+            "15000.00",
+        )
+        assert [
+            (posted["cash"], posted["cash_balance"], posted["balance"])
+            for posted in (taken, put, paid)
+        ] == [
+            ("-10000.00", "5000.00", "160000.00"),
+            ("20000.00", "25000.00", "160000.00"),
+            ("-3200.00", "21800.00", "160000.00"),
+        ]
+        page = self.history()
+        assert (page["balance"], page["cash_balance"]) == ("160000.00", "21800.00")
+        assert [
+            (row["kind"], row["amount"], row["cash"], row["cash_after"])
+            for row in page["entries"][:2]
+        ] == [
+            ("cash_out", "0", "-3200.00", "21800.00"),
+            ("cash_in", "0", "20000.00", "25000.00"),
+        ]
+        assert self.store.entries[-1].comment == "накладная № 17"
+
+    def test_cash_out_needs_a_comment(self) -> None:
+        response = self.cash(
+            kind="cash-out",
+            amount="100.00",
+            expected=422,
+        )
+
+        assert [error["loc"] for error in response["detail"]] == [["body", "comment"]]
+        assert self.store.entries == []
+
+    def test_cash_count_records_the_shortage(self) -> None:
+        self.cash(
+            kind="cash-in",
+            amount="5000.00",
+            shift=-1,
+        )
+        self.sale(
+            amount="1000.00",
+            cash="600.00",
+        )
+
+        posted = self.cash_count(
+            counted="5500.00",
+        )
+
+        assert (posted["amount"], posted["cash"], posted["cash_balance"]) == (
+            "0",
+            "-100.00",
+            "5500.00",
+        )
+        balance = self.client.get(
+            url="/ledger/balance",
+        ).json()
+        assert (
+            balance["cash_balance"],
+            balance["cash_closed_on"],
+            balance["closed_on"],
+        ) == (
+            "5500.00",
+            day(),
+            None,
+        )
+
+    def test_a_count_closes_only_what_it_counted(self) -> None:
+        self.stock(
+            amount="1000.00",
+            shift=-3,
+        )
+        self.stocktake(
+            counted="1000.00",
+        )
+        self.cash_count(
+            counted="0",
+        )
+
+        # the stock and the cash both closed today
+        assert (
+            self.post(
+                url="/ledger/write-off",
+                payload={
+                    "occurred_on": day(
+                        shift=-1,
+                    ),
+                    "amount": "10.00",
+                    "comment": None,
+                },
+                expected=409,
+            )["detail"]
+            == f"Период закрыт переучётом от {day()}"
+        )
+        assert (
+            self.cash(
+                kind="cash-in",
+                amount="10.00",
+                shift=-1,
+                expected=409,
+            )["detail"]
+            == f"Касса закрыта сверкой от {day()}"
+        )
+
+    def test_a_cash_count_leaves_the_stock_open(self) -> None:
+        self.stock(
+            amount="1000.00",
+            shift=-3,
+        )
+        self.cash_count(
+            counted="0",
+        )
+
+        self.post(
+            url="/ledger/write-off",
+            payload={
+                "occurred_on": day(
+                    shift=-1,
+                ),
+                "amount": "10.00",
+                "comment": None,
+            },
+        )
+        # a cashless sale does not touch the till
+        self.sale(
+            amount="20.00",
+            shift=-1,
+        )
+        blocked = self.sale(
+            amount="20.00",
+            cash="5.00",
+            shift=-1,
+            expected=409,
+        )
+
+        assert blocked["detail"] == f"Касса закрыта сверкой от {day()}"
+
+    def test_a_stocktake_leaves_the_till_open(self) -> None:
+        self.stock(
+            amount="1000.00",
+            shift=-3,
+        )
+        self.stocktake(
+            counted="1000.00",
+        )
+
+        posted = self.cash(
+            kind="cash-in",
+            amount="300.00",
+            shift=-1,
+        )
+
+        assert posted["cash_balance"] == "300.00"
+
+    def test_reversal_of_a_sale_returns_the_stock_and_the_cash(self) -> None:
+        self.stock(
+            amount="1000.00",
+        )
+        sale = self.sale(
+            amount="400.00",
+            cash="150.00",
+        )
+
+        reversal = self.reverse(
+            entry_id=sale["id"],
+        )
+
+        assert (reversal["amount"], reversal["cash"]) == ("400.00", "-150.00")
+        assert (reversal["balance"], reversal["cash_balance"]) == ("1000.00", "0.00")
+
+    def test_cash_count_blocks_earlier_cash_reversals(self) -> None:
+        put = self.cash(
+            kind="cash-in",
+            amount="500.00",
+            shift=-1,
+        )
+        sale = self.sale(
+            amount="100.00",
+            shift=-1,
+        )
+        self.cash_count(
+            counted="500.00",
+        )
+
+        blocked = self.reverse(
+            entry_id=put["id"],
+            expected=409,
+        )
+        # a cashless sale changed nothing the count saw in the till
+        self.reverse(
+            entry_id=sale["id"],
+        )
+
+        assert (
+            blocked["detail"]
+            == "После этой записи была сверка кассы, исправьте кассу новой сверкой"
+        )
 
 
 class TestStocktake(LedgerApi):
@@ -254,7 +544,12 @@ class TestStocktake(LedgerApi):
                     shift=-1,
                 ),
             },
-        ).json() == {"balance": "1000.00", "closed_on": day()}
+        ).json() == {
+            "balance": "1000.00",
+            "cash_balance": "0",
+            "closed_on": day(),
+            "cash_closed_on": None,
+        }
 
 
 class TestReverse(LedgerApi):
@@ -274,7 +569,9 @@ class TestReverse(LedgerApi):
         assert reversal == {
             "id": self.store.entries[-1].id,
             "amount": "250.00",
+            "cash": "0.00",
             "balance": "1000.00",
+            "cash_balance": "0.00",
         }
         entry = self.store.entries[-1]
         assert (entry.kind, entry.reverses_id, entry.comment, entry.occurred_on) == (
@@ -616,6 +913,113 @@ class TestProductEdit(LedgerApi):
 
         assert sugar.retail_price == 65
 
+    @pytest.mark.parametrize(
+        argnames=("retail_price", "quantity", "has_price_tag"),
+        argvalues=[
+            # only the name is corrected, the tag shows the same price
+            (65, None, True),
+            (70, None, False),
+            (70, "4", False),
+        ],
+    )
+    def test_a_new_price_resets_the_price_tag(
+        self,
+        retail_price: int,
+        quantity: str | None,
+        has_price_tag: bool,
+    ) -> None:
+        _, sugar, _ = self.known_supplier()
+        sugar.has_price_tag = True
+
+        self.edit(
+            product_id=sugar.id,
+            name="Сахар 1 кг",
+            retail_price=retail_price,
+            quantity=quantity,
+        )
+
+        assert sugar.has_price_tag is has_price_tag
+
+
+class TestPriceTag(LedgerApi):
+    def mark(
+        self,
+        product_id: int,
+        has_price_tag: bool,
+        retail_price: int,
+        expected: int = 204,
+    ) -> Any:
+        response = self.client.put(
+            url=f"/product/{product_id}/price-tag",
+            json={
+                "has_price_tag": has_price_tag,
+                "retail_price": retail_price,
+            },
+        )
+        assert response.status_code == expected, response.text
+        return response.json() if response.content else None
+
+    def test_marks_and_unmarks_the_tag(self) -> None:
+        _, sugar, _ = self.known_supplier()
+
+        self.mark(
+            product_id=sugar.id,
+            has_price_tag=True,
+            retail_price=65,
+        )
+        assert sugar.has_price_tag is True
+        catalog = self.client.get(
+            url="/catalog",
+        ).json()
+        assert [product["has_price_tag"] for product in catalog["products"]] == [
+            True,
+            False,
+        ]
+
+        self.mark(
+            product_id=sugar.id,
+            has_price_tag=False,
+            retail_price=65,
+        )
+        assert sugar.has_price_tag is False
+
+    def test_a_tag_for_an_older_price_is_rejected(self) -> None:
+        _, sugar, _ = self.known_supplier()
+
+        assert self.mark(
+            product_id=sugar.id,
+            has_price_tag=True,
+            retail_price=60,
+            expected=409,
+        ) == {"detail": "Цена товара изменилась, обновите страницу"}
+
+        assert sugar.has_price_tag is False
+        self.mark(
+            product_id=999,
+            has_price_tag=True,
+            retail_price=60,
+            expected=404,
+        )
+
+    def test_revaluation_and_its_reversal_reset_the_tag(self) -> None:
+        _, sugar, salt = self.known_supplier()
+        sugar.has_price_tag = True
+        salt.has_price_tag = True
+
+        posted = self.revalue(
+            lines=[
+                (sugar.id, "4", 70),
+            ],
+        )
+
+        assert (sugar.has_price_tag, salt.has_price_tag) == (False, True)
+        sugar.has_price_tag = True
+        self.reverse(
+            entry_id=posted["id"],
+        )
+        # the old price is back on the shelf, the tag hung for the new one is wrong
+        assert (sugar.retail_price, sugar.has_price_tag) == (65, False)
+
 
 class TestRevaluationLines(LedgerApi):
     def lines(
@@ -714,6 +1118,7 @@ class TestReport(LedgerApi):
         )
         self.sale(
             amount="300.00",
+            cash="100.00",
             shift=-2,
         )
         self.reverse(
@@ -743,6 +1148,15 @@ class TestReport(LedgerApi):
         self.stock(
             amount="100.00",
             shift=0,
+        )
+        self.cash(
+            kind="cash-in",
+            amount="500.00",
+        )
+        self.cash(
+            kind="cash-out",
+            amount="40.00",
+            comment="пакеты",
         )
 
     def test_totals_add_up_from_the_opening_to_the_closing(self) -> None:
@@ -777,18 +1191,40 @@ class TestReport(LedgerApi):
             "revaluations": "10.00",
             "closing": "5700.00",
         }
+        assert {
+            key: report[key]
+            for key in (
+                "cash_opening",
+                "sales_cash",
+                "sales_card",
+                "cash_ins",
+                "cash_outs",
+                "cash_counts",
+                "cash_closing",
+            )
+        } == {
+            "cash_opening": "0",
+            "sales_cash": "100.00",
+            "sales_card": "200.00",
+            "cash_ins": "500.00",
+            "cash_outs": "-40.00",
+            "cash_counts": "0",
+            "cash_closing": "560.00",
+        }
         assert [
-            (row["kind"], row["amount"], row["balance_after"])
+            (row["kind"], row["amount"], row["balance_after"], row["cash_after"])
             for row in report["entries"]
         ] == [
-            ("invoice", "1000.00", "6000.00"),
-            ("sale", "-700.00", "5300.00"),
-            ("sale", "-300.00", "5000.00"),
-            ("sale", "700.00", "5700.00"),
-            ("write_off", "-50.00", "5650.00"),
-            ("revaluation", "10.00", "5660.00"),
-            ("stocktake", "-60.00", "5600.00"),
-            ("invoice", "100.00", "5700.00"),
+            ("invoice", "1000.00", "6000.00", "0"),
+            ("sale", "-700.00", "5300.00", "0.00"),
+            ("sale", "-300.00", "5000.00", "100.00"),
+            ("sale", "700.00", "5700.00", "100.00"),
+            ("write_off", "-50.00", "5650.00", "100.00"),
+            ("revaluation", "10.00", "5660.00", "100.00"),
+            ("stocktake", "-60.00", "5600.00", "100.00"),
+            ("invoice", "100.00", "5700.00", "100.00"),
+            ("cash_in", "0", "5700.00", "600.00"),
+            ("cash_out", "0", "5700.00", "560.00"),
         ]
 
     def test_period_bounds_are_inclusive_and_ordered(self) -> None:
@@ -853,6 +1289,12 @@ class TestReport(LedgerApi):
             )
         }
         assert (totals["Остаток на начало"], totals["Остаток на конец"]) == (5000, 5700)
+        assert (
+            totals["Касса на начало"],
+            totals["Продажи наличными"],
+            totals["Касса на конец"],
+            totals["Продажи безналом"],
+        ) == (0, 100, 560, 200)
         rows = list(
             workbook["Записи"].iter_rows(
                 min_row=2,
@@ -860,10 +1302,251 @@ class TestReport(LedgerApi):
             ),
         )
         assert [(row[2], row[5]) for row in rows[1:4]] == [
-            ("Касса, сторнирована", -700),
-            ("Касса", -300),
-            (f"Касса, сторно №{rows[1][0]}", 700),
+            (f"Продажа, сторнирована записью №{rows[3][0]}", -700),
+            ("Продажа", -300),
+            (f"Продажа, сторно №{rows[1][0]}", 700),
         ]
+
+
+class TestPeriodReport(LedgerApi):
+    def make_ledger(self) -> int:
+        """a stock before the period, then sales, a cash-in and a confirmed invoice paid in part"""
+        self.stock(
+            amount="5000.00",
+            shift=-7,
+        )
+        sale = self.sale(
+            amount="700.00",
+            cash="700.00",
+            shift=-2,
+        )
+        self.sale(
+            amount="300.00",
+            cash="100.00",
+            shift=-2,
+        )
+        self.reverse(
+            entry_id=sale["id"],
+        )
+        self.cash(
+            kind="cash-in",
+            amount="50.00",
+            comment="размен",
+            shift=-1,
+        )
+        self.known_supplier()
+        draft = self.upload()
+        self.post(
+            url=f"/invoice/{draft['id']}/confirm",
+            payload={
+                "occurred_on": day(),
+            },
+        )
+        self.post(
+            url=f"/invoice/{draft['id']}/payments",
+            payload={
+                "paid_on": day(),
+                "amount": "100.00",
+                "comment": None,
+            },
+        )
+        return draft["id"]
+
+    def days(
+        self,
+        date_from: str,
+        date_to: str,
+    ) -> dict[str, Any]:
+        response = self.client.get(
+            url="/ledger/report/days",
+            params={
+                "date_from": date_from,
+                "date_to": date_to,
+            },
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def test_period_by_days(self) -> None:
+        self.make_ledger()
+
+        report = self.days(
+            date_from=day(
+                shift=-3,
+            ),
+            date_to=day(),
+        )
+
+        sums = (
+            "sales_cash",
+            "sales_card",
+            "cash_moves",
+            "cash_after",
+            "balance_after",
+        )
+        assert [
+            Decimal(
+                value=report[key],
+            )
+            for key in ("opening", "cash_opening")
+        ] == [5000, 0]
+        assert [
+            (
+                row["day"],
+                *[
+                    Decimal(
+                        value=row[key],
+                    )
+                    for key in sums
+                ],
+            )
+            for row in report["days"]
+        ] == [
+            (day(shift=-2), 100, 200, 0, 100, 4700),
+            (day(shift=-1), 0, 0, 50, 150, 4700),
+            # the invoice is on the day it was posted
+            (
+                day(),
+                0,
+                0,
+                0,
+                150,
+                Decimal(
+                    value="4898.50",
+                ),
+            ),
+        ]
+        assert report["days"][1]["cash_notes"] == [
+            {"kind": "cash_in", "cash": "50.00", "comment": "размен"},
+        ]
+        assert report["days"][2]["invoices"] == [
+            {
+                "supplier_name": "ООО «Поставщик»",
+                "invoice_number": "00042/А",
+                "cost_total": "155.00",
+                "retail_total": "198.50",
+                "paid": "100.00",
+            },
+        ]
+        assert report["paid_in_period"] == "100.00"
+        assert [(debt["supplier_name"], debt["debt"]) for debt in report["debts"]] == [
+            ("ООО «Поставщик»", "55.00"),
+        ]
+
+    def test_reports_print_the_short_name(self) -> None:
+        self.make_ledger()
+        [supplier] = self.store.suppliers.values()
+        response = self.client.put(
+            url=f"/supplier/{supplier.id}",
+            json={
+                "name": supplier.name,
+                "short_name": "Поставщик",
+                "inn": supplier.inn,
+            },
+        )
+        assert response.status_code == 200, response.text
+
+        days = self.days(
+            date_from=day(),
+            date_to=day(),
+        )
+        report = self.client.get(
+            url="/ledger/report",
+            params={
+                "date_from": day(),
+                "date_to": day(),
+            },
+        ).json()
+        ledger = self.client.get(
+            url="/ledger",
+        ).json()
+
+        assert [row["supplier_name"] for row in days["days"][0]["invoices"]] == [
+            "Поставщик",
+        ]
+        assert [debt["supplier_name"] for debt in days["debts"]] == ["Поставщик"]
+        assert [
+            entry["supplier_name"]
+            for entry in report["entries"]
+            if entry["kind"] == "invoice"
+        ] == ["Поставщик"]
+        # the ledger keeps the full name, the stock before the period has no invoice
+        assert [
+            entry["supplier_name"]
+            for entry in ledger["entries"]
+            if entry["invoice_id"] is not None
+        ] == ["ООО «Поставщик»"]
+
+    def test_debt_is_counted_on_the_last_day(self) -> None:
+        self.make_ledger()
+
+        report = self.days(
+            date_from=day(
+                shift=-3,
+            ),
+            date_to=day(
+                shift=-1,
+            ),
+        )
+
+        # the invoice was posted today, the day before nothing was owed
+        assert report["debts"] == []
+        assert (
+            Decimal(
+                value=report["paid_in_period"],
+            )
+            == 0
+        )
+
+    def test_pdf(self) -> None:
+        self.make_ledger()
+
+        response = self.client.get(
+            url="/ledger/report.pdf",
+            params={
+                "date_from": day(
+                    shift=-3,
+                ),
+                "date_to": day(),
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.headers["content-type"] == "application/pdf"
+        assert (
+            response.headers["content-disposition"]
+            == f'attachment; filename="otchet_{day(shift=-3)}_{day()}.pdf"'
+        )
+        assert response.content.startswith(
+            b"%PDF",
+        )
+
+    def test_pdf_of_an_empty_period(self) -> None:
+        response = self.client.get(
+            url="/ledger/report.pdf",
+            params={
+                "date_from": day(),
+                "date_to": day(),
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.content.startswith(
+            b"%PDF",
+        )
+
+    def test_reversed_period_is_rejected(self) -> None:
+        response = self.client.get(
+            url="/ledger/report.pdf",
+            params={
+                "date_from": day(),
+                "date_to": day(
+                    shift=-1,
+                ),
+            },
+        )
+
+        assert response.status_code == 422
 
 
 class TestHistory(LedgerApi):

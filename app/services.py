@@ -1,16 +1,18 @@
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
+from itertools import groupby
 from typing import Annotated, NoReturn
 
 from fastapi import Depends, HTTPException, status
 from pydantic import JsonValue
 
 from config import today
-from enums import InvoiceStatus, LedgerKind
+from enums import InvoiceSort, InvoiceStatus, LedgerKind
 from models import (
     Invoice,
     InvoiceItem,
+    InvoicePayment,
     LedgerEntry,
     Product,
     ProductAlias,
@@ -39,6 +41,7 @@ from pricing import (
 )
 from repositories import (
     InvoiceRepositoryDep,
+    LedgerRepository,
     LedgerRepositoryDep,
     LedgerRow,
     ProductRepositoryDep,
@@ -46,6 +49,10 @@ from repositories import (
     SupplierRepositoryDep,
 )
 from schemas import (
+    MAX_LINE_NO,
+    CashCountCreate,
+    CashNote,
+    CashOutCreate,
     Catalog,
     CatalogProduct,
     ConfirmedInvoice,
@@ -55,6 +62,7 @@ from schemas import (
     FormLine,
     InvoiceDraft,
     InvoiceExtraction,
+    InvoiceItemExtraction,
     InvoiceList,
     InvoiceListItem,
     Issue,
@@ -65,15 +73,24 @@ from schemas import (
     LedgerReport,
     NewSupplier,
     OutflowCreate,
+    PaymentCreate,
+    PaymentOut,
+    PeriodReport,
     PostedInvoice,
     PostedLine,
+    PriceTagMark,
     ProductEdit,
     ProductSummary,
+    ReportDay,
+    ReportInvoice,
     RevaluationCreate,
     RevaluationLineOut,
+    SaleCreate,
     SimilarProduct,
     StocktakeCreate,
     SupplierCandidate,
+    SupplierDebt,
+    SupplierEdit,
     SupplierRef,
     SupplierSummary,
     format_invoice_date,
@@ -94,6 +111,7 @@ type ProductKey = tuple[str, int | str]
 class PlannedLine:
     """a form line with what is derived from it and from the catalog"""
 
+    # stable invoice line number, independent of the current array position
     position: int
     form: FormLine
     prices: LinePrices
@@ -108,6 +126,8 @@ class PlannedLine:
     markup_pct: Decimal | None = None
     retail_price: Decimal | None = None
     retail_price_total: Decimal | None = None
+    # the cost with VAT of the last delivery of the product when this line has another one
+    previous_cost_price: Decimal | None = None
     # the shelf price of the product when this line changes it
     previous_retail_price: Decimal | None = None
     similar: list[SimilarProduct] = field(
@@ -179,14 +199,18 @@ class InvoiceService:
     async def list_invoices(
         self,
         status: InvoiceStatus | None,
+        unpaid: bool,
         query: str | None,
+        sort: InvoiceSort,
         limit: int,
         offset: int,
     ) -> InvoiceList:
         # one row more tells whether there is another page
         rows = await self.invoices.search(
             status=status,
+            unpaid=unpaid,
             query=query,
+            sort=sort,
             limit=limit + 1,
             offset=offset,
         )
@@ -199,6 +223,9 @@ class InvoiceService:
                     invoice_date=row.invoice.invoice_date,
                     supplier_name=row.supplier_name,
                     retail_total=row.retail_total,
+                    debt=(
+                        None if row.cost_total is None else row.cost_total - row.paid
+                    ),
                     lines=row.lines,
                     created_at=row.invoice.created_at,
                 )
@@ -233,16 +260,29 @@ class InvoiceService:
             )
         items = sorted(
             invoice.items,
-            key=lambda item: item.line_no,
+            key=lambda item: item.id,
+        )
+        cost_total = sum(
+            (item.cost_price_total for item in items),
+            start=Decimal(
+                value=0,
+            ),
+        )
+        payments = await self.invoices.payments_of(
+            invoice_id=invoice.id,
+        )
+        paid = sum(
+            (payment.amount for payment in payments),
+            start=Decimal(
+                value=0,
+            ),
         )
         return PostedInvoice(
             id=invoice.id,
             invoice_number=invoice.invoice_number,
             invoice_date=invoice.invoice_date,
-            supplier=SupplierSummary(
-                id=supplier.id,
-                name=supplier.name,
-                inn=supplier.inn,
+            supplier=_supplier_summary(
+                supplier=supplier,
             ),
             lines=[
                 PostedLine(
@@ -264,14 +304,99 @@ class InvoiceService:
                 )
                 for item in items
             ],
-            cost_total=sum(
-                (item.cost_price_total for item in items),
-                start=Decimal(
-                    value=0,
-                ),
-            ),
+            cost_total=cost_total,
             retail_total=entry.amount,
             ledger_entry_id=entry.id,
+            paid=paid,
+            debt=cost_total - paid,
+            payments=[
+                PaymentOut(
+                    id=payment.id,
+                    paid_on=payment.paid_on,
+                    amount=payment.amount,
+                    comment=payment.comment,
+                )
+                for payment in payments
+            ],
+        )
+
+    async def add_payment(
+        self,
+        invoice_id: int,
+        payload: PaymentCreate,
+    ) -> PostedInvoice:
+        """a part or the rest of what is owed to the supplier, the till is not touched"""
+        invoice = await self.invoices.lock_confirmed(
+            invoice_id=invoice_id,
+        )
+        if invoice is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Проведённая накладная не найдена",
+            )
+        if payload.paid_on > today():
+            _invalid(
+                detail="Дата оплаты не может быть в будущем",
+            )
+        cost_totals = await self.invoices.cost_totals(
+            invoice_ids=[
+                invoice.id,
+            ],
+        )
+        paid_totals = await self.invoices.paid_totals(
+            invoice_ids=[
+                invoice.id,
+            ],
+            on=None,
+        )
+        zero = Decimal(
+            value=0,
+        )
+        debt = cost_totals.get(
+            invoice.id,
+            zero,
+        ) - paid_totals.get(
+            invoice.id,
+            zero,
+        )
+        if payload.amount > debt:
+            _invalid(
+                detail=f"Оплата больше долга по накладной, осталось {debt} ₽",
+            )
+        await self.invoices.add_payment(
+            payment=InvoicePayment(
+                invoice_id=invoice.id,
+                paid_on=payload.paid_on,
+                amount=payload.amount,
+                comment=payload.comment,
+            ),
+        )
+        await self.invoices.commit()
+        return await self.get_posted(
+            invoice_id=invoice.id,
+        )
+
+    async def delete_payment(
+        self,
+        invoice_id: int,
+        payment_id: int,
+    ) -> PostedInvoice:
+        """a payment entered by mistake, nothing else depends on it"""
+        payment = await self.invoices.get_payment(
+            invoice_id=invoice_id,
+            payment_id=payment_id,
+        )
+        if payment is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Оплата не найдена",
+            )
+        await self.invoices.delete_payment(
+            payment=payment,
+        )
+        await self.invoices.commit()
+        return await self.get_posted(
+            invoice_id=invoice_id,
         )
 
     async def get_draft(
@@ -291,6 +416,19 @@ class InvoiceService:
     ) -> InvoiceDraft:
         draft_invoice = await self._get_draft(
             invoice_id=invoice_id,
+        )
+        extraction = InvoiceExtraction.model_validate(
+            obj=draft_invoice.extracted,
+        )
+        numbered_items = _numbered_extraction(
+            extraction=extraction,
+        )
+        _number_form_lines(
+            form=form,
+            source_max=max(
+                numbered_items,
+                default=0,
+            ),
         )
         draft_invoice.form = form.model_dump(
             mode="json",
@@ -316,6 +454,7 @@ class InvoiceService:
     async def confirm_invoice(
         self,
         invoice_id: int,
+        occurred_on: date,
     ) -> ConfirmedInvoice:
         """writes the catalog changes, the lines and the inflow at retail prices"""
         # taken before the plan, so a concurrent confirmation of this invoice or of its copy
@@ -323,6 +462,13 @@ class InvoiceService:
         await self.ledger.lock()
         draft_invoice = await self._get_draft(
             invoice_id=invoice_id,
+        )
+        # the day the goods came, it may be earlier than the confirmation
+        await _check_date(
+            ledger=self.ledger,
+            on=occurred_on,
+            stock=True,
+            cash=False,
         )
         plan = await self._plan(
             draft_invoice=draft_invoice,
@@ -416,6 +562,7 @@ class InvoiceService:
         entry = await self.ledger.create(
             entry=LedgerEntry(
                 kind=LedgerKind.INVOICE,
+                occurred_on=occurred_on,
                 amount=retail_total,
                 invoice_id=draft_invoice.id,
                 invoice_status=InvoiceStatus.CONFIRMED,
@@ -424,6 +571,7 @@ class InvoiceService:
         revaluation = await self._revalue(
             revalued=revalued,
             invoice_number=plan.form.invoice_number,
+            occurred_on=occurred_on,
         )
         balance = await self.ledger.balance()
         await self.invoices.commit()
@@ -439,6 +587,7 @@ class InvoiceService:
         self,
         revalued: list[tuple[PlannedLine, Product, InvoiceItem, Decimal]],
         invoice_number: str | None,
+        occurred_on: date,
     ) -> Decimal | None:
         """the old stock of the lines takes the new price, one entry for the invoice"""
         items = []
@@ -474,6 +623,7 @@ class InvoiceService:
         entry = await self.ledger.create(
             entry=LedgerEntry(
                 kind=LedgerKind.REVALUATION,
+                occurred_on=occurred_on,
                 amount=amount,
                 comment=f"по накладной № {invoice_number}",
             ),
@@ -535,13 +685,17 @@ class InvoiceService:
                     name=line.form.name,
                     markup_pct=line.markup_pct,
                     retail_price=line.retail_price,
+                    has_price_tag=False,
                 ),
             )
         else:
             if product.markup_pct != line.markup_pct:
                 product.markup_pct = line.markup_pct
-            if product.retail_price != line.retail_price:
-                product.retail_price = line.retail_price
+            # a new cost alone keeps the tag, only a new shelf price resets it
+            _reprice(
+                product=product,
+                price=line.retail_price,
+            )
         products[line.key] = product
         return product
 
@@ -582,10 +736,8 @@ class InvoiceService:
             ),
             supplier=None
             if plan.supplier is None
-            else SupplierSummary(
-                id=plan.supplier.id,
-                name=plan.supplier.name,
-                inn=plan.supplier.inn,
+            else _supplier_summary(
+                supplier=plan.supplier,
             ),
             supplier_candidates=plan.candidates,
             extraction=plan.extraction,
@@ -598,15 +750,26 @@ class InvoiceService:
         extraction = InvoiceExtraction.model_validate(
             obj=draft_invoice.extracted,
         )
+        numbered_items = _numbered_extraction(
+            extraction=extraction,
+        )
         if draft_invoice.form is None:
             form = await self._initial_form(
                 draft_invoice=draft_invoice,
                 extraction=extraction,
+                numbered_items=numbered_items,
             )
         else:
             form = DraftForm.model_validate(
                 obj=draft_invoice.form,
             )
+        _number_form_lines(
+            form=form,
+            source_max=max(
+                numbered_items,
+                default=0,
+            ),
+        )
         plan = DraftPlan(
             form=form,
             extraction=extraction,
@@ -696,24 +859,28 @@ class InvoiceService:
                 supplier_id=plan.supplier.id,
                 aliases=known_aliases,
             )
-        for position, (form_line, alias) in enumerate(
-            zip(
-                form.lines,
-                aliases,
-                strict=True,
-            ),
-            start=1,
+        for form_line, alias in zip(
+            form.lines,
+            aliases,
+            strict=True,
         ):
+            if form_line.line_no is None:
+                raise RuntimeError(
+                    "every planned line has a number",
+                )
             plan.lines.append(
                 await self._plan_line(
                     plan=plan,
-                    position=position,
+                    position=form_line.line_no,
                     form_line=form_line,
                     alias=alias,
                     known=known,
                 ),
             )
         await self._find_similar(
+            plan=plan,
+        )
+        await self._compare_costs(
             plan=plan,
         )
         _price_lines(
@@ -724,10 +891,12 @@ class InvoiceService:
         )
 
         for line in plan.lines:
-            if line.position > len(extraction.items):
+            read = numbered_items.get(
+                line.position,
+            )
+            if read is None:
                 continue
-            read = extraction.items[line.position - 1]
-            # the line is the one the model read, not added or moved by the user
+            # the stable number keeps the source row when preceding rows are removed
             if read.name == line.form.name:
                 plan.issues.extend(
                     check_read_prices(
@@ -822,6 +991,25 @@ class InvoiceService:
                     ),
                 )
 
+    async def _compare_costs(
+        self,
+        plan: DraftPlan,
+    ) -> None:
+        """a line of a known product shows the cost of its last delivery when the cost changed"""
+        costs = await self.products.last_cost_prices(
+            product_ids={
+                line.product.id for line in plan.lines if line.product is not None
+            },
+        )
+        for line in plan.lines:
+            if line.product is None or line.cost_price is None:
+                continue
+            previous = costs.get(
+                line.product.id,
+            )
+            if previous is not None and previous != line.cost_price:
+                line.previous_cost_price = previous
+
     async def _plan_line(
         self,
         plan: DraftPlan,
@@ -898,6 +1086,7 @@ class InvoiceService:
         self,
         draft_invoice: Invoice,
         extraction: InvoiceExtraction,
+        numbered_items: dict[int, InvoiceItemExtraction],
     ) -> DraftForm:
         """the form as the model read it, before the user saves it"""
         supplier_id = draft_invoice.supplier_id
@@ -931,6 +1120,7 @@ class InvoiceService:
                 },
                 "lines": [
                     {
+                        "line_no": line_no,
                         "name": read_item["name"],
                         "quantity": read_item["quantity"],
                         "unit": read_item["unit"],
@@ -943,8 +1133,8 @@ class InvoiceService:
                         "product_id": None,
                         "retail_price": None,
                     }
-                    for item, read_item in zip(
-                        extraction.items,
+                    for (line_no, item), read_item in zip(
+                        numbered_items.items(),
                         read["items"],
                         strict=True,
                     )
@@ -988,6 +1178,73 @@ class InvoiceService:
                 if supplier.id not in seen
             )
         return candidates[:CANDIDATES_LIMIT]
+
+
+def _numbered_extraction(
+    extraction: InvoiceExtraction,
+) -> dict[int, InvoiceItemExtraction]:
+    last_number = max(
+        (item.line_no for item in extraction.items if item.line_no is not None),
+        default=0,
+    )
+    numbered: dict[int, InvoiceItemExtraction] = {}
+    for item in extraction.items:
+        number = item.line_no
+        if number is None:
+            last_number += 1
+            number = last_number
+        if number > MAX_LINE_NO:
+            _invalid(
+                detail="Нет свободного номера позиции в допустимом диапазоне",
+            )
+        if number in numbered:
+            _invalid(
+                detail=f"Номер позиции {number} повторяется в накладной",
+            )
+        numbered[number] = item
+    return numbered
+
+
+def _number_form_lines(
+    form: DraftForm,
+    source_max: int,
+) -> None:
+    used: set[int] = set()
+    for line in form.lines:
+        if line.line_no is None:
+            continue
+        if line.line_no in used:
+            _invalid(
+                detail=f"Номер позиции {line.line_no} повторяется в накладной",
+            )
+        used.add(
+            line.line_no,
+        )
+    # legacy forms without any numbers keep their current positions
+    legacy = not used
+    last_number = max(
+        source_max,
+        max(
+            used,
+            default=0,
+        ),
+    )
+    for position, line in enumerate(
+        iterable=form.lines,
+        start=1,
+    ):
+        if line.line_no is not None:
+            continue
+        if legacy:
+            number = position
+        else:
+            last_number += 1
+            number = last_number
+        if number > MAX_LINE_NO:
+            _invalid(
+                detail="Нет свободного номера позиции в допустимом диапазоне",
+            )
+        line.line_no = number
 
 
 def _block(
@@ -1180,15 +1437,24 @@ def _candidate(
     return SupplierCandidate(
         id=supplier.id,
         name=supplier.name,
+        short_name=supplier.short_name,
         inn=supplier.inn,
         matched_lines=matched_lines,
     )
+
+
+def _reprice(product: Product, price: Decimal) -> None:
+    """a new shelf price makes the hanging tag wrong, it has to be printed again"""
+    if product.retail_price != price:
+        product.retail_price = price
+        product.has_price_tag = False
 
 
 def _supplier_summary(supplier: Supplier) -> SupplierSummary:
     return SupplierSummary(
         id=supplier.id,
         name=supplier.name,
+        short_name=supplier.short_name,
         inn=supplier.inn,
     )
 
@@ -1225,6 +1491,7 @@ def _draft_line(
         markup_pct=line.markup_pct,
         retail_price=line.retail_price,
         retail_price_total=line.retail_price_total,
+        previous_cost_price=line.previous_cost_price,
         previous_retail_price=line.previous_retail_price,
         similar=line.similar,
     )
@@ -1306,6 +1573,35 @@ class SupplierService:
             for row in rows
         ]
 
+    async def edit_supplier(
+        self,
+        supplier_id: int,
+        payload: SupplierEdit,
+    ) -> SupplierSummary:
+        supplier = await self.suppliers.get(
+            supplier_id=supplier_id,
+        )
+        if supplier is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Продавец не найден",
+            )
+        if payload.inn is not None:
+            existing = await self.suppliers.get_by_inn(
+                inn=payload.inn,
+            )
+            if existing is not None and existing.id != supplier.id:
+                _conflict(
+                    detail=f"Поставщик с ИНН {payload.inn} уже существует",
+                )
+        supplier.name = payload.name
+        supplier.short_name = payload.short_name
+        supplier.inn = payload.inn
+        await self.suppliers.commit()
+        return _supplier_summary(
+            supplier=supplier,
+        )
+
     async def search(
         self,
         query: str | None,
@@ -1336,6 +1632,7 @@ class SupplierService:
                         row=row,
                     ).model_dump(),
                     supplier_id=row.product.supplier_id,
+                    has_price_tag=row.product.has_price_tag,
                     spellings=[
                         alias.alias_raw
                         for alias in sorted(
@@ -1362,9 +1659,11 @@ class LedgerService:
         self,
         ledger: LedgerRepositoryDep,
         products: ProductRepositoryDep,
+        invoices: InvoiceRepositoryDep,
     ) -> None:
         self.ledger = ledger
         self.products = products
+        self.invoices = invoices
 
     async def history(
         self,
@@ -1378,6 +1677,7 @@ class LedgerService:
         )
         return LedgerPage(
             balance=await self.ledger.balance(),
+            cash_balance=await self.ledger.cash_balance(),
             entries=[
                 _ledger_entry_out(
                     row=row,
@@ -1395,24 +1695,105 @@ class LedgerService:
             balance=await self.ledger.balance(
                 on=on,
             ),
-            closed_on=await self.ledger.last_stocktake_on(),
+            cash_balance=await self.ledger.cash_balance(
+                on=on,
+            ),
+            closed_on=await self.ledger.last_count_on(
+                kind=LedgerKind.STOCKTAKE,
+            ),
+            cash_closed_on=await self.ledger.last_count_on(
+                kind=LedgerKind.CASH_COUNT,
+            ),
         )
 
-    async def add_outflow(
+    async def add_sale(
         self,
-        kind: LedgerKind,
-        payload: OutflowCreate,
+        payload: SaleCreate,
     ) -> LedgerPosted:
-        """a sale or a write-off, the stock goes down by the amount"""
+        """the stock goes down by the whole sale, the till gets the cash part only"""
+        total = payload.cash + payload.card
+        if not total:
+            _invalid(
+                detail="Укажите выручку наличными или безналом",
+            )
         await self.ledger.lock()
-        await self._check_date(
+        await _check_date(
+            ledger=self.ledger,
             on=payload.occurred_on,
+            stock=True,
+            cash=payload.cash > 0,
         )
         return await self._post(
             entry=LedgerEntry(
-                kind=kind,
+                kind=LedgerKind.SALE,
+                occurred_on=payload.occurred_on,
+                amount=-total,
+                cash=payload.cash,
+                comment=payload.comment,
+            ),
+        )
+
+    async def add_write_off(
+        self,
+        payload: OutflowCreate,
+    ) -> LedgerPosted:
+        """the stock goes down by the amount"""
+        await self.ledger.lock()
+        await _check_date(
+            ledger=self.ledger,
+            on=payload.occurred_on,
+            stock=True,
+            cash=False,
+        )
+        return await self._post(
+            entry=LedgerEntry(
+                kind=LedgerKind.WRITE_OFF,
                 occurred_on=payload.occurred_on,
                 amount=-payload.amount,
+                comment=payload.comment,
+            ),
+        )
+
+    async def add_cash_in(
+        self,
+        payload: OutflowCreate,
+    ) -> LedgerPosted:
+        """money put into the till"""
+        await self.ledger.lock()
+        await _check_date(
+            ledger=self.ledger,
+            on=payload.occurred_on,
+            stock=False,
+            cash=True,
+        )
+        return await self._post(
+            entry=LedgerEntry(
+                kind=LedgerKind.CASH_IN,
+                occurred_on=payload.occurred_on,
+                amount=0,
+                cash=payload.amount,
+                comment=payload.comment,
+            ),
+        )
+
+    async def add_cash_out(
+        self,
+        payload: CashOutCreate,
+    ) -> LedgerPosted:
+        """money taken from the till, the comment says what for"""
+        await self.ledger.lock()
+        await _check_date(
+            ledger=self.ledger,
+            on=payload.occurred_on,
+            stock=False,
+            cash=True,
+        )
+        return await self._post(
+            entry=LedgerEntry(
+                kind=LedgerKind.CASH_OUT,
+                occurred_on=payload.occurred_on,
+                amount=0,
+                cash=-payload.amount,
                 comment=payload.comment,
             ),
         )
@@ -1423,8 +1804,11 @@ class LedgerService:
     ) -> LedgerPosted:
         """the entry is the shortage or the surplus, after it the balance is the counted stock"""
         await self.ledger.lock()
-        await self._check_date(
+        await _check_date(
+            ledger=self.ledger,
             on=payload.occurred_on,
+            stock=True,
+            cash=False,
         )
         expected = await self.ledger.balance(
             on=payload.occurred_on,
@@ -1438,14 +1822,42 @@ class LedgerService:
             ),
         )
 
+    async def add_cash_count(
+        self,
+        payload: CashCountCreate,
+    ) -> LedgerPosted:
+        """the entry is the shortage or the surplus of the till, after it the cash is as counted"""
+        await self.ledger.lock()
+        await _check_date(
+            ledger=self.ledger,
+            on=payload.occurred_on,
+            stock=False,
+            cash=True,
+        )
+        expected = await self.ledger.cash_balance(
+            on=payload.occurred_on,
+        )
+        return await self._post(
+            entry=LedgerEntry(
+                kind=LedgerKind.CASH_COUNT,
+                occurred_on=payload.occurred_on,
+                amount=0,
+                cash=payload.counted - expected,
+                comment=payload.comment,
+            ),
+        )
+
     async def add_revaluation(
         self,
         payload: RevaluationCreate,
     ) -> LedgerPosted:
         """the stock of the products on the shelf takes the new prices, the markups stay"""
         await self.ledger.lock()
-        await self._check_date(
+        await _check_date(
+            ledger=self.ledger,
             on=payload.occurred_on,
+            stock=True,
+            cash=False,
         )
         items: list[RevaluationItem] = []
         products: list[Product] = []
@@ -1497,8 +1909,11 @@ class LedgerService:
         """a corrected name keeps the old one as a spelling, a new price revalues the old stock"""
         if payload.revaluation is not None:
             await self.ledger.lock()
-            await self._check_date(
+            await _check_date(
+                ledger=self.ledger,
                 on=payload.revaluation.occurred_on,
+                stock=True,
+                cash=False,
             )
         product = await self.products.get(
             product_id=product_id,
@@ -1522,7 +1937,10 @@ class LedgerService:
                 name=name,
             )
         if payload.revaluation is None:
-            product.retail_price = new_price
+            _reprice(
+                product=product,
+                price=new_price,
+            )
             await self.ledger.commit()
             return None
         return await self._finish(
@@ -1543,6 +1961,26 @@ class LedgerService:
                 ],
             ),
         )
+
+    async def mark_price_tag(
+        self,
+        product_id: int,
+        payload: PriceTagMark,
+    ) -> None:
+        product = await self.products.get(
+            product_id=product_id,
+        )
+        if product is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Товар не найден",
+            )
+        if product.retail_price != payload.retail_price:
+            _conflict(
+                detail="Цена товара изменилась, обновите страницу",
+            )
+        product.has_price_tag = payload.has_price_tag
+        await self.ledger.commit()
 
     async def _rename(
         self,
@@ -1622,7 +2060,10 @@ class LedgerService:
             strict=True,
         ):
             item.ledger_entry_id = entry.id
-            product.retail_price = item.new_price
+            _reprice(
+                product=product,
+                price=item.new_price,
+            )
         await self.ledger.add_revaluation_items(
             items=items,
         )
@@ -1676,8 +2117,23 @@ class LedgerService:
             date_from=date_from,
             date_to=date_to,
         )
+        cash_sums = await self.ledger.cash_sums_by_kind(
+            date_from=date_from,
+            date_to=date_to,
+        )
         zero = Decimal(
             value=0,
+        )
+        day_before = date_from - timedelta(
+            days=1,
+        )
+        sales = sums.get(
+            LedgerKind.SALE,
+            zero,
+        )
+        sales_cash = cash_sums.get(
+            LedgerKind.SALE,
+            zero,
         )
         rows = await self.ledger.history(
             limit=None,
@@ -1690,19 +2146,13 @@ class LedgerService:
             date_from=date_from,
             date_to=date_to,
             opening=await self.ledger.balance(
-                on=date_from
-                - timedelta(
-                    days=1,
-                ),
+                on=day_before,
             ),
             invoices=sums.get(
                 LedgerKind.INVOICE,
                 zero,
             ),
-            sales=sums.get(
-                LedgerKind.SALE,
-                zero,
-            ),
+            sales=sales,
             write_offs=sums.get(
                 LedgerKind.WRITE_OFF,
                 zero,
@@ -1718,11 +2168,105 @@ class LedgerService:
             closing=await self.ledger.balance(
                 on=date_to,
             ),
+            cash_opening=await self.ledger.cash_balance(
+                on=day_before,
+            ),
+            sales_cash=sales_cash,
+            # the sales are negative, they take the stock out
+            sales_card=-sales - sales_cash,
+            cash_ins=cash_sums.get(
+                LedgerKind.CASH_IN,
+                zero,
+            ),
+            cash_outs=cash_sums.get(
+                LedgerKind.CASH_OUT,
+                zero,
+            ),
+            cash_counts=cash_sums.get(
+                LedgerKind.CASH_COUNT,
+                zero,
+            ),
+            cash_closing=await self.ledger.cash_balance(
+                on=date_to,
+            ),
             entries=[
                 _ledger_entry_out(
                     row=row,
+                    short_names=True,
                 )
                 for row in rows
+            ],
+        )
+
+    async def period_report(
+        self,
+        date_from: date,
+        date_to: date,
+    ) -> PeriodReport:
+        """the period day by day with the invoices and what is owed for them"""
+        if date_from > date_to:
+            _invalid(
+                detail="Начало периода позже его конца",
+            )
+        day_before = date_from - timedelta(
+            days=1,
+        )
+        rows = await self.ledger.history(
+            limit=None,
+            offset=0,
+            date_from=date_from,
+            date_to=date_to,
+            newest_first=False,
+        )
+        invoice_ids = [
+            row.entry.invoice_id for row in rows if row.entry.invoice_id is not None
+        ]
+        cost_totals = await self.invoices.cost_totals(
+            invoice_ids=invoice_ids,
+        )
+        paid_totals = await self.invoices.paid_totals(
+            invoice_ids=invoice_ids,
+            on=date_to,
+        )
+        return PeriodReport(
+            date_from=date_from,
+            date_to=date_to,
+            opening=await self.ledger.balance(
+                on=day_before,
+            ),
+            cash_opening=await self.ledger.cash_balance(
+                on=day_before,
+            ),
+            days=[
+                _report_day(
+                    day=day,
+                    rows=list(
+                        day_rows,
+                    ),
+                    cost_totals=cost_totals,
+                    paid_totals=paid_totals,
+                )
+                for day, day_rows in groupby(
+                    rows,
+                    key=lambda row: row.entry.occurred_on,
+                )
+            ],
+            paid_in_period=await self.invoices.paid_between(
+                date_from=date_from,
+                date_to=date_to,
+            ),
+            debts=[
+                SupplierDebt(
+                    supplier_name=debt.supplier_short_name or debt.supplier_name,
+                    invoice_number=debt.invoice.invoice_number or "",
+                    invoice_date=debt.invoice.invoice_date,
+                    cost_total=debt.cost_total,
+                    paid=debt.paid,
+                    debt=debt.cost_total - debt.paid,
+                )
+                for debt in await self.invoices.debts(
+                    on=date_to,
+                )
             ],
         )
 
@@ -1754,11 +2298,23 @@ class LedgerService:
             _conflict(
                 detail="Запись уже сторнирована",
             )
-        if await self.ledger.has_stocktake_after(
+        if _counts_stock(
             entry=entry,
+        ) and await self.ledger.has_count_after(
+            entry=entry,
+            kind=LedgerKind.STOCKTAKE,
         ):
             _conflict(
                 detail="После этой записи был переучёт, исправьте остаток новым переучётом",
+            )
+        if _counts_cash(
+            entry=entry,
+        ) and await self.ledger.has_count_after(
+            entry=entry,
+            kind=LedgerKind.CASH_COUNT,
+        ):
+            _conflict(
+                detail="После этой записи была сверка кассы, исправьте кассу новой сверкой",
             )
         if entry.kind == LedgerKind.REVALUATION:
             for item in await self.ledger.revaluation_items_of(
@@ -1766,36 +2322,21 @@ class LedgerService:
             ):
                 # a price changed again since then is left as it is
                 if item.product.retail_price == item.new_price:
-                    item.product.retail_price = item.old_price
+                    _reprice(
+                        product=item.product,
+                        price=item.old_price,
+                    )
         return await self._post(
             entry=LedgerEntry(
                 kind=entry.kind,
                 occurred_on=entry.occurred_on,
                 amount=-entry.amount,
+                cash=-entry.cash,
                 # reverses_id already says what it cancels
                 comment=None,
                 reverses_id=entry.id,
             ),
         )
-
-    async def _check_date(
-        self,
-        on: date,
-    ) -> None:
-        if on > today():
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Дата не может быть в будущем",
-            )
-        closed_on = await self.ledger.last_stocktake_on()
-        # a stocktake fixes the balance, an entry before it would change what was counted
-        if closed_on is not None and on < closed_on:
-            closed = format_invoice_date(
-                value=closed_on,
-            )
-            _conflict(
-                detail=f"Период закрыт переучётом от {closed}",
-            )
 
     async def _post(
         self,
@@ -1811,14 +2352,49 @@ class LedgerService:
         self,
         entry: LedgerEntry,
     ) -> LedgerPosted:
-        """commits the created entry and reports the balance after it"""
+        """commits the created entry and reports the balances after it"""
         balance = await self.ledger.balance()
+        cash_balance = await self.ledger.cash_balance()
         await self.ledger.commit()
         return LedgerPosted(
             id=entry.id,
             amount=entry.amount,
+            cash=entry.cash,
             balance=balance,
+            cash_balance=cash_balance,
         )
+
+
+async def _check_date(
+    ledger: LedgerRepository,
+    on: date,
+    stock: bool,
+    cash: bool,
+) -> None:
+    """an entry is checked against the counts of what it changes"""
+    if on > today():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Дата не может быть в будущем",
+        )
+    # a count fixes the balance, an entry before it would change what was counted
+    for counted, kind, detail in (
+        (stock, LedgerKind.STOCKTAKE, "Период закрыт переучётом от {closed}"),
+        (cash, LedgerKind.CASH_COUNT, "Касса закрыта сверкой от {closed}"),
+    ):
+        if not counted:
+            continue
+        closed_on = await ledger.last_count_on(
+            kind=kind,
+        )
+        if closed_on is not None and on < closed_on:
+            _conflict(
+                detail=detail.format(
+                    closed=format_invoice_date(
+                        value=closed_on,
+                    ),
+                ),
+            )
 
 
 def _conflict(detail: str) -> NoReturn:
@@ -1835,19 +2411,110 @@ def _invalid(detail: str) -> NoReturn:
     )
 
 
-def _ledger_entry_out(row: LedgerRow) -> LedgerEntryOut:
+def _counts_stock(entry: LedgerEntry) -> bool:
+    """a stocktake depends on the entry"""
+    return entry.amount != 0 or entry.kind == LedgerKind.STOCKTAKE
+
+
+def _counts_cash(entry: LedgerEntry) -> bool:
+    """a cash count depends on the entry"""
+    return entry.cash != 0 or entry.kind == LedgerKind.CASH_COUNT
+
+
+def _report_day(
+    day: date,
+    rows: list[LedgerRow],
+    cost_totals: dict[int, Decimal],
+    paid_totals: dict[int, Decimal],
+) -> ReportDay:
+    """the entries of one day in the ledger order, a reversal cancels its entry in the sums"""
+    zero = Decimal(
+        value=0,
+    )
+    invoices: list[ReportInvoice] = []
+    sales = zero
+    sales_cash = zero
+    cash_moves = zero
+    cash_notes: list[CashNote] = []
+    for row in rows:
+        entry = row.entry
+        if entry.kind == LedgerKind.INVOICE and entry.invoice_id is not None:
+            invoices.append(
+                ReportInvoice(
+                    supplier_name=_report_name(
+                        row=row,
+                    )
+                    or "",
+                    invoice_number=row.invoice_number or "",
+                    cost_total=cost_totals.get(
+                        entry.invoice_id,
+                        zero,
+                    ),
+                    retail_total=entry.amount,
+                    paid=paid_totals.get(
+                        entry.invoice_id,
+                        zero,
+                    ),
+                ),
+            )
+        elif entry.kind == LedgerKind.SALE:
+            # a sale takes the stock out, its amount is negative
+            sales -= entry.amount
+            sales_cash += entry.cash
+        elif entry.kind in (
+            LedgerKind.CASH_IN,
+            LedgerKind.CASH_OUT,
+            LedgerKind.CASH_COUNT,
+        ):
+            cash_moves += entry.cash
+            if entry.reverses_id is None and row.reversed_by_id is None:
+                cash_notes.append(
+                    CashNote(
+                        kind=entry.kind,
+                        cash=entry.cash,
+                        comment=entry.comment,
+                    ),
+                )
+    last = rows[-1]
+    return ReportDay(
+        day=day,
+        invoices=invoices,
+        sales_cash=sales_cash,
+        sales_card=sales - sales_cash,
+        cash_moves=cash_moves,
+        cash_notes=cash_notes,
+        cash_after=last.cash_after,
+        balance_after=last.balance_after,
+    )
+
+
+def _report_name(row: LedgerRow) -> str | None:
+    """the reports print the short name of the supplier when it has one"""
+    return row.supplier_short_name or row.supplier_name
+
+
+def _ledger_entry_out(
+    row: LedgerRow,
+    short_names: bool = False,
+) -> LedgerEntryOut:
     return LedgerEntryOut(
         id=row.entry.id,
         occurred_on=row.entry.occurred_on,
         kind=row.entry.kind,
         amount=row.entry.amount,
+        cash=row.entry.cash,
         balance_after=row.balance_after,
+        cash_after=row.cash_after,
         comment=row.entry.comment,
         reverses_id=row.entry.reverses_id,
         reversed_by_id=row.reversed_by_id,
         invoice_id=row.entry.invoice_id,
         invoice_number=row.invoice_number,
-        supplier_name=row.supplier_name,
+        supplier_name=_report_name(
+            row=row,
+        )
+        if short_names
+        else row.supplier_name,
     )
 
 

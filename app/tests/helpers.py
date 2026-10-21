@@ -3,7 +3,9 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from config import today
 from models import Product, Supplier
+from schemas import format_invoice_date
 from tests.fakes import INN, FakeStore, invoice_payload
 
 
@@ -41,6 +43,22 @@ class InvoiceApi:
         )
         assert response.status_code == 200, response.text
         return response.json()
+
+    def confirm(
+        self,
+        draft: dict[str, Any],
+        occurred_on: str | None = None,
+    ) -> Any:
+        """posts the draft, the goods came today unless the day is given"""
+        return self.client.post(
+            url=f"/invoice/{draft['id']}/confirm",
+            json={
+                "occurred_on": occurred_on
+                or format_invoice_date(
+                    value=today(),
+                ),
+            },
+        )
 
     def blocking(
         self,

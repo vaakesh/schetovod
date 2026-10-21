@@ -40,6 +40,7 @@ export interface NewSupplier {
 }
 
 export interface FormLine {
+  line_no: number;
   name: string | null;
   quantity: string | null;
   unit: string | null;
@@ -90,6 +91,8 @@ export interface DraftLine {
   markup_pct: string | null;
   retail_price: string | null;
   retail_price_total: string | null;
+  // the cost with VAT of the last delivery of the product, null when it is the same or unknown
+  previous_cost_price: string | null;
   // the shelf price of the product when the line changes it
   previous_retail_price: string | null;
   // catalog products with a close name while the line has none, most similar first
@@ -105,6 +108,14 @@ export interface DraftTotals {
 export interface SupplierSummary {
   id: number;
   name: string;
+  // printed in the reports instead of the full name
+  short_name: string | null;
+  inn: string | null;
+}
+
+export interface SupplierEdit {
+  name: string;
+  short_name: string | null;
   inn: string | null;
 }
 
@@ -124,6 +135,8 @@ export interface CatalogProduct extends ProductSummary {
   supplier_id: number;
   // other names the product was printed with, the name itself is not repeated
   spellings: string[];
+  // a shelf tag with the current retail price is hanging
+  has_price_tag: boolean;
 }
 
 export interface Catalog {
@@ -147,6 +160,9 @@ export interface ConfirmedInvoice {
 
 export type InvoiceStatus = "draft" | "confirmed" | "declined";
 
+// the newest uploads first, or the biggest debt first
+export type InvoiceSort = "newest" | "debt";
+
 export interface InvoiceListItem {
   id: number;
   status: InvoiceStatus;
@@ -154,6 +170,8 @@ export interface InvoiceListItem {
   invoice_date: string | null;
   supplier_name: string | null;
   retail_total: string | null;
+  // owed to the supplier and not paid yet, null until the invoice is confirmed
+  debt: string | null;
   lines: number;
   created_at: string;
 }
@@ -184,14 +202,39 @@ export interface PostedInvoice {
   invoice_date: string;
   supplier: SupplierSummary;
   lines: PostedLine[];
+  // owed to the supplier
   cost_total: string;
   retail_total: string;
   ledger_entry_id: number;
+  paid: string;
+  debt: string;
+  payments: Payment[];
 }
 
-export type LedgerKind = "invoice" | "sale" | "write_off" | "stocktake" | "revaluation";
+export interface Payment {
+  id: number;
+  paid_on: string;
+  amount: string;
+  comment: string | null;
+}
 
-// the kinds entered by hand as one amount, a revaluation has its own form
+export interface PaymentCreate {
+  paid_on: string | null;
+  amount: string;
+  comment: string | null;
+}
+
+export type LedgerKind =
+  | "invoice"
+  | "sale"
+  | "write_off"
+  | "stocktake"
+  | "revaluation"
+  | "cash_in"
+  | "cash_out"
+  | "cash_count";
+
+// the kinds entered by hand in the entry dialog, a revaluation has its own form
 export type ManualKind = Exclude<LedgerKind, "invoice" | "revaluation">;
 
 export interface LedgerEntry {
@@ -200,7 +243,10 @@ export interface LedgerEntry {
   kind: LedgerKind;
   // signed, positive brings stock in
   amount: string;
+  // signed, positive brings cash into the till
+  cash: string;
   balance_after: string;
+  cash_after: string;
   comment: string | null;
   reverses_id: number | null;
   reversed_by_id: number | null;
@@ -211,19 +257,26 @@ export interface LedgerEntry {
 
 export interface LedgerPage {
   balance: string;
+  cash_balance: string;
   entries: LedgerEntry[];
   has_more: boolean;
 }
 
 export interface LedgerBalance {
   balance: string;
+  cash_balance: string;
+  // the latest stocktake, no stock entry may be dated before it
   closed_on: string | null;
+  // the latest cash count, no cash entry may be dated before it
+  cash_closed_on: string | null;
 }
 
 export interface LedgerPosted {
   id: number;
   amount: string;
+  cash: string;
   balance: string;
+  cash_balance: string;
 }
 
 export interface RevaluationLine {
@@ -275,6 +328,14 @@ export interface LedgerReport {
   stocktakes: string;
   revaluations: string;
   closing: string;
+  cash_opening: string;
+  // the sales split into the till and the bank account
+  sales_cash: string;
+  sales_card: string;
+  cash_ins: string;
+  cash_outs: string;
+  cash_counts: string;
+  cash_closing: string;
   // in the ledger order
   entries: LedgerEntry[];
 }

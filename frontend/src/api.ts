@@ -4,17 +4,20 @@ import type {
   DraftForm,
   InvoiceDraft,
   InvoiceList,
+  InvoiceSort,
   InvoiceStatus,
   LedgerBalance,
   LedgerPage,
   LedgerPosted,
   LedgerReport,
   ManualKind,
+  PaymentCreate,
   PostedInvoice,
   ProductEdit,
   ProductSummary,
   RevaluationCreate,
   RevaluationLineOut,
+  SupplierEdit,
   SupplierSummary,
 } from "./types";
 
@@ -27,6 +30,7 @@ const FIELD_LABELS: Record<string, string> = {
   invoice_number: "Номер накладной",
   invoice_date: "Дата накладной",
   supplier: "Продавец",
+  line_no: "Номер позиции",
   name: "Название",
   inn: "ИНН",
   quantity: "Кол-во",
@@ -42,6 +46,7 @@ const FIELD_LABELS: Record<string, string> = {
   items: "Строки",
   totals: "Итоги",
   occurred_on: "Дата",
+  paid_on: "Дата оплаты",
   amount: "Сумма",
   counted: "Насчитали",
   comment: "Комментарий",
@@ -127,11 +132,15 @@ function query(params: Record<string, string | number | null | undefined>): stri
 
 export function listInvoices(params: {
   status: InvoiceStatus | null;
+  // only the confirmed invoices not paid in full
+  unpaid: boolean;
   q: string;
+  sort: InvoiceSort;
   limit: number;
   offset: number;
 }): Promise<InvoiceList> {
-  return request("GET", `/invoice${query(params)}`);
+  // false is the default, it is left out of the query
+  return request("GET", `/invoice${query({ ...params, unpaid: params.unpaid ? "true" : null })}`);
 }
 
 export function getPosted(id: number): Promise<PostedInvoice> {
@@ -150,6 +159,9 @@ const LEDGER_PATHS: Record<ManualKind, string> = {
   sale: "/ledger/sale",
   write_off: "/ledger/write-off",
   stocktake: "/ledger/stocktake",
+  cash_in: "/ledger/cash-in",
+  cash_out: "/ledger/cash-out",
+  cash_count: "/ledger/cash-count",
 };
 
 export function addLedgerEntry(kind: ManualKind, body: unknown): Promise<LedgerPosted> {
@@ -173,6 +185,18 @@ export function reportXlsxUrl(dateFrom: string, dateTo: string): string {
   return `/api/ledger/report.xlsx${query({ date_from: dateFrom, date_to: dateTo })}`;
 }
 
+export function reportPdfUrl(dateFrom: string, dateTo: string): string {
+  return `/api/ledger/report.pdf${query({ date_from: dateFrom, date_to: dateTo })}`;
+}
+
+export function addPayment(invoiceId: number, body: PaymentCreate): Promise<PostedInvoice> {
+  return request("POST", `/invoice/${invoiceId}/payments`, body);
+}
+
+export function deletePayment(invoiceId: number, paymentId: number): Promise<PostedInvoice> {
+  return request("DELETE", `/invoice/${invoiceId}/payments/${paymentId}`);
+}
+
 export function reverseEntry(id: number): Promise<LedgerPosted> {
   return request("POST", `/ledger/${id}/reverse`);
 }
@@ -190,9 +214,25 @@ export function getCatalog(): Promise<Catalog> {
   return request("GET", "/catalog");
 }
 
+// the price the user saw goes along, a tag for an older price is rejected
+export async function markPriceTag(
+  id: number,
+  hasPriceTag: boolean,
+  retailPrice: number,
+): Promise<void> {
+  await request("PUT", `/product/${id}/price-tag`, {
+    has_price_tag: hasPriceTag,
+    retail_price: retailPrice,
+  });
+}
+
 // null when the price changed without a revaluation
 export function editProduct(id: number, body: ProductEdit): Promise<LedgerPosted | null> {
   return request("PUT", `/product/${id}`, body);
+}
+
+export function editSupplier(id: number, body: SupplierEdit): Promise<SupplierSummary> {
+  return request("PUT", `/supplier/${id}`, body);
 }
 
 export function receiveInvoice(body: unknown): Promise<InvoiceDraft> {
@@ -216,8 +256,8 @@ export function saveForm(id: number, form: DraftForm): Promise<InvoiceDraft> {
   return request("PUT", `/invoice/${id}`, form);
 }
 
-export function confirmInvoice(id: number): Promise<ConfirmedInvoice> {
-  return request("POST", `/invoice/${id}/confirm`);
+export function confirmInvoice(id: number, occurredOn: string): Promise<ConfirmedInvoice> {
+  return request("POST", `/invoice/${id}/confirm`, { occurred_on: occurredOn });
 }
 
 export function declineInvoice(id: number): Promise<null> {
