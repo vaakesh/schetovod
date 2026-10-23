@@ -73,10 +73,11 @@ export default function PostedInvoicePage({ id, go }: Props) {
             <thead>
               <tr className="groups">
                 <th colSpan={4} />
+                <th className="group group-start retail">Розница</th>
                 <th colSpan={4} className="group group-start">
                   Закупка
                 </th>
-                <th colSpan={3} className="group group-start retail">
+                <th colSpan={2} className="group group-start retail">
                   Розница
                 </th>
               </tr>
@@ -85,12 +86,12 @@ export default function PostedInvoicePage({ id, go }: Props) {
                 <th>Название</th>
                 <th className="num">Кол-во</th>
                 <th>Ед.</th>
+                <th className="num group-start">Цена</th>
                 <th className="num group-start">Цена без НДС</th>
                 <th className="num">НДС, %</th>
                 <th className="num">Цена с НДС</th>
                 <th className="num">Сумма с НДС</th>
                 <th className="num group-start">Наценка, %</th>
-                <th className="num">Цена</th>
                 <th className="num">Сумма</th>
               </tr>
             </thead>
@@ -106,12 +107,12 @@ export default function PostedInvoicePage({ id, go }: Props) {
                   </td>
                   <td className="num">{formatNumber(line.quantity)}</td>
                   <td>{formatText(line.unit)}</td>
+                  <td className="num group-start">{formatMoney(line.retail_price)}</td>
                   <td className="num computed group-start">{formatMoney(line.base_price)}</td>
                   <td className="num computed">{formatNumber(line.vat_percent)}</td>
                   <td className="num computed">{formatMoney(line.cost_price)}</td>
                   <td className="num">{formatMoney(line.cost_price_total)}</td>
                   <td className="num computed group-start">{formatNumber(line.markup_pct)}</td>
-                  <td className="num">{formatMoney(line.retail_price)}</td>
                   <td className="num strong">{formatMoney(line.retail_price_total)}</td>
                 </tr>
               ))}
@@ -119,11 +120,10 @@ export default function PostedInvoicePage({ id, go }: Props) {
             <tfoot>
               <tr>
                 <td />
-                <td className="total-label" colSpan={6}>
+                <td className="total-label" colSpan={7}>
                   Итого
                 </td>
                 <td className="num">{formatMoney(invoice.cost_total)}</td>
-                <td />
                 <td />
                 <td className="num total-accent">{formatMoney(invoice.retail_total)}</td>
               </tr>

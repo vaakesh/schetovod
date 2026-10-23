@@ -26,8 +26,9 @@ export default function InvoiceHeader({ draft, form, suppliers, update, onFound 
         />
         <span className="title-word">от</span>
         <input
-          className="title-input title-date"
+          className={`title-input title-date${form.invoice_date ? "" : " title-date-empty"}`}
           type="date"
+          aria-label="Дата накладной"
           value={toInputDate(form.invoice_date)}
           onChange={(event) =>
             update((current) => ({ ...current, invoice_date: fromInputDate(event.target.value) }))

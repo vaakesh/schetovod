@@ -377,6 +377,22 @@ button {
   width: auto;
 }
 
+/* Safari on iOS draws an empty date input with no text, so it collapses and is invisible */
+.title-date-empty {
+  min-width: 5em;
+  min-height: 1.2em;
+  background: var(--bad-soft);
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+
+.title-date-empty:hover,
+.title-date-empty:focus {
+  background: var(--bad-soft);
+  box-shadow:
+    inset 0 0 0 1px var(--bad),
+    var(--shadow-sm);
+}
+
 .title-date::-webkit-calendar-picker-indicator {
   opacity: 0;
   cursor: pointer;

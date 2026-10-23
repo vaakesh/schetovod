@@ -356,10 +356,12 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
           <thead>
             <tr className="groups">
               <th colSpan={4} />
+              {/* the shelf price is typed by hand, so it sits next to the quantity, not at the far right */}
+              <th className="group group-start retail">Розница</th>
               <th colSpan={5} className="group group-start">
                 Закупка
               </th>
-              <th colSpan={3} className="group group-start retail">
+              <th colSpan={2} className="group group-start retail">
                 Розница
               </th>
               <th />
@@ -369,13 +371,13 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
               <th>Название</th>
               <th className="num">Кол-во</th>
               <th>Ед.</th>
+              <th className="num group-start retail">Цена</th>
               <th className="num group-start">Цена без НДС</th>
               <th className="num">НДС, %</th>
               <th className="num">Цена с НДС</th>
               <th className="num">Сумма без НДС</th>
               <th className="num">Сумма с НДС</th>
               <th className="num group-start retail">Наценка, %</th>
-              <th className="num retail">Цена</th>
               <th className="num retail">Сумма</th>
               <th />
             </tr>
@@ -446,6 +448,24 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                         }
                       />
                     </td>
+                    <td className="group-start retail">
+                      <input
+                        className={
+                          line?.new_product && formLine.retail_price === null
+                            ? "cell cell-num cell-required"
+                            : "cell cell-num"
+                        }
+                        inputMode="numeric"
+                        data-retail-index={index}
+                        // empty means the price by the current markup
+                        placeholder={line?.retail_price ? formatNumber(line.retail_price) : "₽"}
+                        value={formLine.retail_price ?? ""}
+                        onChange={(event) =>
+                          updateLine(update, index, { retail_price: toRubles(event.target.value) })
+                        }
+                        onKeyDown={(event) => jumpToNewProduct(event, index)}
+                      />
+                    </td>
                     <td className="num computed group-start">
                       {formatMoney(line?.base_price ?? null)}
                     </td>
@@ -479,24 +499,6 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                     </td>
                     <td className="num computed group-start retail">
                       {formatNumber(line?.markup_pct ?? null)}
-                    </td>
-                    <td className="retail">
-                      <input
-                        className={
-                          line?.new_product && formLine.retail_price === null
-                            ? "cell cell-num cell-required"
-                            : "cell cell-num"
-                        }
-                        inputMode="numeric"
-                        data-retail-index={index}
-                        // empty means the price by the current markup
-                        placeholder={line?.retail_price ? formatNumber(line.retail_price) : "₽"}
-                        value={formLine.retail_price ?? ""}
-                        onChange={(event) =>
-                          updateLine(update, index, { retail_price: toRubles(event.target.value) })
-                        }
-                        onKeyDown={(event) => jumpToNewProduct(event, index)}
-                      />
                     </td>
                     <td className="num computed strong retail">
                       {formatMoney(line?.retail_price_total ?? null)}

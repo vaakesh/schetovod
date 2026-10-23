@@ -11,12 +11,11 @@ export default function TotalsBlock({ draft }: Props) {
     <tfoot>
       <tr>
         <td />
-        <td className="total-label" colSpan={6}>
+        <td className="total-label" colSpan={7}>
           Итого
         </td>
         <td className="num computed">{formatMoney(draft.totals.base_total)}</td>
         <td className="num">{formatMoney(draft.totals.cost_total)}</td>
-        <td className="retail" />
         <td className="retail" />
         <td className="num computed total-accent retail">{formatMoney(draft.totals.retail_total)}</td>
         <td />
