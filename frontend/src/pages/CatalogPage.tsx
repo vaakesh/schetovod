@@ -366,6 +366,8 @@ export default function CatalogPage({ ask }: Props) {
   // the product whose tag is being saved, its checkbox waits for the answer
   const [tagging, setTagging] = useState<number | null>(null);
   const [open, setOpen] = useState<Set<number>>(() => new Set());
+  // a search or the filter opens every supplier, these were closed by hand since then
+  const [closed, setClosed] = useState<Set<number>>(() => new Set());
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
   const [editingSupplier, setEditingSupplier] = useState<SupplierSummary | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -433,9 +435,16 @@ export default function CatalogPage({ ask }: Props) {
     }
   }
 
+  // a new search or filter opens every supplier with matches again
   function changeFilter(next: Filter) {
     setFilter(next);
     saveFilter(next);
+    setClosed(new Set());
+  }
+
+  function changeSearch(next: string) {
+    setSearch(next);
+    setClosed(new Set());
   }
 
   function toggleSpellings() {
@@ -495,7 +504,7 @@ export default function CatalogPage({ ask }: Props) {
   }
 
   function toggle(id: number) {
-    setOpen((previous) => {
+    (narrowed ? setClosed : setOpen)((previous) => {
       const next = new Set(previous);
       if (!next.delete(id)) {
         next.add(id);
@@ -572,7 +581,7 @@ export default function CatalogPage({ ask }: Props) {
           type="search"
           placeholder="Поиск по всем товарам"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => changeSearch(event.target.value)}
         />
       </div>
 
@@ -605,7 +614,7 @@ export default function CatalogPage({ ask }: Props) {
           <div className="catalog-groups">
             {shownSuppliers.map((supplier) => {
               const products = bySupplier.get(supplier.id) ?? [];
-              const expanded = narrowed || open.has(supplier.id);
+              const expanded = narrowed ? !closed.has(supplier.id) : open.has(supplier.id);
               return (
                 <section key={supplier.id} className="sheet catalog-group">
                   <div className="catalog-supplier-row">
@@ -613,7 +622,6 @@ export default function CatalogPage({ ask }: Props) {
                       type="button"
                       className="catalog-supplier"
                       aria-expanded={expanded}
-                      disabled={narrowed}
                       onClick={() => toggle(supplier.id)}
                     >
                       <svg

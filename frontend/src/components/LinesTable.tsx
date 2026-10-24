@@ -31,10 +31,32 @@ interface Props {
 }
 
 const COLUMNS = 13;
+// the purchase columns hidden in the price view: price and sums without VAT, VAT, sum with VAT
+const PURCHASE_DETAIL_COLUMNS = 4;
+const VIEW_KEY = "lines-view";
 // the issue code of a line with a close catalog product
 const SIMILAR_PRODUCT = "similar_product";
 // the issue code of a line that changes the shelf price of its product
 const PRICE_CHANGED = "price_changed";
+
+type View = "full" | "prices";
+
+// the storage may be unavailable, the view then is not remembered
+function savedView(): View {
+  try {
+    return window.localStorage.getItem(VIEW_KEY) === "prices" ? "prices" : "full";
+  } catch {
+    return "full";
+  }
+}
+
+function saveView(view: View) {
+  try {
+    window.localStorage.setItem(VIEW_KEY, view);
+  } catch {
+    // nothing to do, the view is kept until the page is left
+  }
+}
 
 interface NameProps {
   index: number;
@@ -276,8 +298,18 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
   const supplierId = form.supplier !== null && "id" in form.supplier ? form.supplier.id : null;
   const [picker, setPicker] = useState<{ lineNo: number; anchor: HTMLElement } | null>(null);
   const [pickedNames, setPickedNames] = useState<Record<number, string>>({});
+  const [view, setView] = useState<View>(savedView);
+  // the pinned name column gets its edge only once the table is scrolled sideways
+  const [scrolled, setScrolled] = useState(false);
   const closePicker = useCallback(() => setPicker(null), []);
   const linesByNumber = new Map(draft.lines.map((line) => [line.line, line]));
+  const full = view === "full";
+  const columns = full ? COLUMNS : COLUMNS - PURCHASE_DETAIL_COLUMNS;
+
+  function changeView(next: View) {
+    setView(next);
+    saveView(next);
+  }
 
   function pick(lineNo: number, product: ProductSummary) {
     setPickedNames((names) => ({ ...names, [product.id]: product.name }));
@@ -299,12 +331,8 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
     setPicker(null);
   }
 
-  // tab from a retail price goes to the price of the next new product, shift+tab to the previous one
-  function jumpToNewProduct(event: React.KeyboardEvent<HTMLInputElement>, index: number) {
-    if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) {
-      return;
-    }
-    const step = event.shiftKey ? -1 : 1;
+  // the index of the next line with a new product in the given direction, -1 when there is none
+  function newProductIndex(index: number, step: number): number {
     let target = index + step;
     while (
       target >= 0 &&
@@ -313,14 +341,28 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
     ) {
       target += step;
     }
+    return target < form.lines.length ? target : -1;
+  }
+
+  // tab or enter from a retail price goes to the price of the next new product, with shift to the previous one
+  // the iPad on-screen keyboard has no tab, its next key sends enter
+  function jumpToNewProduct(event: React.KeyboardEvent<HTMLInputElement>, index: number) {
+    const enter = event.key === "Enter";
+    if ((event.key !== "Tab" && !enter) || event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    const target = newProductIndex(index, event.shiftKey ? -1 : 1);
     const input = event.currentTarget
       .closest("table")
       ?.querySelector<HTMLInputElement>(`[data-retail-index="${target}"]`);
-    // past the last new product the tab moves on as usual
+    // past the last new product the tab moves on as usual, the enter hides the keyboard
     if (input) {
       event.preventDefault();
       input.focus();
       input.select();
+    } else if (enter) {
+      event.preventDefault();
+      event.currentTarget.blur();
     }
   }
 
@@ -347,8 +389,33 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
 
   return (
     <section className="sheet">
-      <div className="table-wrap">
-        <table className={dirty ? "lines stale" : "lines"}>
+      <div className="sheet-tools">
+        <div className="segments" role="tablist" aria-label="Колонки таблицы">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={full}
+            className={full ? "segment active" : "segment"}
+            onClick={() => changeView("full")}
+          >
+            Все колонки
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!full}
+            className={full ? "segment" : "segment active"}
+            onClick={() => changeView("prices")}
+          >
+            Только цены
+          </button>
+        </div>
+      </div>
+      <div
+        className={scrolled ? "table-wrap scrolled" : "table-wrap"}
+        onScroll={(event) => setScrolled(event.currentTarget.scrollLeft > 0)}
+      >
+        <table className={`lines${full ? "" : " lines-prices"}${dirty ? " stale" : ""}`}>
           <colgroup>
             <col className="col-no" />
             <col className="col-name" />
@@ -358,7 +425,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
               <th colSpan={4} />
               {/* the shelf price is typed by hand, so it sits next to the quantity, not at the far right */}
               <th className="group group-start retail">Розница</th>
-              <th colSpan={5} className="group group-start">
+              <th colSpan={full ? 5 : 1} className="group group-start">
                 Закупка
               </th>
               <th colSpan={2} className="group group-start retail">
@@ -367,16 +434,24 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
               <th />
             </tr>
             <tr>
-              <th className="num">№</th>
-              <th>Название</th>
+              <th className="num sticky-no">№</th>
+              <th className="sticky-name">Название</th>
               <th className="num">Кол-во</th>
               <th>Ед.</th>
               <th className="num group-start retail">Цена</th>
-              <th className="num group-start">Цена без НДС</th>
-              <th className="num">НДС, %</th>
-              <th className="num">Цена с НДС</th>
-              <th className="num">Сумма без НДС</th>
-              <th className="num">Сумма с НДС</th>
+              {full && (
+                <>
+                  <th className="num group-start">Цена без НДС</th>
+                  <th className="num">НДС, %</th>
+                </>
+              )}
+              <th className={full ? "num" : "num group-start"}>Цена с НДС</th>
+              {full && (
+                <>
+                  <th className="num">Сумма без НДС</th>
+                  <th className="num">Сумма с НДС</th>
+                </>
+              )}
               <th className="num group-start retail">Наценка, %</th>
               <th className="num retail">Сумма</th>
               <th />
@@ -400,8 +475,8 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
               return (
                 <Fragment key={position}>
                   <tr className={`line ${rowClass}`}>
-                    <td className="num index">{position}</td>
-                    <td className="line-name">
+                    <td className="num index sticky-no">{position}</td>
+                    <td className="line-name sticky-name">
                       <NameField
                         index={index}
                         value={formLine.name}
@@ -429,7 +504,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                         />
                       ) : null}
                     </td>
-                    <td>
+                    <td className="num">
                       <input
                         className="cell cell-num"
                         inputMode="decimal"
@@ -448,7 +523,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                         }
                       />
                     </td>
-                    <td className="group-start retail">
+                    <td className="num group-start retail">
                       <input
                         className={
                           line?.new_product && formLine.retail_price === null
@@ -456,6 +531,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                             : "cell cell-num"
                         }
                         inputMode="numeric"
+                        enterKeyHint={newProductIndex(index, 1) === -1 ? "done" : "next"}
                         data-retail-index={index}
                         // empty means the price by the current markup
                         placeholder={line?.retail_price ? formatNumber(line.retail_price) : "₽"}
@@ -466,37 +542,49 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                         onKeyDown={(event) => jumpToNewProduct(event, index)}
                       />
                     </td>
-                    <td className="num computed group-start">
-                      {formatMoney(line?.base_price ?? null)}
-                    </td>
-                    <td>
-                      <input
-                        className="cell cell-num cell-short"
-                        inputMode="decimal"
-                        placeholder="—"
-                        value={formLine.vat_percent ?? ""}
-                        onChange={(event) =>
-                          updateLine(update, index, { vat_percent: toDecimal(event.target.value) })
-                        }
-                      />
-                    </td>
-                    <td className="num computed">
+                    {full && (
+                      <>
+                        <td className="num computed group-start">
+                          {formatMoney(line?.base_price ?? null)}
+                        </td>
+                        <td className="num">
+                          <input
+                            className="cell cell-num cell-short"
+                            inputMode="decimal"
+                            placeholder="—"
+                            value={formLine.vat_percent ?? ""}
+                            onChange={(event) =>
+                              updateLine(update, index, {
+                                vat_percent: toDecimal(event.target.value),
+                              })
+                            }
+                          />
+                        </td>
+                      </>
+                    )}
+                    <td className={full ? "num computed" : "num computed group-start"}>
                       {formatMoney(line?.cost_price ?? null)}
                       <CostChange line={line} />
                     </td>
-                    <td className="num computed">{formatMoney(line?.base_price_total ?? null)}</td>
-                    <td>
-                      <input
-                        className="cell cell-num cell-money"
-                        inputMode="decimal"
-                        value={formLine.cost_price_total ?? ""}
-                        onChange={(event) =>
-                          updateLine(update, index, {
-                            cost_price_total: toDecimal(event.target.value),
-                          })
-                        }
-                      />
-                    </td>
+                    {full && (
+                      <>
+                        <td className="num computed">
+                          {formatMoney(line?.base_price_total ?? null)}
+                        </td>
+                        <td className="num">
+                          <input
+                            className="cell cell-num cell-money"
+                            inputMode="decimal"
+                            value={formLine.cost_price_total ?? ""}
+                            onChange={(event) =>
+                              updateLine(update, index, {
+                                cost_price_total: toDecimal(event.target.value),
+                              })
+                            }
+                          />
+                        </td>
+                      </>
+                    )}
                     <td className="num computed group-start retail">
                       {formatNumber(line?.markup_pct ?? null)}
                     </td>
@@ -524,7 +612,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                   {revalue && (
                     <tr className={`row-issues ${rowClass}`}>
                       <td />
-                      <td colSpan={COLUMNS - 1}>
+                      <td colSpan={columns - 1}>
                         <RevalueField
                           line={line}
                           form={formLine}
@@ -538,7 +626,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                   {listed.length > 0 && (
                     <tr className={`row-issues ${rowClass}`}>
                       <td />
-                      <td colSpan={COLUMNS - 1}>
+                      <td colSpan={columns - 1}>
                         {listed.map((issue, issueIndex) => (
                           <IssueItem key={issueIndex} issue={issue} />
                         ))}
@@ -550,7 +638,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
             })}
             <tr className="row-add">
               <td />
-              <td colSpan={COLUMNS - 1}>
+              <td colSpan={columns - 1}>
                 <button
                   type="button"
                   className="add-line"
@@ -561,7 +649,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
               </td>
             </tr>
           </tbody>
-          <TotalsBlock draft={draft} />
+          <TotalsBlock draft={draft} full={full} />
         </table>
       </div>
       {picker &&

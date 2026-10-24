@@ -672,8 +672,59 @@ button {
   border-collapse: collapse;
 }
 
+.lines {
+  /* the pinned name column starts where the number column ends */
+  --no-width: 60px;
+}
+
 .col-no {
-  width: 48px;
+  width: var(--no-width);
+}
+
+/* the number and the name stay in view while the table scrolls sideways */
+.lines .sticky-no,
+.lines .sticky-name {
+  position: sticky;
+  z-index: 1;
+  background: var(--surface);
+}
+
+.lines .sticky-no {
+  left: 0;
+  width: var(--no-width);
+  min-width: var(--no-width);
+  padding-right: 8px;
+}
+
+.lines .sticky-name {
+  left: var(--no-width);
+}
+
+.scrolled .lines .sticky-name {
+  box-shadow:
+    inset -1px 0 0 var(--line),
+    6px 0 12px -6px rgba(15, 17, 23, 0.12);
+}
+
+/* in the price view the few number columns follow the name, the free width is left after them */
+.lines-prices .col-name,
+.lines-prices td.line-name {
+  min-width: 360px;
+}
+
+.lines.lines-prices tr > :last-child:not([colspan]) {
+  width: 100%;
+}
+
+.line:hover .sticky-no,
+.line:hover .sticky-name {
+  background: #fbfbfc;
+}
+
+.sheet-tools {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 16px 0;
 }
 
 .col-name {
@@ -884,6 +935,13 @@ button {
 
 .line-pick:hover {
   color: var(--accent);
+}
+
+/* touch screens have no hover, so the button is always shown */
+@media (hover: none) {
+  .line-pick {
+    opacity: 1;
+  }
 }
 
 /* close catalog names under a line that found no product */
@@ -1738,10 +1796,6 @@ button {
   background: #fbfbfc;
 }
 
-.catalog-supplier:disabled {
-  cursor: default;
-}
-
 .catalog-supplier:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -2352,6 +2406,45 @@ a.button {
 /* narrow screens */
 
 @media (max-width: 860px) {
+  /* tighter columns, so the price view fits a portrait tablet without scrolling */
+  .lines {
+    --no-width: 44px;
+  }
+
+  .lines th,
+  .lines td {
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .lines th:first-child,
+  .lines td:first-child {
+    padding-left: 12px;
+  }
+
+  .group-start {
+    padding-left: 14px !important;
+  }
+
+  /* all the columns scroll anyway, a narrow name would only break its words */
+  .lines-prices .col-name,
+  .lines-prices td.line-name {
+    min-width: 210px;
+  }
+
+  .lines .cell-num:not(.cell-short, .cell-money) {
+    width: 72px;
+  }
+
+  .cell-unit {
+    width: 40px;
+  }
+
+  /* long headers take two lines instead of widening their columns */
+  .lines thead tr:not(.groups) th {
+    white-space: normal;
+  }
+
   .topbar {
     height: 60px;
     padding: 0 16px;
@@ -2483,5 +2576,35 @@ a.button {
   /* the title is enough in a low area on a phone */
   .dropzone-slim .dropzone-text {
     display: none;
+  }
+
+  /* a pinned name column would take most of a phone screen */
+  .lines .sticky-no,
+  .lines .sticky-name {
+    position: static;
+    box-shadow: none;
+  }
+}
+
+/* finger-sized targets on touch screens */
+@media (pointer: coarse) {
+  .line-pick {
+    padding: 6px 0;
+  }
+
+  .row-delete {
+    width: 44px;
+    height: 44px;
+  }
+
+  .tag-remove {
+    width: 24px;
+    height: 24px;
+    font-size: 16px;
+  }
+
+  .row-add .add-line {
+    padding: 12px 14px;
+    margin-left: -14px;
   }
 }

@@ -15,6 +15,8 @@ interface Props {
 export default function PostedInvoicePage({ id, go }: Props) {
   const [invoice, setInvoice] = useState<PostedInvoice | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // the pinned name column gets its edge only once the table is scrolled sideways
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
     getPosted(id)
@@ -64,7 +66,10 @@ export default function PostedInvoicePage({ id, go }: Props) {
       </section>
 
       <section className="sheet">
-        <div className="table-wrap">
+        <div
+          className={scrolled ? "table-wrap scrolled" : "table-wrap"}
+          onScroll={(event) => setScrolled(event.currentTarget.scrollLeft > 0)}
+        >
           <table className="lines posted">
             <colgroup>
               <col className="col-no" />
@@ -82,8 +87,8 @@ export default function PostedInvoicePage({ id, go }: Props) {
                 </th>
               </tr>
               <tr>
-                <th className="num">№</th>
-                <th>Название</th>
+                <th className="num sticky-no">№</th>
+                <th className="sticky-name">Название</th>
                 <th className="num">Кол-во</th>
                 <th>Ед.</th>
                 <th className="num group-start">Цена</th>
@@ -98,8 +103,8 @@ export default function PostedInvoicePage({ id, go }: Props) {
             <tbody>
               {invoice.lines.map((line) => (
                 <tr key={line.line_no} className="line">
-                  <td className="num index">{line.line_no}</td>
-                  <td>
+                  <td className="num index sticky-no">{line.line_no}</td>
+                  <td className="sticky-name">
                     <span className="posted-name">{line.name}</span>
                     {line.product_name !== line.name && (
                       <span className="tag">в каталоге: {line.product_name}</span>
