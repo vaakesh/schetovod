@@ -8,9 +8,9 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-import models  # noqa: F401  registers tables in Base.metadata
-from config import settings
-from db import DATABASE_CONNECTION_ERRORS, DATABASE_CONNECTION_MESSAGE, Base
+import model_registry  # noqa: F401  registers tables in Base.metadata
+from core.config import settings
+from core.db import DATABASE_CONNECTION_ERRORS, DATABASE_CONNECTION_MESSAGE, Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

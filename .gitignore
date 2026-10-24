@@ -8,7 +8,7 @@
 # notes, images, documents
 *.md
 !README.md
-!app/extraction_prompt.md
+!app/recognition/prompt.md
 *.png
 *.jpg
 *.jpeg
@@ -35,7 +35,7 @@ htmlcov/
 .idea/
 .DS_Store
 
-invoices/
+/invoices/
 sources/
 skills-lock.json
 .agents

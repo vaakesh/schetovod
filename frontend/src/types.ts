@@ -1,4 +1,4 @@
-// mirrors app/schemas.py, decimals come as strings
+// mirrors backend domain schemas, decimals come as strings
 
 export interface SupplierExtraction {
   name: string | null;

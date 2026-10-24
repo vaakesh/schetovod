@@ -30,10 +30,10 @@
 
 Распознавание включается отдельно и работает через
 [Responses API](https://platform.openai.com/docs/api-reference/responses)
-(код в [`app/vision.py`](app/vision.py)).
+(код в [`app/recognition/service.py`](app/recognition/service.py)).
 
 - **Промпт.** Инструкция модели лежит в
-  [`app/extraction_prompt.md`](app/extraction_prompt.md). Модель работает как
+  [`app/recognition/prompt.md`](app/recognition/prompt.md). Модель работает как
   дословный транскрибер: переписывает напечатанное как есть, ничего не считает и
   не достраивает. Если поле не читается, лучше оставить его пустым: пустое поле
   программа заметит и переспросит человека, а «досчитанное» число скроет ошибку.
@@ -74,7 +74,9 @@
 - uv, Ruff, ty, pytest
 
 Код разделён на слои: роуты FastAPI → сервисы с бизнес-логикой → репозитории
-SQLAlchemy. Деньги и количества хранятся в `Decimal` / `NUMERIC`, перечисления —
+SQLAlchemy внутри предметных пакетов; общие настройки, типы и подключение к базе
+собраны в `core/`. Структура backend описана в [app/README.md](app/README.md).
+Деньги и количества хранятся в `Decimal` / `NUMERIC`, перечисления —
 `StrEnum` с `CHECK` в базе. Целостность данных обеспечивают ограничения
 PostgreSQL. Тесты прогоняют API через `TestClient` с заглушками репозиториев в
 памяти.

@@ -6,23 +6,15 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import config
-from config import settings
+from core import config
+from core.config import settings
+from invoices.repository import InvoiceRepository
+from ledger.repository import LedgerRepository
 from main import app
-from repositories import (
-    InvoiceRepository,
-    LedgerRepository,
-    ProductRepository,
-    SupplierRepository,
-)
-from tests import fakes
-from tests.fakes import (
-    FakeInvoices,
-    FakeLedger,
-    FakeProducts,
-    FakeStore,
-    FakeSuppliers,
-)
+from products.repository import ProductRepository
+from suppliers.repository import SupplierRepository
+from tests.fakes import FakeInvoices, FakeLedger, FakeProducts, FakeStore, FakeSuppliers
+from tests.fakes import invoices as fake_invoices
 
 
 @pytest.fixture(
@@ -46,7 +38,7 @@ def fixed_clock(monkeypatch: pytest.MonkeyPatch) -> None:
         value=clock,
     )
     monkeypatch.setattr(
-        target=fakes,
+        target=fake_invoices,
         name="datetime",
         value=clock,
     )

@@ -3,9 +3,10 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from config import today
-from models import Product, Supplier
-from schemas import format_invoice_date
+from core.config import today
+from core.schema_types import format_invoice_date
+from products.models import Product
+from suppliers.models import Supplier
 from tests.fakes import INN, FakeStore, invoice_payload
 
 
