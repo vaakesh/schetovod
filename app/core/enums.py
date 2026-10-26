@@ -7,6 +7,12 @@ class InvoiceStatus(StrEnum):
     DECLINED = "declined"
 
 
+class OrderStatus(StrEnum):
+    # the one cart being filled, until the user confirms it
+    DRAFT = "draft"
+    CONFIRMED = "confirmed"
+
+
 class InvoiceSort(StrEnum):
     # the newest uploads first
     NEWEST = "newest"

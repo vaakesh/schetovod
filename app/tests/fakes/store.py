@@ -1,11 +1,11 @@
 from decimal import Decimal
 from typing import Any
 
-from products.pricing import normalize_name
-
 from invoices.models import Invoice, InvoiceItem, InvoicePayment
 from ledger.models import LedgerEntry, RevaluationItem
+from orders.models import Order
 from products.models import Product, ProductAlias
+from products.pricing import normalize_name
 from suppliers.models import Supplier
 
 INN = "7701234560"
@@ -59,6 +59,8 @@ class FakeStore:
         self.payments: list[InvoicePayment] = []
         self.entries: list[LedgerEntry] = []
         self.revaluations: list[RevaluationItem] = []
+        # the lines live in order.items
+        self.orders: dict[int, Order] = {}
         self.commits = 0
         self.locks = 0
         # the order of the ledger locks and the draft reads

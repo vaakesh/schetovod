@@ -1842,8 +1842,9 @@ button {
   cursor: default;
 }
 
-/* the price tag column is the last one in both views */
-.list.catalog-table th:last-child {
+/* the price tag and the order columns end the row in both views */
+.list.catalog-table th.catalog-tag-head,
+.list.catalog-table th.catalog-order-head {
   text-align: center;
 }
 
@@ -2395,11 +2396,333 @@ a.button {
   color: var(--text);
 }
 
+/* orders */
+
+/* read by a screen reader, not shown */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.tab-badge {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  color: #fff;
+  text-align: center;
+  background: var(--accent);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the order button sits in the middle of its own cell, the row around it opens the editor */
+.list .catalog-order {
+  width: 1%;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.order-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.order-chip:hover {
+  color: var(--text);
+  border-color: var(--subtle);
+}
+
+.order-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.order-chip-in {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
+.order-chip-in:hover {
+  color: var(--accent-hover);
+  border-color: var(--accent);
+}
+
+.order-chip-unit {
+  font-weight: 400;
+}
+
+/* the cart floats over the bottom of the catalog, the page padding keeps the last rows clear */
+.cart-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: calc(100% - 32px);
+  padding: 10px 10px 10px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  transform: translateX(-50%);
+  animation: modal-in 0.18s ease-out;
+}
+
+.cart-bar-text {
+  white-space: nowrap;
+}
+
+.cart-bar-total {
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the quantity dialog */
+
+.order-product {
+  margin: 12px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.order-qty {
+  display: flex;
+  gap: 8px;
+}
+
+.order-qty-input {
+  height: 48px;
+  text-align: center;
+}
+
+.order-step {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  font-size: 20px;
+  color: var(--text);
+  background: var(--hover);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.order-step:not(:disabled):hover {
+  background: var(--line-strong);
+}
+
+.order-step:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.order-remove {
+  margin-right: auto;
+  color: var(--bad);
+}
+
+.order-remove:not(:disabled):hover {
+  color: var(--bad);
+  background: var(--bad-soft);
+}
+
+/* the orders page */
+
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+  margin: 0 0 14px;
+}
+
+.section-head:not(:first-child) {
+  margin-top: 40px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.section-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.order-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.order-empty-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.order-empty-text {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+
+.order-group + .order-group {
+  border-top: 1px solid var(--line);
+}
+
+.order-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 18px 24px 0;
+}
+
+.order-group-name {
+  font-weight: 600;
+}
+
+.order-group-meta {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.order-table .order-line-name {
+  width: 100%;
+  min-width: 220px;
+}
+
+/* every supplier has its own table, fixed number columns line them up */
+.order-table .num {
+  min-width: 112px;
+}
+
+.list .order-line-remove {
+  width: 1%;
+  padding-top: 11px;
+  padding-bottom: 0;
+  cursor: default;
+}
+
+.order-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px;
+  border-top: 1px solid var(--line);
+  background: var(--accent-wash);
+}
+
+.order-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.order-total-label {
+  color: var(--muted);
+}
+
+.order-total-value {
+  font-size: 18px;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-total-note {
+  font-size: 13px;
+  color: var(--warn);
+}
+
+.order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* an unfolded order breaks the row pairs, the next row keeps its divider */
+.order-detail + .list-row td {
+  border-top: 1px solid var(--line);
+}
+
+.order-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+/* the lines of a confirmed order unfold under its row, inset from the list */
+.list .order-detail > td {
+  padding: 0 24px 20px;
+}
+
+.order-detail .order-groups {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.order-detail .order-foot {
+  margin-top: 12px;
+  padding: 0;
+  background: none;
+  border: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .brand,
   .confirmed-home,
   .catalog-chevron {
     transition: none;
+  }
+
+  .cart-bar {
+    animation: none;
   }
 }
 
@@ -2583,6 +2906,69 @@ a.button {
   .lines .sticky-name {
     position: static;
     box-shadow: none;
+  }
+
+  /* the tabs do not fit a phone, they scroll sideways instead of widening the page */
+  .topbar-start {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .tab {
+    white-space: nowrap;
+  }
+
+  /* the cost price is in the quantity dialog, the phone keeps the quantity and the sum */
+  .order-table .order-col-price {
+    display: none;
+  }
+
+  .order-table .order-line-name {
+    min-width: 120px;
+  }
+
+  .order-table .num {
+    min-width: 0;
+  }
+
+  .list.order-table th,
+  .list.order-table td {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .list.order-table th:first-child,
+  .list.order-table td:first-child {
+    padding-left: 16px;
+  }
+
+  /* the cart spans the screen, its text wraps beside the button */
+  .cart-bar {
+    right: 16px;
+    left: 16px;
+    justify-content: space-between;
+    gap: 12px;
+    max-width: none;
+    transform: none;
+  }
+
+  .cart-bar-text {
+    white-space: normal;
+  }
+
+  .order-group-head,
+  .order-foot {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .list .order-detail > td {
+    padding: 0 12px 16px;
   }
 }
 

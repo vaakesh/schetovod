@@ -2,11 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 
 import { getCatalog, markPriceTag } from "../api";
 import type { Ask } from "../components/ConfirmDialog";
+import OrderItemDialog, { type OrderTarget } from "../components/OrderItemDialog";
 import ProductEditDialog from "../components/ProductEditDialog";
 import SupplierEditDialog from "../components/SupplierEditDialog";
-import { formatMoney, formatNumber, formatSigned, formatText } from "../format";
+import { formatMoney, formatNumber, formatSigned, formatText, plural } from "../format";
 import { message } from "../message";
-import type { Catalog, CatalogProduct, LedgerPosted, SupplierSummary } from "../types";
+import type { Route } from "../router";
+import type {
+  Catalog,
+  CatalogProduct,
+  LedgerPosted,
+  Order,
+  OrderLine,
+  SupplierSummary,
+} from "../types";
 
 type View = "suppliers" | "alphabet";
 
@@ -241,6 +250,68 @@ function Spellings({
   );
 }
 
+// a product in the cart shows its quantity, a click on either button opens the quantity dialog
+function OrderCell({
+  product,
+  line,
+  onOrder,
+}: {
+  product: CatalogProduct;
+  line: OrderLine | undefined;
+  onOrder: (product: CatalogProduct) => void;
+}) {
+  return (
+    // the row opens the product editor, the cell only orders
+    <td
+      className="catalog-order"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {line ? (
+        <button
+          type="button"
+          className="order-chip order-chip-in"
+          title="Изменить количество в заказе"
+          aria-label={`В заказе ${formatNumber(line.quantity)} ${line.unit ?? ""}: ${product.name}`}
+          onClick={() => onOrder(product)}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M3 8.5l3 3 7-7"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {formatNumber(line.quantity)}
+          {line.unit && <span className="order-chip-unit">{line.unit}</span>}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="order-chip"
+          title="Добавить в заказ"
+          aria-label={`Добавить в заказ: ${product.name}`}
+          onClick={() => onOrder(product)}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M8 3v10M3 8h10"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+          </svg>
+          В заказ
+        </button>
+      )}
+    </td>
+  );
+}
+
 function ProductRows({
   products,
   suppliers,
@@ -248,9 +319,11 @@ function ProductRows({
   searchKey,
   sort,
   tagging,
+  ordered,
   onSort,
   onEdit,
   onTag,
+  onOrder,
 }: {
   products: CatalogProduct[];
   // the supplier column is shown only in the list of all products
@@ -259,9 +332,12 @@ function ProductRows({
   searchKey: string;
   sort: Sort;
   tagging: number | null;
+  // the cart lines by product
+  ordered: Map<number, OrderLine>;
   onSort: (field: SortField) => void;
   onEdit: (product: CatalogProduct) => void;
   onTag: (product: CatalogProduct) => void;
+  onOrder: (product: CatalogProduct) => void;
 }) {
   return (
     <div className="table-wrap">
@@ -273,7 +349,13 @@ function ProductRows({
               return (
                 <th
                   key={column.field}
-                  className={column.num ? "num" : undefined}
+                  className={
+                    column.num
+                      ? "num"
+                      : column.field === "has_price_tag"
+                        ? "catalog-tag-head"
+                        : undefined
+                  }
                   aria-sort={active ? (sort.desc ? "descending" : "ascending") : undefined}
                 >
                   <button
@@ -289,6 +371,7 @@ function ProductRows({
                 </th>
               );
             })}
+            <th className="catalog-order-head">Заказ</th>
           </tr>
         </thead>
         <tbody>
@@ -343,6 +426,7 @@ function ProductRows({
                   onChange={() => onTag(product)}
                 />
               </td>
+              <OrderCell product={product} line={ordered.get(product.id)} onOrder={onOrder} />
             </tr>
           ))}
         </tbody>
@@ -353,9 +437,13 @@ function ProductRows({
 
 interface Props {
   ask: Ask;
+  go: (route: Route) => void;
+  // the order being filled, null when it is empty
+  cart: Order | null;
+  onCart: (cart: Order | null) => void;
 }
 
-export default function CatalogPage({ ask }: Props) {
+export default function CatalogPage({ ask, go, cart, onCart }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -370,6 +458,7 @@ export default function CatalogPage({ ask }: Props) {
   const [closed, setClosed] = useState<Set<number>>(() => new Set());
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
   const [editingSupplier, setEditingSupplier] = useState<SupplierSummary | null>(null);
+  const [ordering, setOrdering] = useState<OrderTarget | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // bumped after an edit to load the catalog again
   const [version, setVersion] = useState(0);
@@ -461,6 +550,28 @@ export default function CatalogPage({ ask }: Props) {
     () => new Map(catalog?.suppliers.map((supplier) => [supplier.id, supplier])),
     [catalog],
   );
+
+  const ordered = useMemo(
+    () => new Map(cart?.lines.map((line) => [line.product_id, line])),
+    [cart],
+  );
+
+  function order(product: CatalogProduct) {
+    setOrdering({
+      productId: product.id,
+      name: product.name,
+      supplierName: suppliers.get(product.supplier_id)?.name ?? null,
+      unit: product.unit,
+      costPrice: product.cost_price,
+      quantity: ordered.get(product.id)?.quantity ?? null,
+    });
+  }
+
+  function orderSaved(next: Order | null, text: string) {
+    setOrdering(null);
+    setNotice(text);
+    onCart(next);
+  }
 
   // the whole catalog is here, the search and the order work without asking the backend
   const found = useMemo(() => {
@@ -602,9 +713,11 @@ export default function CatalogPage({ ask }: Props) {
                 searchKey={key}
                 sort={sort}
                 tagging={tagging}
+                ordered={ordered}
                 onSort={changeSort}
                 onEdit={setEditing}
                 onTag={(product) => void tag(product)}
+                onOrder={order}
               />
             ) : (
               <p className="list-empty">{empty}</p>
@@ -673,9 +786,11 @@ export default function CatalogPage({ ask }: Props) {
                         searchKey={key}
                         sort={sort}
                         tagging={tagging}
+                        ordered={ordered}
                         onSort={changeSort}
                         onEdit={setEditing}
                         onTag={(product) => void tag(product)}
+                        onOrder={order}
                       />
                     ) : (
                       <p className="list-empty">Товаров пока нет</p>
@@ -690,6 +805,35 @@ export default function CatalogPage({ ask }: Props) {
           </section>
         ))}
 
+      {cart && (
+        <div className="cart-bar" role="status">
+          <span className="cart-bar-text">
+            В заказе{" "}
+            <strong>
+              {cart.lines.length} {plural(cart.lines.length, "позиция", "позиции", "позиций")}
+            </strong>
+            {Number(cart.total) > 0 && (
+              <span className="cart-bar-total"> · ≈ {formatMoney(cart.total)} ₽</span>
+            )}
+          </span>
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => go({ page: "orders" })}
+          >
+            Открыть заказ →
+          </button>
+        </div>
+      )}
+
+      {ordering && (
+        <OrderItemDialog
+          key={ordering.productId}
+          target={ordering}
+          onClose={() => setOrdering(null)}
+          onSaved={orderSaved}
+        />
+      )}
       {editing && (
         <ProductEditDialog
           key={editing.id}

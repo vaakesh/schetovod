@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -60,6 +60,13 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def now() -> datetime:
+    """the current moment, stored with its time zone"""
+    return datetime.now(
+        tz=UTC,
+    )
 
 
 def today() -> date:

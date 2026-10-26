@@ -11,9 +11,17 @@ from core.config import settings
 from invoices.repository import InvoiceRepository
 from ledger.repository import LedgerRepository
 from main import app
+from orders.repository import OrderRepository
 from products.repository import ProductRepository
 from suppliers.repository import SupplierRepository
-from tests.fakes import FakeInvoices, FakeLedger, FakeProducts, FakeStore, FakeSuppliers
+from tests.fakes import (
+    FakeInvoices,
+    FakeLedger,
+    FakeOrders,
+    FakeProducts,
+    FakeStore,
+    FakeSuppliers,
+)
 from tests.fakes import invoices as fake_invoices
 
 
@@ -80,6 +88,9 @@ def client(test_app: FastAPI, store: FakeStore) -> Iterator[TestClient]:
                 store=store,
             ),
             LedgerRepository: lambda: FakeLedger(
+                store=store,
+            ),
+            OrderRepository: lambda: FakeOrders(
                 store=store,
             ),
         },

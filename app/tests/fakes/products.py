@@ -113,6 +113,28 @@ class FakeProducts:
                 costs[item.product_id] = item.cost_price
         return costs
 
+    async def rows(
+        self,
+        product_ids: Collection[int],
+    ) -> dict[int, ProductRow]:
+        return {
+            product.id: ProductRow(
+                product=product,
+                last_item=next(
+                    (
+                        item
+                        for item in reversed(
+                            self.store.items,
+                        )
+                        if item.product_id == product.id
+                    ),
+                    None,
+                ),
+            )
+            for product in self.store.products.values()
+            if product.id in product_ids
+        }
+
     async def catalog(self) -> list[CatalogRow]:
         products = sorted(
             self.store.products.values(),

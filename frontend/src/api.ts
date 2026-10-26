@@ -11,6 +11,8 @@ import type {
   LedgerPosted,
   LedgerReport,
   ManualKind,
+  Order,
+  OrderList,
   PaymentCreate,
   PostedInvoice,
   ProductEdit,
@@ -229,6 +231,38 @@ export async function markPriceTag(
 // null when the price changed without a revaluation
 export function editProduct(id: number, body: ProductEdit): Promise<LedgerPosted | null> {
   return request("PUT", `/product/${id}`, body);
+}
+
+// the cart, null while nothing is in it
+export function getDraftOrder(): Promise<Order | null> {
+  return request("GET", "/order/draft");
+}
+
+// the whole quantity, the first product starts the cart
+export function setOrderItem(productId: number, quantity: string): Promise<Order> {
+  return request("PUT", `/order/draft/items/${productId}`, { quantity });
+}
+
+// null when the last line is gone, the cart is deleted with it
+export function removeOrderItem(productId: number): Promise<Order | null> {
+  return request("DELETE", `/order/draft/items/${productId}`);
+}
+
+export async function clearDraftOrder(): Promise<void> {
+  await request("DELETE", "/order/draft");
+}
+
+export function confirmOrder(): Promise<Order> {
+  return request("POST", "/order/draft/confirm");
+}
+
+// the confirmed orders, the newest first
+export function listOrders(limit: number, offset: number): Promise<OrderList> {
+  return request("GET", `/orders${query({ limit, offset })}`);
+}
+
+export function getOrder(id: number): Promise<Order> {
+  return request("GET", `/order/${id}`);
 }
 
 export function editSupplier(id: number, body: SupplierEdit): Promise<SupplierSummary> {

@@ -184,6 +184,28 @@ class ProductRepository:
             if item is not None
         }
 
+    async def rows(
+        self,
+        product_ids: Collection[int],
+    ) -> dict[int, ProductRow]:
+        """the products with their last posted line, keyed by id"""
+        if not product_ids:
+            return {}
+        result = await self.session.execute(
+            statement=select_with_last_item().where(
+                Product.id.in_(
+                    other=product_ids,
+                ),
+            ),
+        )
+        return {
+            product.id: ProductRow(
+                product=product,
+                last_item=item,
+            )
+            for product, item in result.tuples()
+        }
+
     async def catalog(self) -> list[CatalogRow]:
         """every product of every supplier with all its spellings"""
         result = await self.session.execute(

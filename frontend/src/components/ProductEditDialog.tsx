@@ -2,7 +2,15 @@ import { useEffect, useState } from "react";
 
 import { editProduct, getBalance } from "../api";
 import { formatNumber, formatSigned } from "../format";
-import { fromInputDate, toDecimal, toInputDate, todayInput, toRubles, toText } from "../form";
+import {
+  fromInputDate,
+  QUANTITY,
+  toDecimal,
+  toInputDate,
+  todayInput,
+  toRubles,
+  toText,
+} from "../form";
 import { message } from "../message";
 import type { CatalogProduct, LedgerPosted } from "../types";
 import Modal from "./Modal";
@@ -13,9 +21,6 @@ interface Props {
   // null when the price changed without a revaluation
   onSaved: (posted: LedgerPosted | null) => void;
 }
-
-// pieces or kilograms with grams, the api rejects anything else
-const QUANTITY = /^\d+(\.\d{1,3})?$/;
 
 export default function ProductEditDialog({ product, onClose, onSaved }: Props) {
   const oldPrice = Number(product.retail_price);

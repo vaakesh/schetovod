@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { receiveInvoice, recognizeInvoice } from "./api";
+import { getDraftOrder, receiveInvoice, recognizeInvoice } from "./api";
 import { useConfirm } from "./components/ConfirmDialog";
 import UploadForm, { type UploadKind } from "./components/UploadForm";
 import { message } from "./message";
@@ -8,10 +8,11 @@ import CatalogPage from "./pages/CatalogPage";
 import DraftPage from "./pages/DraftPage";
 import InvoicesPage from "./pages/InvoicesPage";
 import LedgerPage from "./pages/LedgerPage";
+import OrdersPage from "./pages/OrdersPage";
 import PostedInvoicePage from "./pages/PostedInvoicePage";
 import ReportPage from "./pages/ReportPage";
 import { routeHash, sameRoute, useRoute, type Route } from "./router";
-import type { InvoiceDraft } from "./types";
+import type { InvoiceDraft, Order } from "./types";
 
 type Guard = () => Promise<boolean>;
 
@@ -24,6 +25,20 @@ export default function App() {
   const [uploading, setUploading] = useState<UploadKind | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // the order being filled, null when it is empty, undefined until it is loaded
+  const [cart, setCart] = useState<Order | null | undefined>(undefined);
+
+  // read again on every page, another tab may have changed it
+  useEffect(() => {
+    let current = true;
+    getDraftOrder()
+      .then((next) => current && setCart(next))
+      // the tab counter is a hint, the orders page shows the error itself
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [route.page]);
 
   const setGuard = useCallback((next: Guard | null) => {
     guard.current = next;
@@ -81,7 +96,7 @@ export default function App() {
     void upload("image", () => recognizeInvoice(files));
   }
 
-  function tab(target: Route, label: string, active: boolean) {
+  function tab(target: Route, label: ReactNode, active: boolean) {
     return (
       <a
         href={routeHash(target)}
@@ -114,7 +129,9 @@ export default function App() {
       case "posted":
         return <PostedInvoicePage key={route.id} id={route.id} go={go} />;
       case "catalog":
-        return <CatalogPage ask={ask} />;
+        return <CatalogPage ask={ask} go={go} cart={cart ?? null} onCart={setCart} />;
+      case "orders":
+        return <OrdersPage ask={ask} go={go} cart={cart} onCart={setCart} />;
       case "ledger":
         return <LedgerPage go={go} ask={ask} />;
       case "report":
@@ -162,9 +179,24 @@ export default function App() {
             {tab(
               { page: "invoices" },
               "Накладные",
-              route.page !== "catalog" && route.page !== "ledger" && route.page !== "report",
+              route.page !== "catalog" &&
+                route.page !== "orders" &&
+                route.page !== "ledger" &&
+                route.page !== "report",
             )}
             {tab({ page: "catalog" }, "Товары", route.page === "catalog")}
+            {tab(
+              { page: "orders" },
+              <>
+                Заказы
+                {cart && (
+                  <span className="tab-badge" aria-label={`в заказе ${cart.lines.length}`}>
+                    {cart.lines.length}
+                  </span>
+                )}
+              </>,
+              route.page === "orders",
+            )}
             {tab({ page: "ledger" }, "Журнал", route.page === "ledger")}
             {tab({ page: "report" }, "Отчёт", route.page === "report")}
           </nav>

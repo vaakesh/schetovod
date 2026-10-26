@@ -145,6 +145,47 @@ export interface Catalog {
   products: CatalogProduct[];
 }
 
+export type OrderStatus = "draft" | "confirmed";
+
+export interface OrderLine {
+  product_id: number;
+  name: string;
+  supplier_id: number;
+  supplier_name: string;
+  quantity: string;
+  // a draft shows the last posted line, a confirmed order the one it was confirmed with,
+  // null while the product was never posted
+  unit: string | null;
+  cost_price: string | null;
+  cost_total: string | null;
+}
+
+export interface Order {
+  id: number;
+  status: OrderStatus;
+  // null while the order is a draft
+  confirmed_at: string | null;
+  // by supplier, then by name
+  lines: OrderLine[];
+  // the lines with a cost price only
+  total: string;
+  // some lines have no cost price, the total is short of them
+  has_unpriced: boolean;
+}
+
+export interface OrderListItem {
+  id: number;
+  confirmed_at: string;
+  lines: number;
+  supplier_names: string[];
+  total: string;
+}
+
+export interface OrderList {
+  items: OrderListItem[];
+  has_more: boolean;
+}
+
 export interface SupplierCandidate extends SupplierSummary {
   matched_lines: number;
 }
