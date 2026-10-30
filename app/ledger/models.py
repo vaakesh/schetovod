@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from sqlalchemy import (
     CheckConstraint,
@@ -86,6 +87,11 @@ class LedgerEntry(Base):
         nullable=True,
         unique=True,
     )
+    # the shift of the cash register this sale was loaded from, each is loaded once
+    aqsi_shift_id: Mapped[UUID | None] = mapped_column(
+        nullable=True,
+        unique=True,
+    )
 
     invoice: Mapped[Invoice | None] = relationship(
         lazy="raise",
@@ -117,6 +123,11 @@ class LedgerEntry(Base):
         CheckConstraint(
             sqltext="(invoice_id IS NULL) = (invoice_status IS NULL)",
             name="invoice_status_present",
+        ),
+        # only a sale comes from a shift of the cash register
+        CheckConstraint(
+            sqltext=f"kind = '{LedgerKind.SALE}' OR aqsi_shift_id IS NULL",
+            name="aqsi_shift_sale",
         ),
         # an invoice brings stock in and is never reversed, its invoice can not be unposted
         CheckConstraint(

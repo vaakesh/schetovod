@@ -1719,6 +1719,11 @@ button {
   color: var(--subtle);
 }
 
+/* the rows just loaded from the cash register */
+.list-row.imported {
+  background: var(--accent-soft);
+}
+
 .muted-cell {
   color: var(--muted);
 }
@@ -2190,6 +2195,55 @@ button {
   margin-top: 14px;
   font-size: 13px;
   color: var(--bad);
+}
+
+/* the outcome of loading the shifts of the cash register */
+
+.shift-import {
+  max-height: 320px;
+  margin-top: 16px;
+  overflow-y: auto;
+}
+
+.shift-import-title {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.shift-import-title:first-child {
+  margin-top: 0;
+}
+
+.shift-import-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shift-import-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 12px;
+  padding: 6px 0;
+  font-size: 13px;
+  border-top: 1px solid var(--line);
+}
+
+.shift-import-sums {
+  font-variant-numeric: tabular-nums;
+}
+
+.shift-import-reason {
+  color: var(--warn);
+}
+
+.shift-import-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 /* the products of a revaluation under its ledger entry */

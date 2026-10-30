@@ -5,6 +5,7 @@ import type { Ask } from "../components/ConfirmDialog";
 import LedgerEntryDialog from "../components/LedgerEntryDialog";
 import LedgerOperation from "../components/LedgerOperation";
 import RevaluationDialog from "../components/RevaluationDialog";
+import ShiftImportDialog from "../components/ShiftImportDialog";
 import { formatDate, formatMoney, formatSigned } from "../format";
 import { KIND_LABELS, touchesCash, touchesStock } from "../ledger";
 import { message } from "../message";
@@ -32,7 +33,9 @@ export default function LedgerPage({ go, ask }: Props) {
   const [cashBalance, setCashBalance] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [dialog, setDialog] = useState<ManualKind | "revaluation" | null>(null);
+  const [dialog, setDialog] = useState<ManualKind | "revaluation" | "shifts" | null>(null);
+  // the rows loaded from the cash register, the page forgets them when it is left
+  const [imported, setImported] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -128,6 +131,16 @@ export default function LedgerPage({ go, ask }: Props) {
             >
               {KIND_LABELS.revaluation}
             </button>
+            <button
+              type="button"
+              className="button button-soft"
+              onClick={() => {
+                setError(null);
+                setDialog("shifts");
+              }}
+            >
+              Загрузить из кассы
+            </button>
           </div>
           <div className="ledger-actions">{CASH_ACTIONS.map(action)}</div>
         </div>
@@ -158,8 +171,11 @@ export default function LedgerPage({ go, ask }: Props) {
             <tbody>
               {entries?.map((entry) => {
                 const cancelled = entry.reverses_id !== null || entry.reversed_by_id !== null;
+                const rowClass = ["list-row", cancelled && "cancelled", imported.has(entry.id) && "imported"]
+                  .filter(Boolean)
+                  .join(" ");
                 return (
-                  <tr key={entry.id} className={cancelled ? "list-row cancelled" : "list-row"}>
+                  <tr key={entry.id} className={rowClass}>
                     {/* the number a reversal refers to */}
                     <td className="num muted-cell nowrap">{entry.id}</td>
                     <td className="nowrap">{formatDate(entry.occurred_on)}</td>
@@ -204,7 +220,16 @@ export default function LedgerPage({ go, ask }: Props) {
           }}
         />
       )}
-      {dialog && dialog !== "revaluation" && (
+      {dialog === "shifts" && (
+        <ShiftImportDialog
+          onClose={() => setDialog(null)}
+          onImported={(entryIds) => {
+            setImported((rows) => new Set([...rows, ...entryIds]));
+            void load();
+          }}
+        />
+      )}
+      {dialog && dialog !== "revaluation" && dialog !== "shifts" && (
         <LedgerEntryDialog
           kind={dialog}
           onClose={() => setDialog(null)}

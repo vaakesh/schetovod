@@ -320,6 +320,25 @@ export interface LedgerPosted {
   cash_balance: string;
 }
 
+export interface ImportedShift {
+  entry_id: number;
+  shift_number: number;
+  occurred_on: string;
+  cash: string;
+  card: string;
+}
+
+export interface SkippedShift {
+  shift_number: number;
+  occurred_on: string | null;
+  reason: string;
+}
+
+export interface ShiftImportResult {
+  imported: ImportedShift[];
+  skipped: SkippedShift[];
+}
+
 export interface RevaluationLine {
   product_id: number;
   quantity: string;

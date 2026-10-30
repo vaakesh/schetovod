@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from uuid import UUID
 
 from core.config import today
 from core.enums import LedgerKind
@@ -120,6 +121,16 @@ class FakeLedger:
             if entry.invoice_id == invoice_id:
                 return entry
         return None
+
+    async def aqsi_shifts_present(
+        self,
+        shift_ids: list[UUID],
+    ) -> set[UUID]:
+        return {
+            entry.aqsi_shift_id
+            for entry in self.store.entries
+            if entry.aqsi_shift_id is not None and entry.aqsi_shift_id in shift_ids
+        }
 
     async def balance(
         self,

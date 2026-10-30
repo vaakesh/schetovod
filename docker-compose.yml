@@ -14,6 +14,8 @@ services:
       # 1 turns on recognition by photo, the token must be in .openai-token in the repo root
       INCLUDE_API_OPENAI: ${INCLUDE_API_OPENAI:-0}
       OPENAI_TOKEN_FILE: /run/secrets/openai_token
+      # the key of the aQsi cash register, the shifts are loaded with it
+      AQSI_API_INTEGRATION: ${AQSI_API_INTEGRATION:-}
     secrets:
       - openai_token
     volumes:

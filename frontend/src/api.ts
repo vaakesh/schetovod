@@ -19,6 +19,7 @@ import type {
   ProductSummary,
   RevaluationCreate,
   RevaluationLineOut,
+  ShiftImportResult,
   SupplierEdit,
   SupplierSummary,
 } from "./types";
@@ -168,6 +169,10 @@ const LEDGER_PATHS: Record<ManualKind, string> = {
 
 export function addLedgerEntry(kind: ManualKind, body: unknown): Promise<LedgerPosted> {
   return request("POST", LEDGER_PATHS[kind], body);
+}
+
+export function importShifts(dateFrom: string, dateTo: string): Promise<ShiftImportResult> {
+  return request("POST", "/ledger/import-shifts", { date_from: dateFrom, date_to: dateTo });
 }
 
 export function addRevaluation(body: RevaluationCreate): Promise<LedgerPosted> {

@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     openai_image_crops: bool = True
     # a long reasoning over several pages takes minutes
     openai_timeout: float = 600
+    # without it the shifts of the till can not be loaded
+    aqsi_api_integration: str = ""
 
     @property
     def database_url(self) -> URL:

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 import model_registry  # noqa: F401
+from aqsi.router import router as aqsi_router
 from invoices.router import router as invoices_router
 from ledger.router import router as ledger_router
 from orders.router import router as orders_router
@@ -27,4 +28,7 @@ app.include_router(
 )
 app.include_router(
     router=orders_router,
+)
+app.include_router(
+    router=aqsi_router,
 )

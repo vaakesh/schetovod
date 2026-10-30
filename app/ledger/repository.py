@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends
 from sqlalchemy import exists, func, select, tuple_
@@ -160,6 +161,22 @@ class LedgerRepository:
                 LedgerEntry.invoice_id == invoice_id,
             ),
         )
+
+    async def aqsi_shifts_present(
+        self,
+        shift_ids: list[UUID],
+    ) -> set[UUID]:
+        """the shifts of the cash register that are already in the ledger"""
+        result = await self.session.scalars(
+            statement=select(
+                LedgerEntry.aqsi_shift_id,
+            ).where(
+                LedgerEntry.aqsi_shift_id.in_(
+                    shift_ids,
+                ),
+            ),
+        )
+        return {shift_id for shift_id in result if shift_id is not None}
 
     async def balance(
         self,
