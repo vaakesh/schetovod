@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { declineInvoice, getDraft, saveForm } from "../api";
+import { addInvoiceProducts, declineInvoice, getDraft, saveForm } from "../api";
 import ActionBar from "../components/ActionBar";
 import type { Ask } from "../components/ConfirmDialog";
 import ConfirmedCard from "../components/ConfirmedCard";
@@ -11,7 +11,7 @@ import LinesTable from "../components/LinesTable";
 import type { UpdateForm } from "../form";
 import { message } from "../message";
 import { replaceRoute } from "../router";
-import type { ConfirmedInvoice, DraftForm, InvoiceDraft, SupplierSummary } from "../types";
+import type { AddedProducts, ConfirmedInvoice, DraftForm, InvoiceDraft, SupplierSummary } from "../types";
 
 interface Props {
   id: number;
@@ -22,6 +22,7 @@ interface Props {
   setGuard: (guard: (() => Promise<boolean>) | null) => void;
   onHome: () => void;
   onDeclined: (id: number) => void;
+  onProductsAdded: (result: AddedProducts) => void;
 }
 
 // suppliers seen in any response for this draft, so a choice stays visible after saving it
@@ -40,7 +41,15 @@ function mergeSuppliers(known: SupplierSummary[], draft: InvoiceDraft): Supplier
   return [...merged.values()];
 }
 
-export default function DraftPage({ id, initial, ask, setGuard, onHome, onDeclined }: Props) {
+export default function DraftPage({
+  id,
+  initial,
+  ask,
+  setGuard,
+  onHome,
+  onDeclined,
+  onProductsAdded,
+}: Props) {
   const [draft, setDraft] = useState<InvoiceDraft | null>(null);
   const [form, setForm] = useState<DraftForm | null>(null);
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
@@ -133,6 +142,23 @@ export default function DraftPage({ id, initial, ask, setGuard, onHome, onDeclin
     });
   };
 
+  const addProducts = async () => {
+    if (!draft) {
+      return;
+    }
+    const ok = await ask({
+      title: "Добавить только товары?",
+      text: "Новые товары появятся в каталоге. Накладная не попадёт в учёт и историю, цены товаров из каталога не изменятся.",
+      action: "Добавить",
+    });
+    if (!ok) {
+      return;
+    }
+    void run(async () => {
+      onProductsAdded(await addInvoiceProducts(draft.id));
+    });
+  };
+
   const update: UpdateForm = (change) => setForm((current) => (current ? change(current) : current));
 
   if (confirmed) {
@@ -189,6 +215,7 @@ export default function DraftPage({ id, initial, ask, setGuard, onHome, onDeclin
         onReset={() => setForm(draft.form)}
         onConfirm={() => setConfirming(true)}
         onDecline={decline}
+        onAddProducts={addProducts}
       />
       {confirming && (
         <InvoiceConfirmDialog

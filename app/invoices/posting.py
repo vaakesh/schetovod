@@ -9,10 +9,10 @@ from fastapi import Depends, HTTPException, status
 from core.enums import InvoiceStatus, LedgerKind
 from invoices.calculations import issue_text, sum_known, to_kopecks
 from invoices.models import Invoice, InvoiceItem
-from invoices.planning import InvoicePlanner, PlannedLine, ProductKey
+from invoices.planning import DraftPlan, InvoicePlanner, PlannedLine, ProductKey
 from invoices.queries import get_draft_invoice
 from invoices.repository import InvoiceRepositoryDep
-from invoices.schemas import ConfirmedInvoice, NewSupplier
+from invoices.schemas import AddedProducts, ConfirmedInvoice, NewSupplier
 from ledger.models import LedgerEntry, RevaluationItem
 from ledger.repository import LedgerRepositoryDep
 from ledger.rules import check_date
@@ -83,21 +83,9 @@ class InvoicePostingService:
                 ),
             )
 
-        supplier = plan.supplier
-        if supplier is None:
-            if not isinstance(
-                plan.form.supplier,
-                NewSupplier,
-            ):
-                raise RuntimeError(
-                    "a ready draft has a supplier",
-                )
-            supplier = await self.suppliers.create(
-                supplier=Supplier(
-                    name=plan.form.supplier.name,
-                    inn=plan.form.supplier.inn,
-                ),
-            )
+        supplier = await self._posted_supplier(
+            plan=plan,
+        )
         draft_invoice.supplier_id = supplier.id
         draft_invoice.invoice_number = plan.form.invoice_number
         draft_invoice.invoice_date = plan.form.invoice_date
@@ -175,6 +163,112 @@ class InvoicePostingService:
             retail_total=retail_total,
             revaluation=revaluation,
             balance=balance,
+        )
+
+    async def add_products(
+        self,
+        invoice_id: int,
+    ) -> AddedProducts:
+        """adds the new products to the catalog, the draft goes away without a trace in the books"""
+        # the same lock as a confirmation, both create products and aliases of the supplier
+        await self.ledger.lock()
+        draft_invoice = await get_draft_invoice(
+            invoices=self.invoices,
+            invoice_id=invoice_id,
+        )
+        plan = await self.planner.plan(
+            draft_invoice=draft_invoice,
+        )
+        if not plan.new_lines:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Новых товаров в накладной нет",
+            )
+        if not plan.products_ready:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Добавить товары нельзя: "
+                + "; ".join(
+                    issue_text(
+                        issue=issue,
+                    )
+                    for issue in plan.products_blockers
+                ),
+            )
+
+        supplier = await self._posted_supplier(
+            plan=plan,
+        )
+        created: set[ProductKey] = set()
+        # a line with the price the user entered goes first, it names and prices the product
+        for line in sorted(
+            plan.new_lines,
+            key=lambda line: line.form.retail_price is None,
+        ):
+            if (
+                line.key is None
+                or line.alias is None
+                or line.markup_pct is None
+                or line.retail_price is None
+                or line.form.name is None
+            ):
+                raise RuntimeError(
+                    "a ready draft has a name and a price for every new line",
+                )
+            if line.key in created:
+                continue
+            created.add(
+                line.key,
+            )
+            product = await self.products.create(
+                product=Product(
+                    supplier_id=supplier.id,
+                    name=line.form.name,
+                    markup_pct=line.markup_pct,
+                    retail_price=line.retail_price,
+                    has_price_tag=False,
+                ),
+            )
+            await self.products.add_alias(
+                alias=ProductAlias(
+                    product_id=product.id,
+                    supplier_id=supplier.id,
+                    alias_normalized=line.alias,
+                    alias_raw=line.form.name,
+                ),
+            )
+        await self.invoices.delete_draft(
+            invoice=draft_invoice,
+        )
+        await self.invoices.commit()
+        return AddedProducts(
+            created=len(
+                created,
+            ),
+            skipped=len(
+                {line.key for line in plan.lines if line.product is not None},
+            ),
+        )
+
+    async def _posted_supplier(
+        self,
+        plan: DraftPlan,
+    ) -> Supplier:
+        """the supplier of a ready draft, a new one is created here"""
+        if plan.supplier is not None:
+            return plan.supplier
+        if isinstance(
+            plan.form.supplier,
+            NewSupplier,
+        ):
+            return await self.suppliers.create(
+                supplier=Supplier(
+                    name=plan.form.supplier.name,
+                    inn=plan.form.supplier.inn,
+                ),
+            )
+        raise RuntimeError(
+            "a ready draft has a supplier",
         )
 
     async def _revalue(

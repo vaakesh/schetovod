@@ -143,6 +143,7 @@ class InvoiceDraftService:
         return InvoiceDraft(
             id=draft_invoice.id,
             ready=plan.ready,
+            products_ready=plan.products_ready,
             issues=plan.issues,
             form=plan.form,
             lines=[

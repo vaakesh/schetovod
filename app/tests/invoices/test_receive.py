@@ -1,10 +1,10 @@
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, patch
 
-from invoices.drafts import InvoiceDraftService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_session
+from invoices.drafts import InvoiceDraftService
 from invoices.extraction import InvoiceExtraction
 from invoices.schemas import DraftForm, DraftTotals, InvoiceDraft
 from main import app
@@ -203,6 +203,7 @@ class TestReceiveInvoice(InvoiceApi):
         result = InvoiceDraft(
             id=42,
             ready=False,
+            products_ready=False,
             issues=[],
             form=DraftForm.model_validate(
                 obj={
@@ -239,6 +240,7 @@ class TestReceiveInvoice(InvoiceApi):
         assert response.json() == {
             "id": 42,
             "ready": False,
+            "products_ready": False,
             "issues": [],
             "form": {
                 "invoice_number": None,

@@ -124,6 +124,12 @@ export default function App() {
             setGuard={setGuard}
             onHome={() => void go({ page: "invoices" })}
             onDeclined={(id) => void go({ page: "invoices" }, `Черновик №${id} отклонён`)}
+            onProductsAdded={({ created, skipped }) =>
+              void go(
+                { page: "invoices" },
+                `Добавлено товаров: ${created}, уже были в каталоге: ${skipped}`,
+              )
+            }
           />
         );
       case "posted":

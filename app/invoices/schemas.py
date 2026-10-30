@@ -156,10 +156,19 @@ class ConfirmedInvoice(BaseModel):
     balance: Decimal
 
 
+class AddedProducts(BaseModel):
+    # products created from the new lines of the draft
+    created: int
+    # known products of the draft, left as they are
+    skipped: int
+
+
 class InvoiceDraft(BaseModel):
     id: int
     # no blocking issues, the invoice can be confirmed
     ready: bool
+    # the new products can be added without posting the invoice
+    products_ready: bool
     issues: list[Issue]
     # edit and send back to save the draft
     form: DraftForm

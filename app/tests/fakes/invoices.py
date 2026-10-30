@@ -313,6 +313,12 @@ class FakeInvoices:
             payment,
         )
 
+    async def delete_draft(
+        self,
+        invoice: Invoice,
+    ) -> None:
+        del self.store.invoices[invoice.id]
+
     async def flush(self) -> None:
         pass
 

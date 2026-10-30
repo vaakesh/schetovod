@@ -190,6 +190,12 @@ export interface SupplierCandidate extends SupplierSummary {
   matched_lines: number;
 }
 
+export interface AddedProducts {
+  created: number;
+  // known products of the draft, left as they are
+  skipped: number;
+}
+
 export interface ConfirmedInvoice {
   id: number;
   ledger_entry_id: number;
@@ -403,6 +409,7 @@ export interface LedgerReport {
 export interface InvoiceDraft {
   id: number;
   ready: boolean;
+  products_ready: boolean;
   issues: Issue[];
   form: DraftForm;
   lines: DraftLine[];

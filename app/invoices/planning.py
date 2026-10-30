@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from invoices.calculations import (
+    DOCUMENT_ISSUE,
     LinePrices,
     block,
     check_read_prices,
@@ -84,6 +85,26 @@ class DraftPlan:
     def ready(self) -> bool:
         return not any(issue.blocking for issue in self.issues)
 
+    @property
+    def new_lines(self) -> list[PlannedLine]:
+        return [line for line in self.lines if line.product is None]
+
+    @property
+    def products_blockers(self) -> list[Issue]:
+        """what stops adding the new products, the lines of known products stay untouched"""
+        known = {line.position for line in self.lines if line.product is not None}
+        return [
+            issue
+            for issue in self.issues
+            if issue.blocking
+            and issue.code != DOCUMENT_ISSUE
+            and issue.line not in known
+        ]
+
+    @property
+    def products_ready(self) -> bool:
+        return bool(self.new_lines) and not self.products_blockers
+
 
 class InvoicePlanner:
     def __init__(
@@ -145,11 +166,13 @@ class InvoicePlanner:
             block(
                 plan=plan,
                 message="номер накладной не указан",
+                code=DOCUMENT_ISSUE,
             )
         if form.invoice_date is None:
             block(
                 plan=plan,
                 message="дата накладной не указана",
+                code=DOCUMENT_ISSUE,
             )
         if isinstance(
             form.supplier,
@@ -286,6 +309,7 @@ class InvoicePlanner:
                 block(
                     plan=plan,
                     message=f"эта накладная уже проведена под номером {same.id}",
+                    code=DOCUMENT_ISSUE,
                 )
         return plan
 

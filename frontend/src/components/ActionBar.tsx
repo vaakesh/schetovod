@@ -9,6 +9,7 @@ interface Props {
   onReset: () => void;
   onConfirm: () => void;
   onDecline: () => void;
+  onAddProducts: () => void;
 }
 
 function hint(draft: InvoiceDraft, dirty: boolean): string {
@@ -38,6 +39,7 @@ export default function ActionBar({
   onReset,
   onConfirm,
   onDecline,
+  onAddProducts,
 }: Props) {
   return (
     <div className="dock">
@@ -57,6 +59,15 @@ export default function ActionBar({
           <>
             <button type="button" className="button button-ghost" disabled={busy} onClick={onDecline}>
               Отклонить
+            </button>
+            <button
+              type="button"
+              className="button button-ghost"
+              disabled={busy || !draft.products_ready}
+              title="Добавить новые товары в каталог, не проводя накладную. Нужны продавец и розничные цены новых товаров"
+              onClick={onAddProducts}
+            >
+              Только товары
             </button>
             <button
               type="button"

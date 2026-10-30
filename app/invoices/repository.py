@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import ScalarSelect, case, func, or_, select
+from sqlalchemy import ScalarSelect, case, delete, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from core.db import SessionDep
@@ -410,6 +410,20 @@ class InvoiceRepository:
             instance=payment,
         )
         await self.session.flush()
+
+    async def delete_draft(
+        self,
+        invoice: Invoice,
+    ) -> None:
+        # a draft has no rows of its own, the statement skips the ORM loading of relations
+        await self.session.execute(
+            statement=delete(
+                Invoice,
+            ).where(
+                Invoice.id == invoice.id,
+                Invoice.status == InvoiceStatus.DRAFT,
+            ),
+        )
 
     async def flush(self) -> None:
         await self.session.flush()

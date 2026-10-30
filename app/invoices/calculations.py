@@ -205,17 +205,21 @@ def check_totals(
 
 
 PRICE_CHANGED = "price_changed"
+# blocks posting the document, adding its new products does not need it
+DOCUMENT_ISSUE = "document"
 
 
 def block(
     plan: DraftPlan,
     message: str,
     line: int | None = None,
+    code: str | None = None,
 ) -> None:
     plan.issues.append(
         Issue(
             line=line,
             message=message,
+            code=code,
         ),
     )
 

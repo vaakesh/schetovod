@@ -22,6 +22,7 @@ from invoices.payments import InvoicePaymentServiceDep
 from invoices.posting import InvoicePostingServiceDep
 from invoices.queries import InvoiceQueryServiceDep
 from invoices.schemas import (
+    AddedProducts,
     ConfirmedInvoice,
     DraftForm,
     InvoiceConfirm,
@@ -224,6 +225,19 @@ async def confirm_invoice(
     return await service.confirm_invoice(
         invoice_id=invoice_id,
         occurred_on=payload.occurred_on,
+    )
+
+
+@router.post(
+    path="/invoice/{invoice_id}/products",
+    response_model=AddedProducts,
+)
+async def add_products(
+    invoice_id: int,
+    service: InvoicePostingServiceDep,
+) -> AddedProducts:
+    return await service.add_products(
+        invoice_id=invoice_id,
     )
 
 

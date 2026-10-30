@@ -1,4 +1,5 @@
 import type {
+  AddedProducts,
   Catalog,
   ConfirmedInvoice,
   DraftForm,
@@ -306,6 +307,10 @@ export function saveForm(id: number, form: DraftForm): Promise<InvoiceDraft> {
 
 export function confirmInvoice(id: number, occurredOn: string): Promise<ConfirmedInvoice> {
   return request("POST", `/invoice/${id}/confirm`, { occurred_on: occurredOn });
+}
+
+export function addInvoiceProducts(id: number): Promise<AddedProducts> {
+  return request("POST", `/invoice/${id}/products`);
 }
 
 export function declineInvoice(id: number): Promise<null> {
