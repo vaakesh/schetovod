@@ -79,6 +79,27 @@ class SupplierDebt(BaseModel):
     debt: Decimal
 
 
+class PrintedLine(BaseModel):
+    line_no: int
+    # as printed on the invoice
+    name: str
+    quantity: Decimal
+    unit: str | None
+    # as of posting, the supplier prices are left out
+    retail_price: Decimal
+    retail_price_total: Decimal
+
+
+class PrintedInvoice(BaseModel):
+    """the invoice lines at the retail prices they were posted with"""
+
+    supplier_name: str
+    invoice_number: str
+    invoice_date: OutputDate
+    lines: list[PrintedLine]
+    retail_total: Decimal
+
+
 class PeriodReport(BaseModel):
     """the period day by day, for the printed report"""
 

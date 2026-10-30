@@ -191,6 +191,15 @@ export function reportPdfUrl(dateFrom: string, dateTo: string): string {
   return `/api/ledger/report.pdf${query({ date_from: dateFrom, date_to: dateTo })}`;
 }
 
+// the confirmed invoices without the retail prices, the browser opens the file to print
+export function invoicesPrintUrl(ids: number[]): string {
+  const search = new URLSearchParams();
+  for (const id of ids) {
+    search.append("ids", String(id));
+  }
+  return `/api/invoices/print.pdf?${search.toString()}`;
+}
+
 export function addPayment(invoiceId: number, body: PaymentCreate): Promise<PostedInvoice> {
   return request("POST", `/invoice/${invoiceId}/payments`, body);
 }

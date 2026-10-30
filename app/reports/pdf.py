@@ -1,9 +1,11 @@
 from datetime import date
 from decimal import Decimal
+from functools import partial
 from io import BytesIO
 from pathlib import Path
 
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
@@ -12,6 +14,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     Flowable,
+    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -21,7 +24,7 @@ from reportlab.platypus import (
 
 from core.enums import LedgerKind
 from core.schema_types import format_invoice_date
-from reports.schemas import PeriodReport, ReportDay
+from reports.schemas import PeriodReport, PrintedInvoice, ReportDay
 
 # fonts-dejavu-core in the image, the built-in PDF fonts have no cyrillic
 FONT_DIR = Path(
@@ -75,6 +78,25 @@ DEBT_HEADER = (
     "Долг",
 )
 DEBT_WIDTHS = (70, 30, 22, 26, 26, 26)
+INVOICE_FONT_SIZE = 8.5
+HEAD_SHADE = colors.HexColor(
+    val="#e2e2e2",
+)
+STRIPE = colors.HexColor(
+    val="#f6f6f6",
+)
+INVOICE_HEADER = (
+    "№",
+    "Название",
+    "Кол-во",
+    "Ед.",
+    # two lines, the columns stay as narrow as their numbers
+    "Цена\nрозн.",
+    "Сумма\nрозн.",
+)
+# millimetres, the portrait page is 190 wide inside the margins,
+# the 35 left on the right are for the sums written by hand
+INVOICE_WIDTHS = (7, 85, 15, 10, 18, 20)
 
 
 def report_pdf_filename(report: PeriodReport) -> str:
@@ -166,10 +188,14 @@ def report_pdf(report: PeriodReport) -> bytes:
         bottomMargin=12 * mm,
         title=f"Отчёт с {date_from} по {date_to}",
     )
+    page_number = partial(
+        _page_number,
+        page_width=PAGE_SIZE[0],
+    )
     document.build(
         flowables=story,
-        onFirstPage=_page_number,
-        onLaterPages=_page_number,
+        onFirstPage=page_number,
+        onLaterPages=page_number,
     )
     return buffer.getvalue()
 
@@ -193,6 +219,25 @@ class _Styles:
             fontName=FONT,
             fontSize=FONT_SIZE,
             leading=FONT_SIZE + 1.5,
+        )
+        # the printed invoices have fewer columns and room for a larger font
+        self.invoice_cell = ParagraphStyle(
+            name="invoice_cell",
+            parent=self.cell,
+            fontSize=INVOICE_FONT_SIZE,
+            leading=INVOICE_FONT_SIZE + 1.5,
+        )
+        # a paragraph ignores the ALIGN of its cell
+        self.invoice_unit = ParagraphStyle(
+            name="invoice_unit",
+            parent=self.invoice_cell,
+            alignment=TA_CENTER,
+        )
+        self.invoice_title = ParagraphStyle(
+            name="invoice_title",
+            fontName=FONT,
+            fontSize=10,
+            leading=13,
         )
         self.note = ParagraphStyle(
             name="note",
@@ -532,9 +577,177 @@ def _debts_table(
     return table
 
 
+def invoices_pdf_filename(invoices: list[PrintedInvoice]) -> str:
+    if len(invoices) == 1:
+        invoice = invoices[0]
+        invoice_date = format_invoice_date(
+            value=invoice.invoice_date,
+        )
+        return f"nakladnaya_{invoice_date}.pdf"
+    return f"nakladnye_{len(invoices)}.pdf"
+
+
+def invoices_pdf(invoices: list[PrintedInvoice]) -> bytes:
+    """the invoices one after another on portrait pages, at the retail prices"""
+    _register_fonts()
+    styles = _Styles()
+    story: list[Flowable] = []
+    for index, invoice in enumerate(
+        invoices,
+    ):
+        if index:
+            story.append(
+                Spacer(
+                    width=0,
+                    height=8 * mm,
+                ),
+            )
+        supplier = _escape(
+            text=invoice.supplier_name,
+        )
+        number = _escape(
+            text=invoice.invoice_number,
+        )
+        invoice_date = _full_date(
+            value=invoice.invoice_date,
+        )
+        # the supplier stands out, the number and the date follow in the regular weight
+        title = (
+            f'<font name="{FONT_BOLD}">{supplier}</font>'
+            f"  ·  накладная №{number} от {invoice_date}"
+        )
+        # a short invoice is not torn between two pages, a long one breaks anyway
+        story.append(
+            KeepTogether(
+                flowables=[
+                    Paragraph(
+                        text=title,
+                        style=styles.invoice_title,
+                    ),
+                    Spacer(
+                        width=0,
+                        height=2 * mm,
+                    ),
+                    _invoice_table(
+                        invoice=invoice,
+                        styles=styles,
+                    ),
+                ],
+            ),
+        )
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        filename=buffer,
+        pagesize=A4,
+        leftMargin=MARGIN,
+        rightMargin=MARGIN,
+        topMargin=MARGIN,
+        bottomMargin=12 * mm,
+        title="Накладные",
+    )
+    page_number = partial(
+        _page_number,
+        page_width=A4[0],
+    )
+    document.build(
+        flowables=story,
+        onFirstPage=page_number,
+        onLaterPages=page_number,
+    )
+    return buffer.getvalue()
+
+
+def _invoice_table(
+    invoice: PrintedInvoice,
+    styles: _Styles,
+) -> Table:
+    rows: list[list[object]] = [
+        list(
+            INVOICE_HEADER,
+        ),
+    ]
+    for line in invoice.lines:
+        rows.append(
+            [
+                str(
+                    line.line_no,
+                ),
+                Paragraph(
+                    text=_escape(
+                        text=line.name,
+                    ),
+                    style=styles.invoice_cell,
+                ),
+                _quantity(
+                    value=line.quantity,
+                ),
+                Paragraph(
+                    text=_escape(
+                        text=line.unit or "",
+                    ),
+                    style=styles.invoice_unit,
+                ),
+                _money(
+                    value=line.retail_price,
+                ),
+                _money(
+                    value=line.retail_price_total,
+                ),
+            ],
+        )
+    rows.append(
+        [
+            "Итого в розничных ценах",
+            *[""] * (len(INVOICE_HEADER) - 2),
+            _money(
+                value=invoice.retail_total,
+            ),
+        ],
+    )
+    table = Table(
+        data=rows,
+        colWidths=[width * mm for width in INVOICE_WIDTHS],
+        repeatRows=1,
+        hAlign="LEFT",
+    )
+    table.setStyle(
+        tblstyle=TableStyle(
+            cmds=[
+                ("FONT", (0, 0), (-1, -1), FONT, INVOICE_FONT_SIZE),
+                ("FONT", (0, 0), (-1, 0), FONT_BOLD, INVOICE_FONT_SIZE),
+                ("FONT", (0, -1), (-1, -1), FONT_BOLD, INVOICE_FONT_SIZE),
+                # light stripes keep the eye on the row across the wide name column
+                ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, STRIPE]),
+                ("BACKGROUND", (0, 0), (-1, 0), HEAD_SHADE),
+                ("BACKGROUND", (0, -1), (-1, -1), HEAD_SHADE),
+                ("SPAN", (0, -1), (-2, -1)),
+                ("ALIGN", (0, 1), (0, -2), "CENTER"),
+                ("ALIGN", (2, 1), (2, -1), "RIGHT"),
+                ("ALIGN", (3, 1), (3, -2), "CENTER"),
+                ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
+                ("ALIGN", (0, -1), (-2, -1), "RIGHT"),
+                # after the body, the header row is centered in both directions
+                ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
+                ("LINEAFTER", (0, 0), (-2, -2), 0.3, GRID),
+                ("LINEBELOW", (0, 1), (-1, -3), 0.3, GRID),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.black),
+                ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.black),
+                ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ],
+        ),
+    )
+    return table
+
+
 def _page_number(
     canvas: Canvas,
     _document: SimpleDocTemplate,
+    page_width: float,
 ) -> None:
     canvas.saveState()
     canvas.setFont(
@@ -542,7 +755,7 @@ def _page_number(
         size=FONT_SIZE,
     )
     canvas.drawRightString(
-        x=PAGE_SIZE[0] - MARGIN,
+        x=page_width - MARGIN,
         y=6 * mm,
         text=f"стр. {canvas.getPageNumber()}",
     )
@@ -580,6 +793,11 @@ def _money(
     if signed and value > 0:
         return f"+{digits}"
     return digits
+
+
+def _quantity(value: Decimal) -> str:
+    """2, 1,5 or 0,125 without the trailing zeros"""
+    return f"{value.normalize():f}".replace(".", ",")
 
 
 def _short_date(value: date) -> str:

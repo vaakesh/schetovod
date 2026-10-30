@@ -1619,6 +1619,47 @@ button {
   width: 260px;
 }
 
+.list-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.list-tools .button-soft.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+}
+
+.print-hint {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-soft);
+  border-radius: 12px;
+}
+
+.list .pick-cell {
+  width: 40px;
+  padding-right: 0;
+  vertical-align: middle;
+}
+
+.pick-box {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.list-row.picked,
+.list-row.picked.clickable:hover {
+  background: var(--accent-wash);
+}
+
 .list-alert {
   margin: 0 0 16px;
 }

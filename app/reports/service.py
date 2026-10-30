@@ -5,17 +5,20 @@ from decimal import Decimal
 from itertools import groupby
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 
 from core.enums import LedgerKind
 from core.http import invalid
 from invoices.repository import InvoiceRepositoryDep
 from ledger.repository import LedgerRepositoryDep, LedgerRow
 from ledger.service import entry_supplier_name, ledger_entry_out
+from products.pricing import retail_price_total
 from reports.schemas import (
     CashNote,
     LedgerReport,
     PeriodReport,
+    PrintedInvoice,
+    PrintedLine,
     ReportDay,
     ReportInvoice,
     SupplierDebt,
@@ -197,6 +200,78 @@ class ReportService:
             ],
         )
 
+    async def printed_invoices(
+        self,
+        invoice_ids: list[int],
+    ) -> list[PrintedInvoice]:
+        """the confirmed invoices oldest first, as the paper copies lie in a folder"""
+        printed: list[PrintedInvoice] = []
+        # dict.fromkeys drops a repeated id and keeps the order
+        for invoice_id in dict.fromkeys(
+            invoice_ids,
+        ):
+            invoice = await self.invoices.get_confirmed(
+                invoice_id=invoice_id,
+            )
+            if (
+                invoice is None
+                or invoice.supplier is None
+                or invoice.invoice_number is None
+                or invoice.invoice_date is None
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Проведённая накладная {invoice_id} не найдена",
+                )
+            lines = [
+                PrintedLine(
+                    line_no=item.line_no,
+                    name=item.name,
+                    quantity=item.quantity,
+                    unit=item.unit,
+                    retail_price=item.retail_price,
+                    retail_price_total=retail_price_total(
+                        retail_price=item.retail_price,
+                        quantity=item.quantity,
+                    ),
+                )
+                # by the name to find a product quickly, line_no keeps the number on the paper
+                for item in sorted(
+                    invoice.items,
+                    key=lambda item: (
+                        _alphabetical(
+                            text=item.name,
+                        ),
+                        item.line_no,
+                    ),
+                )
+            ]
+            printed.append(
+                PrintedInvoice(
+                    supplier_name=_printed_supplier_name(
+                        name=invoice.supplier.name,
+                        short_name=invoice.supplier.short_name,
+                    ),
+                    invoice_number=invoice.invoice_number,
+                    invoice_date=invoice.invoice_date,
+                    lines=lines,
+                    retail_total=sum(
+                        (line.retail_price_total for line in lines),
+                        start=Decimal(
+                            value=0,
+                        ),
+                    ),
+                ),
+            )
+        return sorted(
+            printed,
+            key=lambda invoice: (
+                invoice.invoice_date,
+                invoice.supplier_name,
+                invoice.invoice_number,
+            ),
+        )
+
 
 ReportServiceDep = Annotated[
     ReportService,
@@ -204,6 +279,24 @@ ReportServiceDep = Annotated[
         dependency=ReportService,
     ),
 ]
+
+
+def _alphabetical(text: str) -> list[int]:
+    """a sort key in the russian alphabet, ё comes right after е and not after я,
+    the code points are doubled to leave room for it"""
+    return [
+        ord("е") * 2 + 1 if char == "ё" else ord(char) * 2 for char in text.casefold()
+    ]
+
+
+def _printed_supplier_name(
+    name: str,
+    short_name: str | None,
+) -> str:
+    """the short name to find the invoice by, the full one as on the paper"""
+    if short_name and short_name != name:
+        return f"{short_name} ({name})"
+    return name
 
 
 def _report_day(

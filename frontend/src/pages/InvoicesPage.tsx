@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { listInvoices } from "../api";
+import { invoicesPrintUrl, listInvoices } from "../api";
 import UploadForm, { type UploadKind } from "../components/UploadForm";
-import { formatDate, formatMoney, formatText } from "../format";
+import { formatDate, formatMoney, formatText, plural } from "../format";
 import { message } from "../message";
 import type { Route } from "../router";
 import type { InvoiceListItem, InvoiceSort, InvoiceStatus } from "../types";
@@ -57,9 +57,26 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // in the print mode a click picks a confirmed invoice instead of opening it
+  const [printing, setPrinting] = useState(false);
+  // kept across the filters and the search, the user may gather invoices from several lists
+  const [picked, setPicked] = useState<Set<number>>(new Set());
 
   const query = search.trim();
   const { status, unpaid } = filter;
+
+  useEffect(() => {
+    if (!printing) {
+      return;
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        stopPrinting();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [printing]);
 
   // the search waits for a pause in typing, a late answer to an old query is dropped
   useEffect(() => {
@@ -107,6 +124,41 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
     }
   }
 
+  function stopPrinting() {
+    setPrinting(false);
+    setPicked(new Set());
+  }
+
+  function toggle(id: number) {
+    const next = new Set(picked);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setPicked(next);
+  }
+
+  // only a confirmed invoice has lines to print
+  const printable = items?.filter((item) => item.status === "confirmed") ?? [];
+  const allPicked = printable.length > 0 && printable.every((item) => picked.has(item.id));
+
+  function toggleAll() {
+    const next = new Set(picked);
+    for (const item of printable) {
+      if (allPicked) {
+        next.delete(item.id);
+      } else {
+        next.add(item.id);
+      }
+    }
+    setPicked(next);
+  }
+
+  function print() {
+    window.open(invoicesPrintUrl([...picked]), "_blank", "noopener");
+  }
+
   function uploads(slim: boolean) {
     return (
       <div className={slim ? "upload-grid upload-grid-slim" : "upload-grid"}>
@@ -147,14 +199,30 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
             </button>
           ))}
         </div>
-        <input
-          className="input search"
-          type="search"
-          placeholder="Продавец или номер"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
+        <div className="list-tools">
+          <input
+            className="input search"
+            type="search"
+            placeholder="Продавец или номер"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <button
+            type="button"
+            className={printing ? "button button-soft active" : "button button-soft"}
+            onClick={() => (printing ? stopPrinting() : setPrinting(true))}
+          >
+            Печать
+          </button>
+        </div>
       </div>
+
+      {printing && (
+        <p className="print-hint">
+          Отметьте проведённые накладные и нажмите «Открыть PDF». В PDF попадут поставщик, номер,
+          дата и товары с розничными ценами, без цен поставщика.
+        </p>
+      )}
 
       {error && (
         <div className="alert list-alert">
@@ -167,6 +235,18 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
           <table className="list">
             <thead>
               <tr>
+                {printing && (
+                  <th className="pick-cell">
+                    <input
+                      type="checkbox"
+                      className="pick-box"
+                      aria-label="Отметить все проведённые"
+                      checked={allPicked}
+                      disabled={printable.length === 0}
+                      onChange={toggleAll}
+                    />
+                  </th>
+                )}
                 <th>Дата</th>
                 <th>Номер</th>
                 <th>Продавец</th>
@@ -190,6 +270,44 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
             </thead>
             <tbody>
               {items?.map((item) => {
+                if (printing) {
+                  const canPick = item.status === "confirmed";
+                  const isPicked = picked.has(item.id);
+                  return (
+                    <tr
+                      key={item.id}
+                      className={
+                        canPick
+                          ? `list-row clickable${isPicked ? " picked" : ""}`
+                          : "list-row muted-row"
+                      }
+                      tabIndex={canPick ? 0 : undefined}
+                      onClick={() => canPick && toggle(item.id)}
+                      onKeyDown={(event) => {
+                        if (canPick && (event.key === "Enter" || event.key === " ")) {
+                          event.preventDefault();
+                          toggle(item.id);
+                        }
+                      }}
+                    >
+                      <td className="pick-cell">
+                        {canPick && (
+                          <input
+                            type="checkbox"
+                            className="pick-box"
+                            tabIndex={-1}
+                            aria-label={`Накладная ${formatText(item.invoice_number)}`}
+                            checked={isPicked}
+                            // the row click toggles it, a second toggle here would undo it
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={() => toggle(item.id)}
+                          />
+                        )}
+                      </td>
+                      {cells(item)}
+                    </tr>
+                  );
+                }
                 const route = target(item);
                 return (
                   <tr
@@ -203,22 +321,7 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
                       }
                     }}
                   >
-                    <td className="nowrap">{formatDate(item.invoice_date)}</td>
-                    <td className="nowrap">{formatText(item.invoice_number)}</td>
-                    <td className="list-supplier">{formatText(item.supplier_name)}</td>
-                    <td className="num muted-cell">{item.lines}</td>
-                    <td className="num strong">
-                      {item.retail_total === null ? "" : `${formatMoney(item.retail_total)} ₽`}
-                    </td>
-                    {/* a paid invoice leaves the cell empty, only what is owed stands out */}
-                    <td className="num nowrap">
-                      {item.debt !== null && Number(item.debt) > 0 && `${formatMoney(item.debt)} ₽`}
-                    </td>
-                    <td>
-                      <span className={`status-dot status-${item.status}`}>
-                        {STATUS_LABELS[item.status]}
-                      </span>
-                    </td>
+                    {cells(item)}
                   </tr>
                 );
               })}
@@ -235,6 +338,55 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
           </button>
         </div>
       )}
+
+      {printing && (
+        <div className="dock">
+          <div className="dock-bar">
+            <span className={picked.size > 0 ? "dock-hint hint-ok" : "dock-hint"}>
+              {picked.size > 0
+                ? `Выбрано ${picked.size} ${plural(picked.size, "накладная", "накладные", "накладных")}`
+                : "Отметьте накладные для печати"}
+            </span>
+            {picked.size > 0 && (
+              <button type="button" className="button button-ghost" onClick={() => setPicked(new Set())}>
+                Сбросить
+              </button>
+            )}
+            <button type="button" className="button button-ghost" onClick={stopPrinting}>
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="button button-primary"
+              disabled={picked.size === 0}
+              onClick={print}
+            >
+              Открыть PDF
+            </button>
+          </div>
+        </div>
+      )}
     </main>
+  );
+}
+
+function cells(item: InvoiceListItem) {
+  return (
+    <>
+      <td className="nowrap">{formatDate(item.invoice_date)}</td>
+      <td className="nowrap">{formatText(item.invoice_number)}</td>
+      <td className="list-supplier">{formatText(item.supplier_name)}</td>
+      <td className="num muted-cell">{item.lines}</td>
+      <td className="num strong">
+        {item.retail_total === null ? "" : `${formatMoney(item.retail_total)} ₽`}
+      </td>
+      {/* a paid invoice leaves the cell empty, only what is owed stands out */}
+      <td className="num nowrap">
+        {item.debt !== null && Number(item.debt) > 0 && `${formatMoney(item.debt)} ₽`}
+      </td>
+      <td>
+        <span className={`status-dot status-${item.status}`}>{STATUS_LABELS[item.status]}</span>
+      </td>
+    </>
   );
 }
