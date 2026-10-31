@@ -4,10 +4,9 @@ import { getTrafficReport } from "../api";
 import BarsChart from "../components/BarsChart";
 import ForecastChart from "../components/ForecastChart";
 import LoadHeatmap from "../components/LoadHeatmap";
-import ReceiptImportDialog from "../components/ReceiptImportDialog";
 import TrendChart from "../components/TrendChart";
 import { formatDate, formatDateTime, plural } from "../format";
-import { fromInputDate, inputDate, shiftInput, todayInput } from "../form";
+import { fromInputDate, shiftInput, todayInput } from "../form";
 import { message } from "../message";
 import {
   WEEKDAYS,
@@ -19,8 +18,6 @@ import {
 } from "../traffic";
 import type { TrafficReport } from "../types";
 
-// the forecast looks 12 weeks back, the first loading should bring as much
-const FIRST_IMPORT_DAYS = 84;
 const DEFAULT_PERIOD_DAYS = 56;
 // below it a median is a guess
 const RELIABLE_DAYS = 3;
@@ -30,9 +27,6 @@ export default function TrafficPage() {
   const [end, setEnd] = useState(() => shiftInput(todayInput(), -1));
   const [report, setReport] = useState<TrafficReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
-  // a new loading of receipts reads the report again
-  const [loads, setLoads] = useState(0);
   const [selected, setSelected] = useState(0);
 
   const dateFrom = fromInputDate(start);
@@ -55,7 +49,7 @@ export default function TrafficPage() {
     return () => {
       current = false;
     };
-  }, [dateFrom, dateTo, loads]);
+  }, [dateFrom, dateTo]);
 
   const lastReceipt = report?.last_receipt_at ?? null;
   const summary = report?.summary;
@@ -92,9 +86,6 @@ export default function TrafficPage() {
             {lastReceipt ? `Чеки загружены по ${formatDateTime(lastReceipt)}` : "Чеки ещё не загружены"}
           </p>
         )}
-        <button type="button" className="button button-primary" onClick={() => setImporting(true)}>
-          Загрузить чеки
-        </button>
       </section>
 
       {error && (
@@ -149,7 +140,9 @@ export default function TrafficPage() {
           {summary.days === 0 ? (
             <section className="sheet traffic-card">
               <p className="list-empty">
-                {lastReceipt ? "За этот период чеков нет" : "Загрузите чеки, чтобы увидеть графики"}
+                {lastReceipt
+                  ? "За этот период чеков нет"
+                  : "Графики появятся после загрузки чеков из кассы, она идёт автоматически"}
               </p>
             </section>
           ) : (
@@ -239,18 +232,6 @@ export default function TrafficPage() {
             </>
           )}
         </>
-      )}
-
-      {importing && (
-        <ReceiptImportDialog
-          start={
-            lastReceipt
-              ? inputDate(new Date(lastReceipt))
-              : shiftInput(todayInput(), -FIRST_IMPORT_DAYS)
-          }
-          onClose={() => setImporting(false)}
-          onImported={() => setLoads((count) => count + 1)}
-        />
       )}
     </main>
   );

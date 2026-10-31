@@ -25,6 +25,8 @@
   отметка о том, висит ли на полке ценник с актуальной ценой.
 - **Отчёты.** Сводка за период по дням с накладными, оплатами и кассой — на
   экране, в XLSX и в PDF.
+- **Покупатели.** Чеки сами загружаются из кассы aQsi раз в неделю и при запуске
+  контейнеров. По ним строятся загруженность магазина и прогноз покупателей.
 
 ## Распознавание накладных через OpenAI API
 
@@ -71,6 +73,7 @@
 - PostgreSQL 18, SQLAlchemy 2 (async, asyncpg), миграции Alembic
 - OpenAI Python SDK (Responses API, Structured Outputs, function calling)
 - Pillow для обработки фото, openpyxl для XLSX, ReportLab для PDF
+- taskiq и Redis для фоновых задач
 - uv, Ruff, ty, pytest
 
 Код разделён на слои: роуты FastAPI → сервисы с бизнес-логикой → репозитории
@@ -88,7 +91,8 @@ PostgreSQL. Тесты прогоняют API через `TestClient` с заг�
 
 **Инфраструктура**
 
-- Docker Compose: API, frontend, PostgreSQL и CloudBeaver для просмотра базы
+- Docker Compose: API, frontend, PostgreSQL, Redis, воркер и планировщик фоновых
+  задач и CloudBeaver для просмотра базы
 - токен OpenAI передаётся в контейнер как Docker secret
 
 ## Запуск
@@ -102,8 +106,8 @@ make up
 
 `install.sh` создаёт `.env` из `.env.example` и пустой `.openai-token`
 (существующие файлы не трогает). Порты и пароли задаются в `.env`. `make up`
-собирает и запускает API, frontend и PostgreSQL, миграции применяются
-автоматически. С портами из `.env.example`:
+собирает и запускает API, frontend, PostgreSQL, Redis, воркер и планировщик,
+миграции применяются автоматически. С портами из `.env.example`:
 
 - приложение: http://localhost:8080 (порт открыт и для других устройств в сети)
 - документация API: http://localhost:8001/docs

@@ -3,12 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
-from core.schema_types import FormModel, InvoiceDate, OutputDate
-
-
-class ReceiptImportCreate(FormModel):
-    date_from: InvoiceDate
-    date_to: InvoiceDate
+from core.schema_types import OutputDate
 
 
 class ReceiptImportResult(BaseModel):

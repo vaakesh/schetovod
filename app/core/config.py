@@ -45,8 +45,10 @@ class Settings(BaseSettings):
     openai_image_crops: bool = True
     # a long reasoning over several pages takes minutes
     openai_timeout: float = 600
-    # without it the shifts of the till can not be loaded
+    # without it the shifts and the receipts of the till can not be loaded
     aqsi_api_integration: str = ""
+    # the broker of the background tasks
+    redis_url: str = "redis://localhost:6379/0"
 
     @property
     def database_url(self) -> URL:

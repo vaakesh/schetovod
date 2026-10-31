@@ -345,12 +345,6 @@ export interface ShiftImportResult {
   skipped: SkippedShift[];
 }
 
-export interface ReceiptImportResult {
-  received: number;
-  loaded: number;
-  present: number;
-}
-
 export interface TrafficSummary {
   receipts: number;
   days: number;

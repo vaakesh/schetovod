@@ -1,23 +1,10 @@
 from fastapi import APIRouter
 
 from core.http import ReportDate
-from traffic.schemas import ReceiptImportCreate, ReceiptImportResult, TrafficReport
+from traffic.schemas import TrafficReport
 from traffic.service import TrafficServiceDep
 
 router = APIRouter()
-
-
-@router.post(
-    path="/traffic/import",
-    response_model=ReceiptImportResult,
-)
-async def import_receipts(
-    payload: ReceiptImportCreate,
-    service: TrafficServiceDep,
-) -> ReceiptImportResult:
-    return await service.load(
-        payload=payload,
-    )
 
 
 @router.get(

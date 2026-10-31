@@ -1,10 +1,3 @@
-import { fromInputDate, inputDate } from "./form";
-
-export interface ApiPeriod {
-  from: string;
-  to: string;
-}
-
 // monday is 0, as the api counts them
 export const WEEKDAYS = [
   "Понедельник",
@@ -48,18 +41,4 @@ export function formatRubles(value: string | number | null): string {
 export function dayNumber(value: string): number {
   const [day, month, year] = value.split("-").map(Number);
   return Date.UTC(year!, month! - 1, day!) / 86_400_000;
-}
-
-// the page of a year of receipts does not fit one request, a month at a time does
-export function monthsOf(dateFrom: string, dateTo: string): ApiPeriod[] {
-  const periods: ApiPeriod[] = [];
-  let start = dateFrom;
-  while (start <= dateTo) {
-    const [year, month] = start.split("-").map(Number);
-    const monthEnd = inputDate(new Date(year!, month!, 0));
-    const end = monthEnd < dateTo ? monthEnd : dateTo;
-    periods.push({ from: fromInputDate(start)!, to: fromInputDate(end)! });
-    start = inputDate(new Date(year!, month!, 1));
-  }
-  return periods;
 }
