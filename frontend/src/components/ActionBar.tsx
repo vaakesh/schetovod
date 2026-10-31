@@ -30,6 +30,8 @@ function tone(draft: InvoiceDraft, dirty: boolean): string {
   return draft.ready ? "dock-hint hint-ok" : "dock-hint hint-bad";
 }
 
+const PRODUCTS_HINT = "Добавить новые товары в каталог, не проводя накладную. Нужны продавец и розничные цены новых товаров";
+
 export default function ActionBar({
   draft,
   dirty,
@@ -42,9 +44,9 @@ export default function ActionBar({
   onAddProducts,
 }: Props) {
   return (
-    <div className="dock">
-      {error && <pre className="dock-error">{error}</pre>}
-      <div className="dock-bar">
+    // above the table, a bar at the bottom would hide behind the on-screen keyboard
+    <div className="draft-bar">
+      <div className="draft-bar-row">
         <span className={tone(draft, dirty)}>{hint(draft, dirty)}</span>
         {dirty ? (
           <>
@@ -64,7 +66,7 @@ export default function ActionBar({
               type="button"
               className="button button-ghost"
               disabled={busy || !draft.products_ready}
-              title="Добавить новые товары в каталог, не проводя накладную. Нужны продавец и розничные цены новых товаров"
+              title={PRODUCTS_HINT}
               onClick={onAddProducts}
             >
               Только товары
@@ -80,6 +82,11 @@ export default function ActionBar({
           </>
         )}
       </div>
+      {/* a touch screen has no tooltip to explain the disabled button */}
+      {!dirty && !draft.products_ready && (
+        <p className="draft-touch-hint">Для «Только товары» нужны продавец и розничные цены новых товаров</p>
+      )}
+      {error && <pre className="draft-error">{error}</pre>}
     </div>
   );
 }

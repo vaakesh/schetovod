@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 
 import { getReport, reportPdfUrl, reportXlsxUrl } from "../api";
-import LedgerOperation from "../components/LedgerOperation";
+import LedgerTable from "../components/LedgerTable";
+import PageHead from "../components/PageHead";
+import PeriodFields from "../components/PeriodFields";
 import { formatDate, formatMoney, formatSigned } from "../format";
 import { fromInputDate, todayInput } from "../form";
-import { touchesCash, touchesStock } from "../ledger";
 import { message } from "../message";
 import type { Route } from "../router";
 import type { LedgerReport } from "../types";
@@ -68,29 +69,8 @@ export default function ReportPage({ go }: Props) {
 
   return (
     <main className="page">
-      <section className="ledger-head report-head">
-        <div className="report-period">
-          <label className="field">
-            <span className="field-label">С</span>
-            <input
-              className="input"
-              type="date"
-              value={start}
-              max={end}
-              onChange={(event) => setStart(event.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">По</span>
-            <input
-              className="input"
-              type="date"
-              value={end}
-              min={start}
-              onChange={(event) => setEnd(event.target.value)}
-            />
-          </label>
-        </div>
+      <PageHead title="Отчёт">
+        <PeriodFields start={start} end={end} onStart={setStart} onEnd={setEnd} />
         {dateFrom !== null && dateTo !== null && report && (
           <>
             <a className="button button-soft" href={reportPdfUrl(dateFrom, dateTo)} download>
@@ -101,7 +81,7 @@ export default function ReportPage({ go }: Props) {
             </a>
           </>
         )}
-      </section>
+      </PageHead>
 
       {error && (
         <div className="alert list-alert">
@@ -155,44 +135,7 @@ export default function ReportPage({ go }: Props) {
             </section>
           </div>
 
-          <section className="sheet">
-            <div className="table-wrap">
-              <table className="list ledger">
-                <thead>
-                  <tr>
-                    <th className="num">№</th>
-                    <th>Дата</th>
-                    <th>Операция</th>
-                    <th>Комментарий</th>
-                    <th className="num">Товар</th>
-                    <th className="num">Остаток</th>
-                    <th className="num">Касса</th>
-                    <th className="num">В кассе</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.entries.map((entry) => {
-                    const cancelled = entry.reverses_id !== null || entry.reversed_by_id !== null;
-                    return (
-                      <tr key={entry.id} className={cancelled ? "list-row cancelled" : "list-row"}>
-                        <td className="num muted-cell nowrap">{entry.id}</td>
-                        <td className="nowrap">{formatDate(entry.occurred_on)}</td>
-                        <td className="op">
-                          <LedgerOperation entry={entry} go={go} />
-                        </td>
-                        <td className="ledger-comment">{entry.comment}</td>
-                        <td className="num strong nowrap">{touchesStock(entry) && formatSigned(entry.amount)}</td>
-                        <td className="num muted-cell nowrap">{formatMoney(entry.balance_after)}</td>
-                        <td className="num strong nowrap">{touchesCash(entry) && formatSigned(entry.cash)}</td>
-                        <td className="num muted-cell nowrap">{formatMoney(entry.cash_after)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {report.entries.length === 0 && <p className="list-empty">За период записей нет</p>}
-          </section>
+          <LedgerTable entries={report.entries} go={go} empty="За период записей нет" />
         </>
       )}
     </main>

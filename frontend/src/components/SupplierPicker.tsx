@@ -4,6 +4,7 @@ import { searchSuppliers } from "../api";
 import { formatText } from "../format";
 import { toText, type UpdateForm } from "../form";
 import type { DraftForm, InvoiceDraft, NewSupplier, SupplierSummary } from "../types";
+import SlidingThumb from "./SlidingThumb";
 
 interface Props {
   draft: InvoiceDraft;
@@ -137,6 +138,7 @@ export default function SupplierPicker({ draft, form, suppliers, update, onFound
       {open && (
         <div className="menu">
           <div className="segmented" role="tablist">
+            <SlidingThumb selector=".segment.active" className="segment-thumb" />
             <button
               type="button"
               role="tab"

@@ -2,7 +2,25 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f6f7f9" />
+    <script>
+      // before the first paint, otherwise a dark page flashes white
+      (function () {
+        var saved = null;
+        try {
+          saved = window.localStorage.getItem("theme");
+        } catch (error) {
+          // a private window may refuse the storage, the system setting decides
+        }
+        var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var theme = saved === "light" || saved === "dark" ? saved : dark ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+        document
+          .querySelector('meta[name="theme-color"]')
+          .setAttribute("content", theme === "dark" ? "#14161c" : "#f6f7f9");
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

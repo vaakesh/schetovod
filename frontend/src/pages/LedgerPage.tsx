@@ -3,11 +3,12 @@ import { useCallback, useEffect, useState } from "react";
 import { getLedger, reverseEntry } from "../api";
 import type { Ask } from "../components/ConfirmDialog";
 import LedgerEntryDialog from "../components/LedgerEntryDialog";
-import LedgerOperation from "../components/LedgerOperation";
+import LedgerTable from "../components/LedgerTable";
+import PageHead from "../components/PageHead";
 import RevaluationDialog from "../components/RevaluationDialog";
 import ShiftImportDialog from "../components/ShiftImportDialog";
-import { formatDate, formatMoney, formatSigned } from "../format";
-import { KIND_LABELS, touchesCash, touchesStock } from "../ledger";
+import { formatMoney } from "../format";
+import { KIND_LABELS } from "../ledger";
 import { message } from "../message";
 import type { Route } from "../router";
 import type { LedgerEntry, ManualKind } from "../types";
@@ -21,11 +22,6 @@ const PAGE = 50;
 
 const STOCK_ACTIONS: ManualKind[] = ["sale", "write_off", "stocktake"];
 const CASH_ACTIONS: ManualKind[] = ["cash_in", "cash_out", "cash_count"];
-
-// an invoice is never reversed, a reversal and a reversed entry are final
-function reversible(entry: LedgerEntry): boolean {
-  return entry.kind !== "invoice" && entry.reverses_id === null && entry.reversed_by_id === null;
-}
 
 export default function LedgerPage({ go, ask }: Props) {
   const [entries, setEntries] = useState<LedgerEntry[] | null>(null);
@@ -50,17 +46,14 @@ export default function LedgerPage({ go, ask }: Props) {
     }
   }, []);
 
-  function action(kind: ManualKind) {
+  function open(next: ManualKind | "revaluation" | "shifts") {
+    setError(null);
+    setDialog(next);
+  }
+
+  function action(kind: ManualKind | "revaluation") {
     return (
-      <button
-        key={kind}
-        type="button"
-        className="button button-soft"
-        onClick={() => {
-          setError(null);
-          setDialog(kind);
-        }}
-      >
+      <button key={kind} type="button" className="button button-soft" onClick={() => open(kind)}>
         {KIND_LABELS[kind]}
       </button>
     );
@@ -107,44 +100,32 @@ export default function LedgerPage({ go, ask }: Props) {
 
   return (
     <main className="page">
-      <section className="ledger-head">
-        <div className="ledger-balances">
+      <PageHead title="Журнал">
+        <button type="button" className="button button-soft" onClick={() => open("shifts")}>
+          Загрузить из кассы
+        </button>
+      </PageHead>
+
+      {/* each balance with the operations that change it */}
+      <div className="ledger-books">
+        <section className="sheet ledger-book">
           <div>
             <div className="ledger-label">Товар в рознице</div>
             <div className="ledger-balance">{balance === null ? "—" : `${formatMoney(balance)} ₽`}</div>
           </div>
+          <div className="ledger-actions">
+            {STOCK_ACTIONS.map(action)}
+            {action("revaluation")}
+          </div>
+        </section>
+        <section className="sheet ledger-book">
           <div>
             <div className="ledger-label">В кассе</div>
             <div className="ledger-balance">{cashBalance === null ? "—" : `${formatMoney(cashBalance)} ₽`}</div>
           </div>
-        </div>
-        <div className="ledger-action-groups">
-          <div className="ledger-actions">
-            {STOCK_ACTIONS.map(action)}
-            <button
-              type="button"
-              className="button button-soft"
-              onClick={() => {
-                setError(null);
-                setDialog("revaluation");
-              }}
-            >
-              {KIND_LABELS.revaluation}
-            </button>
-            <button
-              type="button"
-              className="button button-soft"
-              onClick={() => {
-                setError(null);
-                setDialog("shifts");
-              }}
-            >
-              Загрузить из кассы
-            </button>
-          </div>
           <div className="ledger-actions">{CASH_ACTIONS.map(action)}</div>
-        </div>
-      </section>
+        </section>
+      </div>
 
       {error && (
         <div className="alert list-alert">
@@ -152,56 +133,13 @@ export default function LedgerPage({ go, ask }: Props) {
         </div>
       )}
 
-      <section className="sheet">
-        <div className="table-wrap">
-          <table className="list ledger">
-            <thead>
-              <tr>
-                <th className="num">№</th>
-                <th>Дата</th>
-                <th>Операция</th>
-                <th>Комментарий</th>
-                <th className="num">Товар</th>
-                <th className="num">Остаток</th>
-                <th className="num">Касса</th>
-                <th className="num">В кассе</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {entries?.map((entry) => {
-                const cancelled = entry.reverses_id !== null || entry.reversed_by_id !== null;
-                const rowClass = ["list-row", cancelled && "cancelled", imported.has(entry.id) && "imported"]
-                  .filter(Boolean)
-                  .join(" ");
-                return (
-                  <tr key={entry.id} className={rowClass}>
-                    {/* the number a reversal refers to */}
-                    <td className="num muted-cell nowrap">{entry.id}</td>
-                    <td className="nowrap">{formatDate(entry.occurred_on)}</td>
-                    <td className="op">
-                      <LedgerOperation entry={entry} go={go} />
-                    </td>
-                    <td className="ledger-comment">{entry.comment}</td>
-                    <td className="num strong nowrap">{touchesStock(entry) && formatSigned(entry.amount)}</td>
-                    <td className="num muted-cell nowrap">{formatMoney(entry.balance_after)}</td>
-                    <td className="num strong nowrap">{touchesCash(entry) && formatSigned(entry.cash)}</td>
-                    <td className="num muted-cell nowrap">{formatMoney(entry.cash_after)}</td>
-                    <td className="row-actions">
-                      {reversible(entry) && (
-                        <button type="button" className="row-action" onClick={() => reverse(entry)}>
-                          Сторно
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {entries?.length === 0 && <p className="list-empty">Записей пока нет</p>}
-      </section>
+      <LedgerTable
+        entries={entries}
+        go={go}
+        empty="Записей пока нет"
+        onReverse={(entry) => void reverse(entry)}
+        imported={imported}
+      />
 
       {hasMore && (
         <div className="more">

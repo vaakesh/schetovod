@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { getCatalog, markPriceTag } from "../api";
 import type { Ask } from "../components/ConfirmDialog";
 import OrderItemDialog, { type OrderTarget } from "../components/OrderItemDialog";
+import PageHead from "../components/PageHead";
 import ProductEditDialog from "../components/ProductEditDialog";
+import SlidingThumb from "../components/SlidingThumb";
 import SupplierEditDialog from "../components/SupplierEditDialog";
 import { formatMoney, formatNumber, formatSigned, formatText, plural } from "../format";
 import { message } from "../message";
@@ -640,9 +642,19 @@ export default function CatalogPage({ ask, go, cart, onCart }: Props) {
 
   return (
     <main className="page">
+      <PageHead title="Каталог">
+        <input
+          className="input search"
+          type="search"
+          placeholder="Поиск по всем товарам"
+          value={search}
+          onChange={(event) => changeSearch(event.target.value)}
+        />
+      </PageHead>
       {notice && <p className="page-notice">{notice}</p>}
       <div className="list-head">
         <div className="segments" role="tablist">
+          <SlidingThumb selector=".segment.active" className="segment-thumb" />
           {VIEWS.map((item) => (
             <button
               key={item.view}
@@ -657,6 +669,7 @@ export default function CatalogPage({ ask, go, cart, onCart }: Props) {
           ))}
         </div>
         <div className="segments" role="tablist">
+          <SlidingThumb selector=".segment.active" className="segment-thumb" />
           <button
             type="button"
             role="tab"
@@ -677,6 +690,7 @@ export default function CatalogPage({ ask, go, cart, onCart }: Props) {
           </button>
         </div>
         <div className="segments">
+          <SlidingThumb selector=".segment.active" className="segment-thumb" />
           <button
             type="button"
             aria-pressed={spellings}
@@ -687,13 +701,6 @@ export default function CatalogPage({ ask, go, cart, onCart }: Props) {
             Другие названия
           </button>
         </div>
-        <input
-          className="input search"
-          type="search"
-          placeholder="Поиск по всем товарам"
-          value={search}
-          onChange={(event) => changeSearch(event.target.value)}
-        />
       </div>
 
       {error && (

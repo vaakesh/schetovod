@@ -4,6 +4,8 @@ import { getTrafficReport } from "../api";
 import BarsChart from "../components/BarsChart";
 import ForecastChart from "../components/ForecastChart";
 import LoadHeatmap from "../components/LoadHeatmap";
+import PageHead from "../components/PageHead";
+import PeriodFields from "../components/PeriodFields";
 import TrendChart from "../components/TrendChart";
 import { formatDate, formatDateTime, plural } from "../format";
 import { fromInputDate, shiftInput, todayInput } from "../form";
@@ -58,35 +60,15 @@ export default function TrafficPage() {
 
   return (
     <main className="page">
-      <section className="ledger-head report-head">
-        <div className="report-period">
-          <label className="field">
-            <span className="field-label">С</span>
-            <input
-              className="input"
-              type="date"
-              value={start}
-              max={end}
-              onChange={(event) => setStart(event.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">По</span>
-            <input
-              className="input"
-              type="date"
-              value={end}
-              min={start}
-              onChange={(event) => setEnd(event.target.value)}
-            />
-          </label>
-        </div>
-        {report && (
-          <p className="traffic-loaded">
-            {lastReceipt ? `Чеки загружены по ${formatDateTime(lastReceipt)}` : "Чеки ещё не загружены"}
-          </p>
-        )}
-      </section>
+      <PageHead
+        title="Покупатели"
+        meta={
+          report &&
+          (lastReceipt ? `Чеки загружены по ${formatDateTime(lastReceipt)}` : "Чеки ещё не загружены")
+        }
+      >
+        <PeriodFields start={start} end={end} onStart={setStart} onEnd={setEnd} />
+      </PageHead>
 
       {error && (
         <div className="alert list-alert">
@@ -168,7 +150,7 @@ export default function TrafficPage() {
 
               <section className="sheet traffic-card">
                 <h2 className="traffic-title">Загрузка по дням недели и часам</h2>
-                <p className="traffic-note">Среднее число покупателей в час, чем темнее, тем больше</p>
+                <p className="traffic-note">Среднее число покупателей в час, чем насыщеннее цвет, тем больше</p>
                 <LoadHeatmap cells={report.heatmap} />
               </section>
 

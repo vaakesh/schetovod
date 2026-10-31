@@ -21,6 +21,7 @@ import type {
 } from "../types";
 import { IssueItem } from "./IssuesList";
 import ProductPicker from "./ProductPicker";
+import SlidingThumb from "./SlidingThumb";
 import TotalsBlock from "./TotalsBlock";
 
 interface Props {
@@ -391,6 +392,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
     <section className="sheet">
       <div className="sheet-tools">
         <div className="segments" role="tablist" aria-label="Колонки таблицы">
+          <SlidingThumb selector=".segment.active" className="segment-thumb" />
           <button
             type="button"
             role="tab"

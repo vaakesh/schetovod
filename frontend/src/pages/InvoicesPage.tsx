@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 
 import { invoicesPrintUrl, listInvoices } from "../api";
-import UploadForm, { type UploadKind } from "../components/UploadForm";
+import DropPage from "../components/DropPage";
+import PageHead from "../components/PageHead";
+import SlidingThumb from "../components/SlidingThumb";
+import UploadMenu, { type UploadKind } from "../components/UploadMenu";
 import { formatDate, formatMoney, formatText, plural } from "../format";
 import { message } from "../message";
 import type { Route } from "../router";
@@ -159,33 +162,46 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
     window.open(invoicesPrintUrl([...picked]), "_blank", "noopener");
   }
 
-  function uploads(slim: boolean) {
-    return (
-      <div className={slim ? "upload-grid upload-grid-slim" : "upload-grid"}>
-        <UploadForm kind="json" slim={slim} uploading={uploading} onFiles={uploadJson} />
-        <UploadForm kind="image" slim={slim} uploading={uploading} onFiles={uploadImages} />
-      </div>
-    );
-  }
+  const upload = (
+    <UploadMenu
+      uploading={uploading}
+      onJson={uploadJson}
+      onImages={uploadImages}
+      onBatch={() => go({ page: "upload" })}
+    />
+  );
 
-  // nothing uploaded yet, the page is only the drop areas
+  // nothing uploaded yet, the page is only the upload button
   if (items !== null && items.length === 0 && status === null && !unpaid && !query && !error) {
     return (
-      <main className="page page-empty">
+      <DropPage
+        className="page page-empty"
+        busy={uploading !== null}
+        onJson={uploadJson}
+        onImages={uploadImages}
+        onRefused={setError}
+      >
         {notice && <p className="hero-notice">{notice}</p>}
         <h1 className="hero-title">Загрузите накладную</h1>
-        {uploads(false)}
-      </main>
+        {upload}
+      </DropPage>
     );
   }
 
   return (
-    <main className="page">
+    <DropPage
+      className="page"
+      busy={uploading !== null}
+      onJson={uploadJson}
+      onImages={uploadImages}
+      onRefused={setError}
+    >
+      <PageHead title="Накладные">{upload}</PageHead>
       {notice && <p className="page-notice">{notice}</p>}
-      {uploads(true)}
 
       <div className="list-head">
         <div className="segments" role="tablist">
+          <SlidingThumb selector=".segment.active" className="segment-thumb" />
           {FILTERS.map((option) => (
             <button
               key={option.label}
@@ -250,7 +266,7 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
                 <th>Дата</th>
                 <th>Номер</th>
                 <th>Продавец</th>
-                <th className="num">Строк</th>
+                <th className="num invoice-lines">Строк</th>
                 <th className="num">В рознице</th>
                 <th className="num">
                   {/* the second click goes back to the newest first */}
@@ -366,7 +382,7 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
           </div>
         </div>
       )}
-    </main>
+    </DropPage>
   );
 }
 
@@ -376,7 +392,7 @@ function cells(item: InvoiceListItem) {
       <td className="nowrap">{formatDate(item.invoice_date)}</td>
       <td className="nowrap">{formatText(item.invoice_number)}</td>
       <td className="list-supplier">{formatText(item.supplier_name)}</td>
-      <td className="num muted-cell">{item.lines}</td>
+      <td className="num muted-cell invoice-lines">{item.lines}</td>
       <td className="num strong">
         {item.retail_total === null ? "" : `${formatMoney(item.retail_total)} ₽`}
       </td>

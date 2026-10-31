@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { getPosted } from "../api";
+import PageHead from "../components/PageHead";
 import PaymentsBlock from "../components/PaymentsBlock";
 import { formatDate, formatMoney, formatNumber, formatText } from "../format";
 import { message } from "../message";
@@ -52,18 +53,27 @@ export default function PostedInvoicePage({ id, go }: Props) {
 
   return (
     <main className="page">
-      <section className="invoice-head">
-        <h1 className="invoice-title">
-          <span className="title-word">Накладная</span>
-          <span>{invoice.invoice_number}</span>
-          <span className="title-word">от</span>
-          <span>{formatDate(invoice.invoice_date)}</span>
-        </h1>
-        <div className="supplier-static">
-          <span className="supplier-name">{invoice.supplier.name}</span>
-          <span className="supplier-meta">ИНН {formatText(invoice.supplier.inn)}</span>
-        </div>
-      </section>
+      <PageHead
+        back={{ label: "Накладные", onClick: () => go({ page: "invoices" }) }}
+        title={
+          <>
+            <span className="title-word">Накладная</span> {invoice.invoice_number}{" "}
+            <span className="title-word">от</span> {formatDate(invoice.invoice_date)}
+          </>
+        }
+        meta={`${invoice.supplier.name} · ИНН ${formatText(invoice.supplier.inn)}`}
+      >
+        <a
+          className="button button-soft"
+          href="#/ledger"
+          onClick={(event) => {
+            event.preventDefault();
+            go({ page: "ledger" });
+          }}
+        >
+          Запись журнала №{invoice.ledger_entry_id}
+        </a>
+      </PageHead>
 
       <section className="sheet">
         <div
@@ -138,18 +148,6 @@ export default function PostedInvoicePage({ id, go }: Props) {
       </section>
 
       <PaymentsBlock invoice={invoice} onChange={setInvoice} />
-
-      <p className="page-meta">
-        <a
-          href="#/ledger"
-          onClick={(event) => {
-            event.preventDefault();
-            go({ page: "ledger" });
-          }}
-        >
-          Запись журнала №{invoice.ledger_entry_id}
-        </a>
-      </p>
     </main>
   );
 }

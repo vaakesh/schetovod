@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type Route =
   | { page: "invoices" }
+  | { page: "upload" }
   | { page: "draft"; id: number }
   | { page: "posted"; id: number }
   | { page: "catalog" }
@@ -18,6 +19,9 @@ export function parseRoute(hash: string): Route {
   const posted = hash.match(/^#\/posted\/(\d+)$/);
   if (posted) {
     return { page: "posted", id: Number(posted[1]) };
+  }
+  if (hash === "#/upload") {
+    return { page: "upload" };
   }
   if (hash === "#/catalog") {
     return { page: "catalog" };
@@ -43,6 +47,8 @@ export function routeHash(route: Route): string {
       return `#/invoice/${route.id}`;
     case "posted":
       return `#/posted/${route.id}`;
+    case "upload":
+      return "#/upload";
     case "catalog":
       return "#/catalog";
     case "orders":
@@ -71,6 +77,25 @@ export function useRoute(): Route {
     return () => window.removeEventListener("hashchange", onChange);
   }, []);
   return route;
+}
+
+export type RouteMotion = "forward" | "back" | "section";
+
+// an invoice opens over its list
+function depth(route: Route): number {
+  return route.page === "draft" || route.page === "posted" ? 1 : 0;
+}
+
+// how the page enters: deeper from the right, back to the list from the left
+export function useRouteMotion(route: Route): RouteMotion {
+  const previous = useRef(route);
+  const motion = useRef<RouteMotion>("section");
+  if (previous.current !== route) {
+    const change = depth(route) - depth(previous.current);
+    motion.current = change > 0 ? "forward" : change < 0 ? "back" : "section";
+    previous.current = route;
+  }
+  return motion.current;
 }
 
 // change the address without a new history entry and without a hashchange

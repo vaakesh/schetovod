@@ -3,6 +3,7 @@ import { Fragment, useEffect, useState } from "react";
 import { clearDraftOrder, confirmOrder, getOrder, listOrders, removeOrderItem } from "../api";
 import type { Ask } from "../components/ConfirmDialog";
 import OrderItemDialog, { type OrderTarget } from "../components/OrderItemDialog";
+import PageHead from "../components/PageHead";
 import { formatDateTime, formatMoney, formatNumber, formatText, plural } from "../format";
 import { message } from "../message";
 import type { Route } from "../router";
@@ -306,6 +307,7 @@ export default function OrdersPage({ ask, go, cart, onCart }: Props) {
 
   return (
     <main className="page orders-page">
+      <PageHead title="Заказы" />
       {notice && <p className="page-notice">{notice}</p>}
       {error && (
         <div className="alert list-alert">

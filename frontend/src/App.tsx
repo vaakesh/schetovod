@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getDraftOrder, receiveInvoice, recognizeInvoice } from "./api";
+import { useBatchUpload, type BatchUpload } from "./batch";
 import { useConfirm } from "./components/ConfirmDialog";
-import UploadForm, { type UploadKind } from "./components/UploadForm";
+import Icon from "./components/icons";
+import Sidebar from "./components/Sidebar";
+import { UPLOAD_LOADING, type UploadKind } from "./components/UploadMenu";
 import { message } from "./message";
 import CatalogPage from "./pages/CatalogPage";
 import DraftPage from "./pages/DraftPage";
@@ -12,13 +15,24 @@ import OrdersPage from "./pages/OrdersPage";
 import PostedInvoicePage from "./pages/PostedInvoicePage";
 import ReportPage from "./pages/ReportPage";
 import TrafficPage from "./pages/TrafficPage";
-import { routeHash, sameRoute, useRoute, type Route } from "./router";
+import UploadPage from "./pages/UploadPage";
+import { routeHash, sameRoute, useRoute, useRouteMotion, type Route } from "./router";
 import type { InvoiceDraft, Order } from "./types";
 
 type Guard = () => Promise<boolean>;
 
+function batchStatus({ running, done, failed, total }: BatchUpload): string {
+  if (running) {
+    return `Распознаём накладные: готово ${done} из ${total}`;
+  }
+  return failed > 0
+    ? `Накладные распознаны: готово ${done} из ${total}, с ошибкой ${failed}`
+    : `Накладные распознаны: готово ${done} из ${total}`;
+}
+
 export default function App() {
   const route = useRoute();
+  const motion = useRouteMotion(route);
   const [ask, confirmDialog] = useConfirm();
   // a page with unsaved edits asks before it is left
   const guard = useRef<Guard | null>(null);
@@ -28,6 +42,30 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   // the order being filled, null when it is empty, undefined until it is loaded
   const [cart, setCart] = useState<Order | null | undefined>(undefined);
+  // kept here so that the queue goes on while other pages are open
+  const batch = useBatchUpload();
+  // the results of a batch are announced until the upload page is opened
+  const [batchUnseen, setBatchUnseen] = useState(false);
+
+  useEffect(() => {
+    if (batch.running) {
+      setBatchUnseen(true);
+    } else if (route.page === "upload") {
+      setBatchUnseen(false);
+    }
+  }, [batch.running, route.page]);
+
+  // the photos live only in this tab
+  useEffect(() => {
+    if (!batch.running) {
+      return;
+    }
+    function onLeave(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+    window.addEventListener("beforeunload", onLeave);
+    return () => window.removeEventListener("beforeunload", onLeave);
+  }, [batch.running]);
 
   // read again on every page, another tab may have changed it
   useEffect(() => {
@@ -97,22 +135,6 @@ export default function App() {
     void upload("image", () => recognizeInvoice(files));
   }
 
-  function tab(target: Route, label: ReactNode, active: boolean) {
-    return (
-      <a
-        href={routeHash(target)}
-        className={active ? "tab active" : "tab"}
-        aria-current={active ? "page" : undefined}
-        onClick={(event) => {
-          event.preventDefault();
-          void go(target);
-        }}
-      >
-        {label}
-      </a>
-    );
-  }
-
   function page() {
     switch (route.page) {
       case "draft":
@@ -145,6 +167,8 @@ export default function App() {
         return <ReportPage go={go} />;
       case "traffic":
         return <TrafficPage />;
+      case "upload":
+        return <UploadPage batch={batch} go={go} />;
       case "invoices":
         return (
           <InvoicesPage
@@ -159,76 +183,39 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="topbar-start">
-          <button
-            type="button"
-            className="brand"
-            aria-label="Счетовод — на главную"
-            title="На главную"
-            disabled={uploading !== null}
-            onClick={() => void go({ page: "invoices" })}
-          >
-            <span className="brand-mark" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 24 24">
-                <path
-                  d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-            Счетовод
-          </button>
-          <nav className="tabs">
-            {tab(
-              { page: "invoices" },
-              "Накладные",
-              route.page !== "catalog" &&
-                route.page !== "orders" &&
-                route.page !== "ledger" &&
-                route.page !== "report" &&
-                route.page !== "traffic",
-            )}
-            {tab({ page: "catalog" }, "Товары", route.page === "catalog")}
-            {tab(
-              { page: "orders" },
-              <>
-                Заказы
-                {cart && (
-                  <span className="tab-badge" aria-label={`в заказе ${cart.lines.length}`}>
-                    {cart.lines.length}
-                  </span>
-                )}
-              </>,
-              route.page === "orders",
-            )}
-            {tab({ page: "ledger" }, "Журнал", route.page === "ledger")}
-            {tab({ page: "report" }, "Отчёт", route.page === "report")}
-            {tab({ page: "traffic" }, "Покупатели", route.page === "traffic")}
-          </nav>
-        </div>
-        {route.page !== "invoices" && (
-          <div className="topbar-upload">
-            <UploadForm compact kind="json" uploading={uploading} onFiles={uploadJson} />
-            <UploadForm compact kind="image" uploading={uploading} onFiles={uploadImages} />
+    <div className="shell">
+      <Sidebar route={route} cart={cart} uploading={uploading !== null} go={(next) => void go(next)} />
+      <div className="shell-main">
+        {/* recognition takes minutes, the user may leave the invoices meanwhile */}
+        {uploading && (
+          <div className="upload-status" role="status">
+            <span className="spinner" />
+            {UPLOAD_LOADING[uploading]}
           </div>
         )}
-      </header>
-
-      {uploadError && (
-        <div className="page-alert">
-          <div className="alert">
-            <pre>{uploadError}</pre>
+        {batchUnseen && route.page !== "upload" && (
+          <button
+            type="button"
+            className="upload-status upload-status-link"
+            aria-live="polite"
+            onClick={() => void go({ page: "upload" })}
+          >
+            {batch.running ? <span className="spinner" /> : <Icon name="check" size={18} />}
+            {batchStatus(batch)}
+          </button>
+        )}
+        {uploadError && (
+          <div className="page-alert">
+            <div className="alert">
+              <pre>{uploadError}</pre>
+            </div>
           </div>
+        )}
+        {/* the key replays the entrance on every page, also between two invoices */}
+        <div key={routeHash(route)} className={`route-view route-${motion}`}>
+          {page()}
         </div>
-      )}
-
-      {page()}
+      </div>
       {confirmDialog}
     </div>
   );

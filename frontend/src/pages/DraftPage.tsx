@@ -203,9 +203,8 @@ export default function DraftPage({
             known.some((item) => item.id === supplier.id) ? known : [...known, supplier],
           )
         }
+        onHome={onHome}
       />
-      <IssuesList issues={draft.issues.filter((issue) => issue.line === null)} stale={dirty} />
-      <LinesTable draft={draft} form={form} dirty={dirty} update={update} />
       <ActionBar
         draft={draft}
         dirty={dirty}
@@ -217,6 +216,8 @@ export default function DraftPage({
         onDecline={decline}
         onAddProducts={addProducts}
       />
+      <IssuesList issues={draft.issues.filter((issue) => issue.line === null)} stale={dirty} />
+      <LinesTable draft={draft} form={form} dirty={dirty} update={update} />
       {confirming && (
         <InvoiceConfirmDialog
           invoiceId={draft.id}
