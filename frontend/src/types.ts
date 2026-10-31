@@ -105,6 +105,11 @@ export interface DraftTotals {
   retail_total: string | null;
 }
 
+export interface UserSummary {
+  id: number;
+  login: string;
+}
+
 export interface SupplierSummary {
   id: number;
   name: string;

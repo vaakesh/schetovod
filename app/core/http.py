@@ -32,6 +32,13 @@ def conflict(detail: str) -> NoReturn:
     )
 
 
+def unauthorized(detail: str = "Требуется вход") -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+    )
+
+
 def invalid(detail: str) -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

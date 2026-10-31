@@ -16,6 +16,8 @@ x-tasks: &tasks
     POSTGRES_PORT: 5432
     AQSI_API_INTEGRATION: ${AQSI_API_INTEGRATION:-}
     REDIS_URL: redis://redis:6379/0
+    # the settings are shared with the app, they do not start without it
+    JWT_SECRET: ${JWT_SECRET:?Run install.sh, it adds JWT_SECRET to .env}
   restart: unless-stopped
 
 services:
@@ -36,6 +38,9 @@ services:
       OPENAI_TOKEN_FILE: /run/secrets/openai_token
       # the key of the aQsi cash register, the shifts are loaded with it
       AQSI_API_INTEGRATION: ${AQSI_API_INTEGRATION:-}
+      JWT_SECRET: ${JWT_SECRET:?Run install.sh, it adds JWT_SECRET to .env}
+      # 0 only for plain http, TLS ends at the Caddy of the server
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-1}
     secrets:
       - openai_token
     volumes:
@@ -48,10 +53,11 @@ services:
         - python
         - -c
         - |
-          from urllib.request import urlopen
+          from socket import create_connection
 
-          with urlopen(
-              url="http://127.0.0.1:8000/openapi.json",
+          # every route answers 401, the open port is what tells the app is up
+          with create_connection(
+              address=("127.0.0.1", 8000),
               timeout=2,
           ):
               pass
@@ -102,8 +108,21 @@ services:
     depends_on:
       app:
         condition: service_healthy
+    # local only, from the outside the site is reached through caddy and TLS
     ports:
-      - "0.0.0.0:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}:80"
+      - "127.0.0.1:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}:80"
+    restart: unless-stopped
+
+  # the Caddy of the server sends the domain to this port
+  caddy:
+    image: caddy:2.10.2-alpine
+    depends_on:
+      - frontend
+    ports:
+      - "127.0.0.1:${CADDY_PORT:?Run install.sh, it adds CADDY_PORT to .env}:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
 
   postgres:
     image: postgres:18.4

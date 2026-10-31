@@ -3,12 +3,13 @@ from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from auth.dependencies import get_current_user
 from core.db import get_session
 from invoices.drafts import InvoiceDraftService
 from invoices.extraction import InvoiceExtraction
 from invoices.schemas import DraftForm, DraftTotals, InvoiceDraft
 from main import app
-from tests.fakes import INN, invoice_payload
+from tests.fakes import INN, invoice_payload, signed_in_user
 from tests.helpers import InvoiceApi
 
 
@@ -196,6 +197,7 @@ class TestReceiveInvoice(InvoiceApi):
             yield session
 
         app.dependency_overrides[get_session] = override_session
+        app.dependency_overrides[get_current_user] = signed_in_user
         payload = invoice_payload()
         invoice = InvoiceExtraction.model_validate(
             obj=payload,

@@ -4,14 +4,15 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from invoices.posting import InvoicePostingService
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from auth.dependencies import get_current_user
 from core.db import get_session
 from core.enums import InvoiceStatus, LedgerKind
+from invoices.posting import InvoicePostingService
 from invoices.schemas import ConfirmedInvoice
 from main import app
-from tests.fakes import INN, invoice_payload
+from tests.fakes import INN, invoice_payload, signed_in_user
 from tests.helpers import InvoiceApi
 
 
@@ -26,6 +27,7 @@ class TestConfirm(InvoiceApi):
             yield session
 
         app.dependency_overrides[get_session] = override_session
+        app.dependency_overrides[get_current_user] = signed_in_user
         result = ConfirmedInvoice(
             id=42,
             ledger_entry_id=43,

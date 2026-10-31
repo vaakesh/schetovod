@@ -1,6 +1,7 @@
 from decimal import Decimal
 from typing import Any
 
+from auth.models import User, UserSession
 from invoices.models import Invoice, InvoiceItem, InvoicePayment
 from ledger.models import LedgerEntry, RevaluationItem
 from orders.models import Order
@@ -63,6 +64,8 @@ class FakeStore:
         # the lines live in order.items
         self.orders: dict[int, Order] = {}
         self.receipts: list[Receipt] = []
+        self.users: dict[int, User] = {}
+        self.user_sessions: dict[int, UserSession] = {}
         self.commits = 0
         self.locks = 0
         # the order of the ledger locks and the draft reads

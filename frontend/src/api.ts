@@ -24,6 +24,7 @@ import type {
   SupplierEdit,
   SupplierSummary,
   TrafficReport,
+  UserSummary,
 } from "./types";
 
 interface ValidationError {
@@ -101,15 +102,18 @@ function errorText(status: number, body: unknown): string {
       .map((error) => `${where(error.loc)}: ${problem(error.type)}`);
     return [...new Set(lines)].join("\n");
   }
+  // the limit of nginx answers without a json body
+  if (status === 429) {
+    return "Слишком много попыток входа, подождите минуту";
+  }
   return `Сервер ответил ошибкой ${status}`;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function send(method: string, path: string, body?: unknown): Promise<Response> {
   // the browser sets the multipart content type with its boundary itself
   const form = body instanceof FormData;
-  let response: Response;
   try {
-    response = await fetch(`/api${path}`, {
+    return await fetch(`/api${path}`, {
       method,
       headers: body === undefined || form ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : form ? body : JSON.stringify(body),
@@ -117,11 +121,68 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   } catch {
     throw new Error("Сервер недоступен");
   }
+}
+
+// a 401 here is an answer about the credentials, not about the session
+const NO_REFRESH = ["/auth/login", "/auth/refresh"];
+
+let refreshing: Promise<boolean> | null = null;
+
+// the requests of a page fail together, they share one exchange of the token
+function refreshSession(): Promise<boolean> {
+  refreshing ??= send("POST", "/auth/refresh")
+    .then(async (response) => {
+      if (response.ok || response.status === 401) {
+        return response.ok;
+      }
+      // the server is down, the session may be alive
+      throw new Error(errorText(response.status, await response.json().catch(() => null)));
+    })
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
+}
+
+const sessionLost = new Set<() => void>();
+
+export function onSessionLost(listener: () => void): () => void {
+  sessionLost.add(listener);
+  return () => sessionLost.delete(listener);
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  let response = await send(method, path, body);
+  if (response.status === 401 && !NO_REFRESH.includes(path)) {
+    if (await refreshSession()) {
+      response = await send(method, path, body);
+    }
+    if (response.status === 401) {
+      sessionLost.forEach((listener) => listener());
+    }
+  }
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(errorText(response.status, data));
   }
   return data as T;
+}
+
+export function login(body: { login: string; password: string }): Promise<UserSummary> {
+  return request("POST", "/auth/login", body);
+}
+
+export function logout(): Promise<void> {
+  return request("POST", "/auth/logout");
+}
+
+export function getMe(): Promise<UserSummary> {
+  return request("GET", "/auth/me");
+}
+
+// a plain link can not refresh the token, the request before it does
+export async function ensureSession(): Promise<void> {
+  await getMe();
 }
 
 function query(params: Record<string, string | number | null | undefined>): string {
@@ -193,7 +254,7 @@ export function getReport(dateFrom: string, dateTo: string): Promise<LedgerRepor
   return request("GET", `/ledger/report${query({ date_from: dateFrom, date_to: dateTo })}`);
 }
 
-// a plain link downloads the file, the browser takes the name from the response
+// the browser downloads the file by the url and takes the name from the response
 export function reportXlsxUrl(dateFrom: string, dateTo: string): string {
   return `/api/ledger/report.xlsx${query({ date_from: dateFrom, date_to: dateTo })}`;
 }

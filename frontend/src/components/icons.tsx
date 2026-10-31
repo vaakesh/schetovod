@@ -65,6 +65,7 @@ const PATHS = {
     </>
   ),
   moon: <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4 7 7 0 0 0 20 14.5z" />,
+  signout: <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9" />,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;

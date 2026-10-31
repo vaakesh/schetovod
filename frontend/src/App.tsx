@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getDraftOrder, receiveInvoice, recognizeInvoice } from "./api";
+import { getDraftOrder, logout, receiveInvoice, recognizeInvoice } from "./api";
 import { useBatchUpload, type BatchUpload } from "./batch";
 import { useConfirm } from "./components/ConfirmDialog";
 import Icon from "./components/icons";
@@ -30,7 +30,11 @@ function batchStatus({ running, done, failed, total }: BatchUpload): string {
     : `Накладные распознаны: готово ${done} из ${total}`;
 }
 
-export default function App() {
+interface Props {
+  onSignedOut: () => void;
+}
+
+export default function App({ onSignedOut }: Props) {
   const route = useRoute();
   const motion = useRouteMotion(route);
   const [ask, confirmDialog] = useConfirm();
@@ -135,6 +139,18 @@ export default function App() {
     void upload("image", () => recognizeInvoice(files));
   }
 
+  async function signOut() {
+    if (!(await leave())) {
+      return;
+    }
+    try {
+      await logout();
+      onSignedOut();
+    } catch (error) {
+      setUploadError(message(error));
+    }
+  }
+
   function page() {
     switch (route.page) {
       case "draft":
@@ -184,7 +200,14 @@ export default function App() {
 
   return (
     <div className="shell">
-      <Sidebar route={route} cart={cart} uploading={uploading !== null} go={(next) => void go(next)} />
+      <Sidebar
+        route={route}
+        cart={cart}
+        uploading={uploading !== null}
+        working={uploading !== null || batch.running}
+        go={(next) => void go(next)}
+        signOut={() => void signOut()}
+      />
       <div className="shell-main">
         {/* recognition takes minutes, the user may leave the invoices meanwhile */}
         {uploading && (

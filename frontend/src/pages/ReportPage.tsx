@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 
-import { getReport, reportPdfUrl, reportXlsxUrl } from "../api";
+import { ensureSession, getReport, reportPdfUrl, reportXlsxUrl } from "../api";
 import LedgerTable from "../components/LedgerTable";
 import PageHead from "../components/PageHead";
 import PeriodFields from "../components/PeriodFields";
@@ -67,16 +67,35 @@ export default function ReportPage({ go }: Props) {
     };
   }, [dateFrom, dateTo]);
 
+  // the token may have expired, a bare link would then save the error instead of the file
+  function download(event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    const url = event.currentTarget.href;
+    ensureSession()
+      .then(() => window.location.assign(url))
+      .catch((reason) => setError(message(reason)));
+  }
+
   return (
     <main className="page">
       <PageHead title="Отчёт">
         <PeriodFields start={start} end={end} onStart={setStart} onEnd={setEnd} />
         {dateFrom !== null && dateTo !== null && report && (
           <>
-            <a className="button button-soft" href={reportPdfUrl(dateFrom, dateTo)} download>
+            <a
+              className="button button-soft"
+              href={reportPdfUrl(dateFrom, dateTo)}
+              download
+              onClick={download}
+            >
               Скачать pdf
             </a>
-            <a className="button button-soft" href={reportXlsxUrl(dateFrom, dateTo)} download>
+            <a
+              className="button button-soft"
+              href={reportXlsxUrl(dateFrom, dateTo)}
+              download
+              onClick={download}
+            >
               Скачать xlsx
             </a>
           </>

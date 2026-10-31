@@ -2,7 +2,7 @@ from functools import cache
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, DefaultAsyncHttpx2Client
 
 from core.config import settings
 
@@ -46,4 +46,15 @@ def client() -> AsyncOpenAI:
         api_key=api_key,
         timeout=settings.openai_timeout,
         max_retries=0,
+        http_client=DefaultAsyncHttpx2Client(
+            proxy=settings.openai_proxy_url or None,
+            trust_env=False,
+            timeout=settings.openai_timeout,
+        ),
     )
+
+
+async def close_client() -> None:
+    if client.cache_info().currsize:
+        await client().close()
+        client.cache_clear()

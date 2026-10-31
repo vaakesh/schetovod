@@ -50,10 +50,13 @@ interface Props {
   route: Route;
   cart: Order | null | undefined;
   uploading: boolean;
+  // photos are being recognized, signing out would lose their answers
+  working: boolean;
   go: (route: Route) => void;
+  signOut: () => void;
 }
 
-export default function Sidebar({ route, cart, uploading, go }: Props) {
+export default function Sidebar({ route, cart, uploading, working, go, signOut }: Props) {
   const [theme, toggleTheme] = useTheme();
   const current = section(route);
   const themeLabel = theme === "dark" ? "Светлая тема" : "Тёмная тема";
@@ -107,10 +110,27 @@ export default function Sidebar({ route, cart, uploading, go }: Props) {
         ))}
       </nav>
 
-      <button type="button" className="nav-item nav-theme" title={themeLabel} onClick={toggleTheme}>
-        <Icon name={theme === "dark" ? "sun" : "moon"} />
-        <span className="nav-label">{themeLabel}</span>
-      </button>
+      <div className="nav-bottom">
+        <button
+          type="button"
+          className="nav-item nav-theme"
+          title={themeLabel}
+          onClick={toggleTheme}
+        >
+          <Icon name={theme === "dark" ? "sun" : "moon"} />
+          <span className="nav-label">{themeLabel}</span>
+        </button>
+        <button
+          type="button"
+          className="nav-item nav-signout"
+          title="Выйти"
+          disabled={working}
+          onClick={signOut}
+        >
+          <Icon name="signout" />
+          <span className="nav-label">Выйти</span>
+        </button>
+      </div>
     </aside>
   );
 }

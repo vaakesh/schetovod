@@ -1,3 +1,5 @@
+from tests.fakes.auth import FakeAuth as FakeAuth
+from tests.fakes.auth import signed_in_user as signed_in_user
 from tests.fakes.invoices import FakeInvoices as FakeInvoices
 from tests.fakes.ledger import FakeLedger as FakeLedger
 from tests.fakes.orders import FakeOrders as FakeOrders

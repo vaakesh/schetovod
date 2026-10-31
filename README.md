@@ -104,13 +104,25 @@ git clone https://github.com/vaakesh/schetovod.git && cd schetovod && bash insta
 make up
 ```
 
-`install.sh` создаёт `.env` из `.env.example` и пустой `.openai-token`
-(существующие файлы не трогает). Порты и пароли задаются в `.env`. `make up`
-собирает и запускает API, frontend, PostgreSQL, Redis, воркер и планировщик,
-миграции применяются автоматически. С портами из `.env.example`:
+`install.sh` создаёт `.env` из `.env.example` и пустой `.openai-token`, а в `.env`
+дописывает недостающие `JWT_SECRET` и `CADDY_PORT` (существующие значения не
+трогает). Порты и пароли задаются в `.env`. `make up` собирает и запускает API,
+frontend, Caddy, PostgreSQL, Redis, воркер и планировщик, миграции применяются
+автоматически. С портами из `.env.example`:
 
-- приложение: http://localhost:8080 (порт открыт и для других устройств в сети)
-- документация API: http://localhost:8001/docs
+- приложение: http://localhost:8080, порт открыт только на этой машине
+- вход с домена: Caddy из compose слушает `127.0.0.1:11200`, системный Caddy
+  сервера отправляет домен на этот порт и завершает TLS
+
+Без входа открывается только форма логина. Регистрации нет, пользователя создаёт
+команда, она же меняет пароль и закрывает старые сессии пользователя:
+
+```sh
+make user login=ivan
+```
+
+Куки авторизации по умолчанию `Secure`. Для работы по обычному HTTP поставьте
+`AUTH_COOKIE_SECURE=0` в `.env`.
 
 Чтобы включить распознавание фото, запишите токен OpenAI в `.openai-token`,
 поставьте `INCLUDE_API_OPENAI=1` в `.env` и выполните `docker compose up -d app`.
@@ -119,3 +131,32 @@ CloudBeaver для просмотра базы: `make cloudbeaver`, затем h
 Остановить контейнеры с сохранением данных: `make down`.
 
 Локальная разработка и проверки описаны в [app/README.md](app/README.md).
+
+## Production: alexgastronom.ru
+
+Проект на сервере: `~/apps/schetovod`, Compose-проект `schetovod-prod`.
+Первичная подготовка: `bash install.sh --prod`. Токен OpenAI хранится в
+`.openai-token`, ключ aQsi — в `.env`; оба файла не попадают в Git.
+Перед первым запуском нужно перенести базу и каталог `invoices`.
+
+Обновление вручную:
+
+```sh
+git pull --ff-only
+make prod-deploy
+```
+
+Образы собираются на сервере до остановки приложения. Миграции выполняются
+одним API-процессом до запуска фоновых задач. Резервные копии не создаются.
+При ошибке миграции деплой останавливается; автоматического отката схемы нет.
+
+Системный Caddy завершает TLS и направляет домен на `127.0.0.1:11300`.
+В production опубликован только nginx; база и Redis доступны внутри Docker.
+Только клиент OpenAI использует `OPENAI_PROXY_URL=http://xray:3128` через
+внешнюю сеть `xray-egress`. aQsi работает напрямую. Без прокси локальный
+OpenAI-клиент работает при пустом `OPENAI_PROXY_URL`.
+
+Проверка готовности: `/api/health`, ответ `200 {"status":"ok"}` означает,
+что API может выполнить запрос к PostgreSQL. Состояние: `make prod-status`;
+логи: `make prod-logs`; остановка: `make prod-stop`;
+управление пользователями: `make prod-user login=ivan`.

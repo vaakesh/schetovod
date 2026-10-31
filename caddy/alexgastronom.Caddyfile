@@ -1,0 +1,7 @@
+alexgastronom.ru {
+    reverse_proxy 127.0.0.1:11300
+}
+
+www.alexgastronom.ru {
+    redir https://alexgastronom.ru{uri} 301
+}

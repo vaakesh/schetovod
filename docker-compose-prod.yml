@@ -1,0 +1,130 @@
+name: schetovod-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-environment: &environment
+  POSTGRES_USER: ${POSTGRES_USER:?Run install.sh --prod}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run install.sh --prod}
+  POSTGRES_DB: ${POSTGRES_DB:?Run install.sh --prod}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET: ${JWT_SECRET:?Run install.sh --prod}
+  AQSI_API_INTEGRATION: ${AQSI_API_INTEGRATION:-}
+  AUTH_COOKIE_SECURE: "1"
+
+x-backend: &backend
+  image: schetovod-backend:production
+  restart: unless-stopped
+  logging: *logging
+  environment: *environment
+
+services:
+  app:
+    <<: *backend
+    build:
+      context: ./app
+    environment:
+      <<: *environment
+      INCLUDE_API_OPENAI: ${INCLUDE_API_OPENAI:-1}
+      OPENAI_TOKEN_FILE: /run/secrets/openai_token
+      OPENAI_PROXY_URL: ${OPENAI_PROXY_URL:?Set OPENAI_PROXY_URL}
+    secrets:
+      - openai_token
+    volumes:
+      - ./invoices:/invoices
+    networks:
+      - default
+      - xray-egress
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).close()"]
+      interval: 5s
+      timeout: 5s
+      start_period: 15s
+      retries: 12
+
+  worker:
+    <<: *backend
+    entrypoint: []
+    command: ["taskiq", "worker", "core.broker:broker", "traffic.tasks", "--workers", "1"]
+    stop_grace_period: 60s
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    <<: *backend
+    entrypoint: []
+    command: ["taskiq", "scheduler", "core.broker:scheduler", "traffic.tasks"]
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    image: schetovod-frontend:production
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      - "127.0.0.1:${PROD_PORT:-11300}:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  postgres:
+    image: postgres:18.4
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8.2.2-alpine
+    restart: unless-stopped
+    logging: *logging
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  xray-egress:
+    external: true
+
+secrets:
+  openai_token:
+    file: ./.openai-token

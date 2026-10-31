@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { invoicesPrintUrl, listInvoices } from "../api";
+import { ensureSession, invoicesPrintUrl, listInvoices } from "../api";
 import DropPage from "../components/DropPage";
 import PageHead from "../components/PageHead";
 import SlidingThumb from "../components/SlidingThumb";
@@ -158,8 +158,21 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
     setPicked(next);
   }
 
-  function print() {
-    window.open(invoicesPrintUrl([...picked]), "_blank", "noopener");
+  async function print() {
+    // opened before the wait: Safari blocks a tab that does not follow the tap at once
+    const tab = window.open("", "_blank");
+    if (!tab) {
+      setError("Браузер не дал открыть вкладку с PDF");
+      return;
+    }
+    try {
+      await ensureSession();
+      tab.opener = null;
+      tab.location.href = invoicesPrintUrl([...picked]);
+    } catch (reason) {
+      tab.close();
+      setError(message(reason));
+    }
   }
 
   const upload = (
@@ -375,7 +388,7 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
               type="button"
               className="button button-primary"
               disabled={picked.size === 0}
-              onClick={print}
+              onClick={() => void print()}
             >
               Открыть PDF
             </button>

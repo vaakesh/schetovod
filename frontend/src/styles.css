@@ -170,6 +170,69 @@ button {
   background: var(--bg);
 }
 
+.nav-bottom {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-signout:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* the sign in form, the app waits behind it when the session ended during the work */
+
+.app-visible {
+  display: contents;
+}
+
+.app-hidden {
+  display: none;
+}
+
+.login {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px;
+}
+
+.login-card {
+  display: flex;
+  flex-direction: column;
+  width: min(400px, 100%);
+  padding: 36px;
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.login-brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.login-title {
+  margin: 0 0 20px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.login-text {
+  margin: -8px 0 20px;
+  color: var(--muted);
+}
+
+.login-submit {
+  width: 100%;
+  margin-top: 24px;
+}
+
 .nav {
   position: relative;
   display: flex;
@@ -3532,7 +3595,12 @@ a.button {
     width: 72px;
   }
 
-  .nav-theme {
+  .nav-bottom {
+    flex-direction: row;
+  }
+
+  .nav-theme,
+  .nav-signout {
     flex: none;
   }
 

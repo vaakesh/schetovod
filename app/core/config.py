@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -45,10 +46,22 @@ class Settings(BaseSettings):
     openai_image_crops: bool = True
     # a long reasoning over several pages takes minutes
     openai_timeout: float = 600
+    openai_proxy_url: str = ""
     # without it the shifts and the receipts of the till can not be loaded
     aqsi_api_integration: str = ""
     # the broker of the background tasks
     redis_url: str = "redis://localhost:6379/0"
+    # signs the tokens, a new value signs everyone out
+    jwt_secret: SecretStr = Field(
+        min_length=32,
+    )
+    # a browser drops a secure cookie over plain http everywhere except localhost
+    auth_cookie_secure: bool = True
+    # the path in the browser: nginx strips the /api prefix before the backend
+    auth_refresh_cookie_path: str = "/api/auth"
+    auth_access_ttl_minutes: int = 15
+    # moves forward on every refresh, a week of absence does not sign the user out
+    auth_refresh_ttl_days: int = 30
 
     @property
     def database_url(self) -> URL:

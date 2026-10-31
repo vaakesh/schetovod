@@ -1,7 +1,9 @@
 # Разработка
 
 Назначение приложения и запуск в Docker — в [корневом README](../README.md).
-Роуты API описаны в `/docs` запущенного backend.
+Роуты API описаны в `router.py` каждого домена, `/docs` и `/openapi.json` отключены.
+Все роуты закрыты зависимостью `get_current_user` на общем роутере в `main.py`,
+открыты только `POST /auth/login` и `POST /auth/refresh`.
 Для локальной разработки нужны Python 3.14+, uv, Node.js и PostgreSQL.
 Настройки подключения берутся из `.env` в корне проекта.
 
