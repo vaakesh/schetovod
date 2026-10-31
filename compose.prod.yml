@@ -1,0 +1,42 @@
+# the volumes hang on this name, a new one starts with an empty database
+name: schetovod-prod
+
+x-service: &service
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  app:
+    <<: *service
+    environment:
+      AUTH_COOKIE_SECURE: "1"
+      OPENAI_PROXY_URL: ${OPENAI_PROXY_URL:?Set OPENAI_PROXY_URL}
+    networks:
+      - default
+      - xray-egress
+
+  worker:
+    <<: *service
+
+  scheduler:
+    <<: *service
+
+  frontend:
+    <<: *service
+    build:
+      context: ./frontend
+    image: schetovod-frontend
+
+  postgres:
+    <<: *service
+
+  redis:
+    <<: *service
+
+networks:
+  xray-egress:
+    external: true

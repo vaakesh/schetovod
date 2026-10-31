@@ -1,26 +1,19 @@
-name: schetovod-prod
-
-x-logging: &logging
-  driver: json-file
-  options:
-    max-size: "10m"
-    max-file: "3"
-
 x-environment: &environment
-  POSTGRES_USER: ${POSTGRES_USER:?Run install.sh --prod}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run install.sh --prod}
-  POSTGRES_DB: ${POSTGRES_DB:?Run install.sh --prod}
+  POSTGRES_USER: ${POSTGRES_USER:?Run install.sh}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run install.sh}
+  POSTGRES_DB: ${POSTGRES_DB:?Run install.sh}
   POSTGRES_HOST: postgres
   POSTGRES_PORT: 5432
   REDIS_URL: redis://redis:6379/0
-  JWT_SECRET: ${JWT_SECRET:?Run install.sh --prod}
+  # the settings are shared with the app, they do not start without it
+  JWT_SECRET: ${JWT_SECRET:?Run install.sh}
+  # the key of the aQsi cash register, the shifts are loaded with it
   AQSI_API_INTEGRATION: ${AQSI_API_INTEGRATION:-}
-  AUTH_COOKIE_SECURE: "1"
 
 x-backend: &backend
-  image: schetovod-backend:production
-  restart: unless-stopped
-  logging: *logging
+  image: schetovod-backend
+  # the app service builds the image, it is in no registry
+  pull_policy: never
   environment: *environment
 
 services:
@@ -30,16 +23,10 @@ services:
       context: ./app
     environment:
       <<: *environment
-      INCLUDE_API_OPENAI: ${INCLUDE_API_OPENAI:-1}
-      OPENAI_TOKEN_FILE: /run/secrets/openai_token
-      OPENAI_PROXY_URL: ${OPENAI_PROXY_URL:?Set OPENAI_PROXY_URL}
-    secrets:
-      - openai_token
+      # without it the app works, only the recognition by photo is refused
+      OPENAI_API_TOKEN: ${OPENAI_API_TOKEN:-}
     volumes:
       - ./invoices:/invoices
-    networks:
-      - default
-      - xray-egress
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,8 +37,10 @@ services:
       start_period: 15s
       retries: 12
 
+  # one process: every process would load the receipts on its start
   worker:
     <<: *backend
+    # the app applies the migrations, two processes must not do it at once
     entrypoint: []
     command: ["taskiq", "worker", "core.broker:broker", "traffic.tasks", "--workers", "1"]
     stop_grace_period: 60s
@@ -61,6 +50,7 @@ services:
       redis:
         condition: service_healthy
 
+  # one instance only, a second one would send every task twice
   scheduler:
     <<: *backend
     entrypoint: []
@@ -71,17 +61,14 @@ services:
       redis:
         condition: service_healthy
 
+  # nginx is the entry point: it serves the site and sends /api to the app
+  # local only, on the server the system Caddy ends TLS and sends the domain here
   frontend:
-    build:
-      context: ./frontend
-    image: schetovod-frontend:production
-    restart: unless-stopped
-    logging: *logging
-    ports:
-      - "127.0.0.1:${PROD_PORT:-11300}:80"
     depends_on:
       app:
         condition: service_healthy
+    ports:
+      - "127.0.0.1:11300:80"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/health"]
       interval: 5s
@@ -90,12 +77,10 @@ services:
 
   postgres:
     image: postgres:18.4
-    restart: unless-stopped
-    logging: *logging
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Run install.sh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run install.sh}
+      POSTGRES_DB: ${POSTGRES_DB:?Run install.sh}
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
@@ -106,8 +91,7 @@ services:
 
   redis:
     image: redis:8.2.2-alpine
-    restart: unless-stopped
-    logging: *logging
+    # the queue and the delayed attempts survive a restart
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redisdata:/data
@@ -120,11 +104,3 @@ services:
 volumes:
   pgdata:
   redisdata:
-
-networks:
-  xray-egress:
-    external: true
-
-secrets:
-  openai_token:
-    file: ./.openai-token

@@ -92,10 +92,10 @@ async def recognize_invoice(
     ],
     service: InvoiceDraftServiceDep,
 ) -> InvoiceDraft:
-    if not settings.include_api_openai:
+    if not settings.openai_api_token.get_secret_value():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Распознавание по фото выключено: OpenAI API не подключён (INCLUDE_API_OPENAI=0)",
+            detail="Распознавание по фото выключено: не задан OPENAI_API_TOKEN",
         )
     extracted = await extract_invoice(
         images=await read_images(

@@ -4,7 +4,8 @@
 Роуты API описаны в `router.py` каждого домена, `/docs` и `/openapi.json` отключены.
 Все роуты закрыты зависимостью `get_current_user` на общем роутере в `main.py`,
 открыты только `POST /auth/login` и `POST /auth/refresh`.
-Для локальной разработки нужны Python 3.14+, uv, Node.js и PostgreSQL.
+Для разработки хватает `make up` из корня проекта, код подхватывается без
+перезапуска контейнеров. Для проверок нужны Python 3.14+ и uv.
 Настройки подключения берутся из `.env` в корне проекта.
 
 `main.py` создаёт приложение и подключает роутеры. Точка входа остаётся
@@ -46,33 +47,13 @@ ORM-модели для приложения и миграций Alembic.
 паузы хранятся в Redis и переживают перезапуск. Брокер и планировщик
 настроены в `core/broker.py`.
 
-Backend из каталога `app/`:
-
-```sh
-uv sync
-uv run alembic upgrade head
-uv run fastapi dev main.py --port 8001
-```
-
-Фоновые задачи, нужен запущенный Redis:
-
-```sh
-uv run taskiq worker core.broker:broker traffic.tasks --workers 1
-uv run taskiq scheduler core.broker:scheduler traffic.tasks
-```
-
-Frontend из каталога `frontend/`:
-
-```sh
-npm ci
-npm run dev
-```
-
-Vite по умолчанию проксирует `/api` на `http://127.0.0.1:8001`.
+Воркер и планировщик работают без автоперезапуска: при каждом старте воркер
+загружает чеки из aQsi, и сохранение файла запускало бы эту загрузку.
 
 Проверки backend из каталога `app/`:
 
 ```sh
+uv sync
 uv run ruff check .
 uv run ruff format --check .
 uv run ty check

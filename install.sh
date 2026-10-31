@@ -46,7 +46,6 @@ if [[ "$production" == 1 && ! -e .env && ! -L .env ]]; then
     while IFS= read -r line || [[ -n "$line" ]]; do
         case "$line" in
             POSTGRES_PASSWORD=*) line="POSTGRES_PASSWORD=$(openssl rand -hex 32)" ;;
-            INCLUDE_API_OPENAI=*) line="INCLUDE_API_OPENAI=1" ;;
             OPENAI_PROXY_URL=*) line="OPENAI_PROXY_URL=http://xray:3128" ;;
         esac
         printf '%s\n' "$line"
@@ -54,10 +53,12 @@ if [[ "$production" == 1 && ! -e .env && ! -L .env ]]; then
 else
     copy_example ".env.example" ".env"
 fi
-copy_example ".openai-token.example" ".openai-token"
+# an older installation keeps the OpenAI token in a file
+if [[ -f .openai-token ]] && ! grep -q '^OPENAI_API_TOKEN=' .env; then
+    add_missing "OPENAI_API_TOKEN" "$(cat .openai-token)"
+    rm -- .openai-token
+fi
 add_missing "JWT_SECRET" "$(openssl rand -hex 32)"
-add_missing "CADDY_PORT" "11200"
-add_missing "PROD_PORT" "11300"
 if [[ "$production" == 1 ]]; then
     add_missing "OPENAI_PROXY_URL" "http://xray:3128"
     mkdir -p invoices

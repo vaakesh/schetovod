@@ -87,13 +87,15 @@ PostgreSQL. Тесты прогоняют API через `TestClient` с заг�
 **Frontend** (`frontend/`)
 
 - React 19, TypeScript, Vite, без сторонних UI-библиотек
-- в Docker раздаётся nginx, который проксирует `/api` на backend
+- nginx раздаёт сайт и проксирует `/api` на backend, порт 11300 один и тот же в
+  разработке и production
 
 **Инфраструктура**
 
 - Docker Compose: API, frontend, PostgreSQL, Redis, воркер и планировщик фоновых
-  задач и CloudBeaver для просмотра базы
-- токен OpenAI передаётся в контейнер как Docker secret
+  задач
+- `compose.yml` описывает общую часть, `compose.dev.yml` и `compose.prod.yml`
+  добавляют к ней настройки разработки и production
 
 ## Запуск
 
@@ -104,15 +106,19 @@ git clone https://github.com/vaakesh/schetovod.git && cd schetovod && bash insta
 make up
 ```
 
-`install.sh` создаёт `.env` из `.env.example` и пустой `.openai-token`, а в `.env`
-дописывает недостающие `JWT_SECRET` и `CADDY_PORT` (существующие значения не
-трогает). Порты и пароли задаются в `.env`. `make up` собирает и запускает API,
-frontend, Caddy, PostgreSQL, Redis, воркер и планировщик, миграции применяются
-автоматически. С портами из `.env.example`:
+`install.sh` создаёт `.env` из `.env.example` и дописывает в него недостающий
+`JWT_SECRET` (существующие значения не трогает). Порты и пароли задаются в `.env`.
+`make up` собирает и запускает API, frontend, PostgreSQL, Redis, воркер и
+планировщик, миграции применяются автоматически. Приложение открывается на
+http://localhost:11300, порт доступен только на этой машине.
 
-- приложение: http://localhost:8080, порт открыт только на этой машине
-- вход с домена: Caddy из compose слушает `127.0.0.1:11200`, системный Caddy
-  сервера отправляет домен на этот порт и завершает TLS
+Трафик идёт как в production: всё проходит через nginx с тем же `nginx.conf`, он
+отправляет `/api` в backend. Отличие одно: сайт отдаёт не статика, а Vite.
+
+Правки в `app/` и `frontend/src/` подхватываются сразу, контейнеры перезапускать не
+нужно: backend работает под `uvicorn --reload`, frontend — под Vite. `make up` нужен
+только в трёх случаях: изменились зависимости или другие файлы `frontend/`, появилась
+новая миграция, изменён код воркера или планировщика.
 
 Без входа открывается только форма логина. Регистрации нет, пользователя создаёт
 команда, она же меняет пароль и закрывает старые сессии пользователя:
@@ -124,10 +130,9 @@ make user login=ivan
 Куки авторизации по умолчанию `Secure`. Для работы по обычному HTTP поставьте
 `AUTH_COOKIE_SECURE=0` в `.env`.
 
-Чтобы включить распознавание фото, запишите токен OpenAI в `.openai-token`,
-поставьте `INCLUDE_API_OPENAI=1` в `.env` и выполните `docker compose up -d app`.
+Чтобы включить распознавание фото, запишите токен в `OPENAI_API_TOKEN` в `.env` и
+выполните `make up`. Без токена приложение работает, отключено только распознавание.
 
-CloudBeaver для просмотра базы: `make cloudbeaver`, затем http://localhost:8978.
 Остановить контейнеры с сохранением данных: `make down`.
 
 Локальная разработка и проверки описаны в [app/README.md](app/README.md).
@@ -135,8 +140,8 @@ CloudBeaver для просмотра базы: `make cloudbeaver`, затем h
 ## Production: alexgastronom.ru
 
 Проект на сервере: `~/apps/schetovod`, Compose-проект `schetovod-prod`.
-Первичная подготовка: `bash install.sh --prod`. Токен OpenAI хранится в
-`.openai-token`, ключ aQsi — в `.env`; оба файла не попадают в Git.
+Первичная подготовка: `bash install.sh --prod`. Токен OpenAI и ключ aQsi хранятся
+в `.env`, этот файл не попадает в Git.
 Перед первым запуском нужно перенести базу и каталог `invoices`.
 
 Обновление вручную:
@@ -147,8 +152,26 @@ make prod-deploy
 ```
 
 Образы собираются на сервере до остановки приложения. Миграции выполняются
-одним API-процессом до запуска фоновых задач. Резервные копии не создаются.
-При ошибке миграции деплой останавливается; автоматического отката схемы нет.
+одним API-процессом до запуска фоновых задач. При ошибке миграции деплой
+останавливается; автоматического отката схемы нет.
+
+Перед миграциями деплой сохраняет дамп базы в `backups/`, хранятся последние 10.
+Если дамп не удался, деплой останавливается до миграций. Каталог `invoices` в дамп
+не входит, а сами дампы лежат на том же сервере, поэтому от потери диска они не
+защищают.
+
+Откат: вернуть код на коммит из имени дампа, это версия, работавшая до деплоя, и
+восстановить базу. Текущая база при этом удаляется. В имени первого дампа вместо
+коммита стоит `unknown`.
+
+```sh
+git checkout <коммит>
+docker compose -f compose.yml -f compose.prod.yml stop frontend scheduler worker app
+docker compose -f compose.yml -f compose.prod.yml exec -T postgres sh -c \
+  'dropdb -U "$POSTGRES_USER" "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB" && pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --exit-on-error' \
+  < backups/<файл>.dump
+make prod-deploy
+```
 
 Системный Caddy завершает TLS и направляет домен на `127.0.0.1:11300`.
 В production опубликован только nginx; база и Redis доступны внутри Docker.

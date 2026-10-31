@@ -3,7 +3,6 @@
 .env.*
 !.env.example
 .openai*
-!.openai-token.example
 
 # notes, images, documents
 *.md
@@ -36,6 +35,7 @@ htmlcov/
 .DS_Store
 
 /invoices/
+/backups/
 .deploy.lock
 sources/
 skills-lock.json

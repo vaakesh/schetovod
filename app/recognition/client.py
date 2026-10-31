@@ -33,17 +33,9 @@ def prompt() -> str:
 # created on the first upload, so the app starts without a token
 @cache
 def client() -> AsyncOpenAI:
-    try:
-        api_key = settings.openai_token_file.read_text(
-            encoding="utf-8",
-        ).strip()
-    except OSError as error:
-        raise recognition_failed(
-            detail=f"нет файла с токеном OpenAI ({settings.openai_token_file})",
-        ) from error
     # no retries, otherwise a timeout repeats and outlives the proxy
     return AsyncOpenAI(
-        api_key=api_key,
+        api_key=settings.openai_api_token.get_secret_value(),
         timeout=settings.openai_timeout,
         max_retries=0,
         http_client=DefaultAsyncHttpx2Client(

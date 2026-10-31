@@ -2,6 +2,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from core.config import settings
 from tests.fakes import invoice_payload
@@ -15,12 +16,23 @@ class TestRecognizeImage(InvoiceApi):
     def enable_recognition(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             target=settings,
-            name="include_api_openai",
-            value=True,
+            name="openai_api_token",
+            value=SecretStr(
+                secret_value="test-token",
+            ),
         )
 
-    def test_turned_off_recognition_does_not_call_openai(self) -> None:
-        settings.include_api_openai = False
+    def test_recognition_without_a_token_does_not_call_openai(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            target=settings,
+            name="openai_api_token",
+            value=SecretStr(
+                secret_value="",
+            ),
+        )
 
         response, extract = self.post_images(
             files=[

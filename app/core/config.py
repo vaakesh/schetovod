@@ -7,7 +7,7 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
-# .env and .openai-token live in the repo root, next to docker-compose.yml
+# .env lives in the repo root, next to compose.yml
 REPO_ROOT = (
     Path(
         __file__,
@@ -32,9 +32,9 @@ class Settings(BaseSettings):
     # the shop's day, ledger dates and the future date check follow it
     timezone: str = "Europe/Moscow"
     # without it a photo upload is refused before any call to OpenAI
-    include_api_openai: bool = False
-    # the key is read from a file, in docker it is mounted as a secret
-    openai_token_file: Path = REPO_ROOT / ".openai-token"
+    openai_api_token: SecretStr = SecretStr(
+        secret_value="",
+    )
     openai_model: str = "gpt-6-luna"
     openai_reasoning_effort: Literal[
         "low",

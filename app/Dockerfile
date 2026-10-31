@@ -7,7 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
-    PATH="/app/.venv/bin:$PATH"
+    UV_PROJECT_ENVIRONMENT=/venv \
+    PATH="/venv/bin:$PATH"
 
 WORKDIR /app
 
