@@ -474,7 +474,7 @@ class TestShiftImport(LedgerApi):
 
         assert response.status_code == 502
         assert (
-            response.json()["detail"] == f"Не удалось получить смены из aQsi: {detail}"
+            response.json()["detail"] == f"Не удалось получить данные из aQsi: {detail}"
         )
         assert KEY not in response.text
         assert self.store.entries == []

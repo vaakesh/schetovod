@@ -8,6 +8,7 @@ from orders.router import router as orders_router
 from products.router import router as products_router
 from reports.router import router as reports_router
 from suppliers.router import router as suppliers_router
+from traffic.router import router as traffic_router
 
 app = FastAPI()
 
@@ -31,4 +32,7 @@ app.include_router(
 )
 app.include_router(
     router=aqsi_router,
+)
+app.include_router(
+    router=traffic_router,
 )

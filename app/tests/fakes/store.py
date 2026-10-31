@@ -7,6 +7,7 @@ from orders.models import Order
 from products.models import Product, ProductAlias
 from products.pricing import normalize_name
 from suppliers.models import Supplier
+from traffic.models import Receipt
 
 INN = "7701234560"
 ZERO = Decimal(
@@ -61,6 +62,7 @@ class FakeStore:
         self.revaluations: list[RevaluationItem] = []
         # the lines live in order.items
         self.orders: dict[int, Order] = {}
+        self.receipts: list[Receipt] = []
         self.commits = 0
         self.locks = 0
         # the order of the ledger locks and the draft reads

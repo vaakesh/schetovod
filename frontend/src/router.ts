@@ -7,7 +7,8 @@ export type Route =
   | { page: "catalog" }
   | { page: "orders" }
   | { page: "ledger" }
-  | { page: "report" };
+  | { page: "report" }
+  | { page: "traffic" };
 
 export function parseRoute(hash: string): Route {
   const draft = hash.match(/^#\/invoice\/(\d+)$/);
@@ -30,6 +31,9 @@ export function parseRoute(hash: string): Route {
   if (hash === "#/report") {
     return { page: "report" };
   }
+  if (hash === "#/traffic") {
+    return { page: "traffic" };
+  }
   return { page: "invoices" };
 }
 
@@ -47,6 +51,8 @@ export function routeHash(route: Route): string {
       return "#/ledger";
     case "report":
       return "#/report";
+    case "traffic":
+      return "#/traffic";
     case "invoices":
       return "#/";
   }

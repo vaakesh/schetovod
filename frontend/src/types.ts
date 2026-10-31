@@ -345,6 +345,78 @@ export interface ShiftImportResult {
   skipped: SkippedShift[];
 }
 
+export interface ReceiptImportResult {
+  received: number;
+  loaded: number;
+  present: number;
+}
+
+export interface TrafficSummary {
+  receipts: number;
+  days: number;
+  per_day: number | null;
+  revenue: string;
+  average_check: string | null;
+  peak_hour: number | null;
+  peak_weekday: number | null;
+}
+
+export interface HourLoad {
+  hour: number;
+  receipts: number;
+  average_check: string | null;
+}
+
+export interface WeekdayLoad {
+  // monday is 0
+  weekday: number;
+  days: number;
+  receipts: number;
+  average_check: string | null;
+}
+
+export interface HeatCell {
+  weekday: number;
+  hour: number;
+  receipts: number;
+}
+
+export interface DayLoad {
+  day: string;
+  receipts: number;
+  revenue: string;
+  trend: number | null;
+}
+
+export interface HourForecast {
+  hour: number;
+  receipts: number;
+  low: number;
+  high: number;
+}
+
+export interface DayForecast {
+  day: string;
+  weekday: number;
+  based_on: number;
+  receipts: number | null;
+  low: number | null;
+  high: number | null;
+  hours: HourForecast[];
+}
+
+export interface TrafficReport {
+  date_from: string;
+  date_to: string;
+  last_receipt_at: string | null;
+  summary: TrafficSummary;
+  by_hour: HourLoad[];
+  by_weekday: WeekdayLoad[];
+  heatmap: HeatCell[];
+  daily: DayLoad[];
+  forecast: DayForecast[];
+}
+
 export interface RevaluationLine {
   product_id: number;
   quantity: string;

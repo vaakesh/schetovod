@@ -15,6 +15,10 @@ class AqsiModel(BaseModel):
     )
 
 
+class AqsiRefusal(AqsiModel):
+    message: str
+
+
 class AqsiShiftRow(AqsiModel):
     id: UUID
 
@@ -63,6 +67,33 @@ class AqsiShift(AqsiModel):
     number: int
     shift_opened_report: AqsiOpenedReport | None = None
     shift_closed_report: AqsiClosedReport | None = None
+
+
+class AqsiReceiptAmounts(AqsiModel):
+    cash: int
+    cashless: int
+
+
+class AqsiReceiptInfo(AqsiModel):
+    shift_id: UUID
+    shift_number: int | None = None
+    number: int | None = None
+    date_time: AwareDatetime
+    type_id: int
+    sum: int
+    amounts: AqsiReceiptAmounts
+
+
+class AqsiReceipt(AqsiModel):
+    id: UUID
+    info: AqsiReceiptInfo
+    # only their number is used
+    positions: list[object]
+
+
+class AqsiReceiptPage(AqsiModel):
+    rows: list[AqsiReceipt]
+    pages: int
 
 
 class ShiftImportCreate(FormModel):

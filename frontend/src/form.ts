@@ -40,12 +40,20 @@ export function fromInputDate(value: string): string | null {
   return match ? `${match[3]}-${match[2]}-${match[1]}` : null;
 }
 
-// today in the browser time zone, as a date input wants it
+// a moment in the browser time zone, as a date input wants it
+export function inputDate(moment: Date): string {
+  const month = String(moment.getMonth() + 1).padStart(2, "0");
+  const day = String(moment.getDate()).padStart(2, "0");
+  return `${moment.getFullYear()}-${month}-${day}`;
+}
+
 export function todayInput(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
+  return inputDate(new Date());
+}
+
+export function shiftInput(value: string, days: number): string {
+  const [year, month, day] = value.split("-").map(Number);
+  return inputDate(new Date(year!, month! - 1, day! + days));
 }
 
 export function emptyLine(lineNo: number): FormLine {

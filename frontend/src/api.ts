@@ -18,11 +18,13 @@ import type {
   PostedInvoice,
   ProductEdit,
   ProductSummary,
+  ReceiptImportResult,
   RevaluationCreate,
   RevaluationLineOut,
   ShiftImportResult,
   SupplierEdit,
   SupplierSummary,
+  TrafficReport,
 } from "./types";
 
 interface ValidationError {
@@ -174,6 +176,14 @@ export function addLedgerEntry(kind: ManualKind, body: unknown): Promise<LedgerP
 
 export function importShifts(dateFrom: string, dateTo: string): Promise<ShiftImportResult> {
   return request("POST", "/ledger/import-shifts", { date_from: dateFrom, date_to: dateTo });
+}
+
+export function importReceipts(dateFrom: string, dateTo: string): Promise<ReceiptImportResult> {
+  return request("POST", "/traffic/import", { date_from: dateFrom, date_to: dateTo });
+}
+
+export function getTrafficReport(dateFrom: string, dateTo: string): Promise<TrafficReport> {
+  return request("GET", `/traffic/report${query({ date_from: dateFrom, date_to: dateTo })}`);
 }
 
 export function addRevaluation(body: RevaluationCreate): Promise<LedgerPosted> {

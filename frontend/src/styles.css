@@ -2435,6 +2435,331 @@ a.button {
   border-top: 1px solid var(--line);
 }
 
+/* traffic: charts of the customers of the shop */
+
+.traffic-loaded {
+  flex: 1;
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.traffic-card {
+  margin-bottom: 24px;
+  padding: 20px 24px;
+  overflow: visible;
+}
+
+.traffic-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.traffic-note {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.traffic-foot {
+  margin: 0 0 24px;
+}
+
+.traffic-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+  margin: 0 0 24px;
+}
+
+.traffic-tile {
+  padding: 16px 20px;
+}
+
+.traffic-tile dt {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.traffic-tile dd {
+  margin: 6px 0 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.traffic-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.traffic-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+
+.traffic-day {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.traffic-day:hover {
+  background: var(--hover);
+}
+
+.traffic-day.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.traffic-day-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.traffic-day-date {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.traffic-day strong {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.chart {
+  position: relative;
+  min-width: 0;
+}
+
+.chart svg {
+  display: block;
+  overflow: visible;
+}
+
+.chart-grid {
+  stroke: var(--line);
+}
+
+.chart-axis {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  fill: var(--muted);
+}
+
+.chart-bar {
+  fill: var(--accent);
+}
+
+.chart-bar.active {
+  fill: var(--accent-hover);
+}
+
+.chart-bar-quiet {
+  fill: var(--line-strong);
+}
+
+.chart-bar-quiet.active {
+  fill: var(--subtle);
+}
+
+.chart-hit {
+  fill: transparent;
+  outline: none;
+}
+
+.chart-hit:focus-visible {
+  stroke: var(--accent);
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chart-band {
+  fill: var(--accent);
+  fill-opacity: 0.1;
+}
+
+.chart-crosshair {
+  stroke: var(--line-strong);
+}
+
+.chart-dot {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  gap: 1px;
+  min-width: 96px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  transform: translate(-50%, calc(-100% - 8px));
+  pointer-events: none;
+}
+
+.chart-tooltip strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--muted);
+  list-style: none;
+}
+
+.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-key {
+  display: block;
+  width: 14px;
+}
+
+.chart-key-line {
+  height: 2px;
+  background: var(--accent);
+}
+
+.chart-key-band {
+  height: 10px;
+  background: var(--accent-soft);
+  border-radius: 2px;
+}
+
+.chart-key-bar {
+  height: 10px;
+  background: var(--line-strong);
+  border-radius: 2px;
+}
+
+.heatmap {
+  display: grid;
+  gap: 2px;
+  align-items: center;
+}
+
+.heatmap-row {
+  display: contents;
+}
+
+.heatmap-hour,
+.heatmap-day {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.heatmap-hour {
+  padding-bottom: 4px;
+  text-align: center;
+}
+
+.heatmap-cell {
+  height: 34px;
+  border-radius: 4px;
+}
+
+.heatmap-cell:hover,
+.heatmap-cell:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.heatmap-scale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.heatmap-ramp {
+  width: 96px;
+  height: 8px;
+  background: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--accent) 8%, var(--surface)),
+    var(--accent)
+  );
+  border-radius: 4px;
+}
+
+.heatmap-table {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.heatmap-table summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+@media (max-width: 860px) {
+  .traffic-tiles,
+  .traffic-pair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .traffic-pair {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .traffic-days {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .traffic-card {
+    padding: 16px;
+  }
+
+  .traffic-tile dd {
+    font-size: 18px;
+  }
+}
+
 /* report */
 
 .report-period {

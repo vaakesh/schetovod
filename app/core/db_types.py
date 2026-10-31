@@ -6,7 +6,7 @@ from sqlalchemy import BigInteger, DateTime, Numeric
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.orm import mapped_column
 
-from core.enums import InvoiceStatus, LedgerKind, OrderStatus
+from core.enums import InvoiceStatus, LedgerKind, OrderStatus, ReceiptKind
 
 # column templates for Mapped[...], the mapped_column on a field is merged on top of them
 BigInt = Annotated[
@@ -77,6 +77,14 @@ ledger_kind_enum = SQLAlchemyEnum(
 order_status_enum = SQLAlchemyEnum(
     OrderStatus,
     name="order_status",
+    native_enum=False,
+    create_constraint=True,
+    validate_strings=True,
+    values_callable=lambda enum_class: [member.value for member in enum_class],
+)
+receipt_kind_enum = SQLAlchemyEnum(
+    ReceiptKind,
+    name="receipt_kind",
     native_enum=False,
     create_constraint=True,
     validate_strings=True,

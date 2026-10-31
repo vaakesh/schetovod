@@ -19,10 +19,12 @@ from tests.fakes import (
     FakeLedger,
     FakeOrders,
     FakeProducts,
+    FakeReceipts,
     FakeStore,
     FakeSuppliers,
 )
 from tests.fakes import invoices as fake_invoices
+from traffic.repository import ReceiptRepository
 
 
 @pytest.fixture(
@@ -91,6 +93,9 @@ def client(test_app: FastAPI, store: FakeStore) -> Iterator[TestClient]:
                 store=store,
             ),
             OrderRepository: lambda: FakeOrders(
+                store=store,
+            ),
+            ReceiptRepository: lambda: FakeReceipts(
                 store=store,
             ),
         },

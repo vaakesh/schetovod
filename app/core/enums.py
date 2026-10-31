@@ -20,6 +20,11 @@ class InvoiceSort(StrEnum):
     DEBT = "debt"
 
 
+class ReceiptKind(StrEnum):
+    SALE = "sale"
+    REFUND = "refund"
+
+
 class LedgerKind(StrEnum):
     INVOICE = "invoice"
     SALE = "sale"

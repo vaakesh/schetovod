@@ -11,6 +11,7 @@ import LedgerPage from "./pages/LedgerPage";
 import OrdersPage from "./pages/OrdersPage";
 import PostedInvoicePage from "./pages/PostedInvoicePage";
 import ReportPage from "./pages/ReportPage";
+import TrafficPage from "./pages/TrafficPage";
 import { routeHash, sameRoute, useRoute, type Route } from "./router";
 import type { InvoiceDraft, Order } from "./types";
 
@@ -142,6 +143,8 @@ export default function App() {
         return <LedgerPage go={go} ask={ask} />;
       case "report":
         return <ReportPage go={go} />;
+      case "traffic":
+        return <TrafficPage />;
       case "invoices":
         return (
           <InvoicesPage
@@ -188,7 +191,8 @@ export default function App() {
               route.page !== "catalog" &&
                 route.page !== "orders" &&
                 route.page !== "ledger" &&
-                route.page !== "report",
+                route.page !== "report" &&
+                route.page !== "traffic",
             )}
             {tab({ page: "catalog" }, "Товары", route.page === "catalog")}
             {tab(
@@ -205,6 +209,7 @@ export default function App() {
             )}
             {tab({ page: "ledger" }, "Журнал", route.page === "ledger")}
             {tab({ page: "report" }, "Отчёт", route.page === "report")}
+            {tab({ page: "traffic" }, "Покупатели", route.page === "traffic")}
           </nav>
         </div>
         {route.page !== "invoices" && (
