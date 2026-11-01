@@ -521,21 +521,23 @@ class TestMonthsOf:
 
 
 class TestSchedule:
-    def test_the_task_runs_weekly_on_the_clock_of_the_shop(self) -> None:
+    def test_the_task_runs_every_ten_minutes(self) -> None:
         assert import_receipts.labels["schedule"] == [
             {
-                "cron": "0 4 * * 1",
+                "cron": "*/10 * * * *",
                 "cron_offset": "Europe/Moscow",
             },
         ]
 
-    def test_a_failed_task_is_repeated_with_a_delay(self) -> None:
+    def test_a_failed_task_waits_for_the_next_run(self) -> None:
+        assert import_receipts.labels["retry_on_error"] is False
+
+    def test_a_delayed_attempt_goes_through_the_schedule_source(self) -> None:
         retry = cast(
             SmartRetryMiddleware,
             broker.middlewares[0],
         )
 
-        assert import_receipts.labels["retry_on_error"] is True
         assert retry.default_retry_count == ATTEMPTS
         # without a source the delay of a Redis broker is ignored
         assert retry.schedule_source is delayed_tasks

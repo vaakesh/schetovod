@@ -141,7 +141,7 @@
       "id": 6,
       "type": "stat",
       "title": "Since last import",
-      "description": "Сколько прошло с последней удачной загрузки чеков aQsi. Загрузка идёт по понедельникам и при старте воркера, красный цвет — больше 8 дней.",
+      "description": "Сколько прошло с последней удачной загрузки чеков aQsi. Загрузка идёт каждые 10 минут и при старте воркера, красный цвет — больше 30 минут.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
       "targets": [{ "refId": "A", "expr": "time() - max(schetovod_receipts_last_success_seconds)", "instant": true }],
@@ -149,7 +149,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "dtdurations",
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 691200 }] }
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1800 }] }
         }
       }
     },

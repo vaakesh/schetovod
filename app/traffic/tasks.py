@@ -15,18 +15,18 @@ logger = logging.getLogger(
     name=__name__,
 )
 
-# mondays at 4, the shop is closed on mondays and the week before is complete
-WEEKLY = "0 4 * * 1"
+EVERY_TEN_MINUTES = "*/10 * * * *"
 
 
 @broker.task(
     schedule=[
         {
-            "cron": WEEKLY,
+            "cron": EVERY_TEN_MINUTES,
             "cron_offset": settings.timezone,
         },
     ],
-    retry_on_error=True,
+    # the next run is the retry, delayed attempts would only pile up behind it
+    retry_on_error=False,
 )
 async def import_receipts() -> None:
     async with AsyncSession(
@@ -59,5 +59,5 @@ async def import_receipts() -> None:
 async def import_receipts_on_start(
     state: TaskiqState,
 ) -> None:
-    """a stopped computer misses the weekly run and an empty base would wait a week"""
+    """the receipts missed by a stopped computer arrive at once, not at the next run"""
     await import_receipts.kiq()
