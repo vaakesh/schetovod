@@ -20,7 +20,7 @@ interface Props {
 
 const PAGE = 50;
 
-const STOCK_ACTIONS: ManualKind[] = ["sale", "write_off", "stocktake"];
+const STOCK_ACTIONS: ManualKind[] = ["sale", "write_off", "stock_in", "stocktake"];
 const CASH_ACTIONS: ManualKind[] = ["cash_in", "cash_out", "cash_count"];
 
 export default function LedgerPage({ go, ask }: Props) {

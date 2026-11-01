@@ -18,6 +18,7 @@ class LedgerReport(BaseModel):
     invoices: Decimal
     sales: Decimal
     write_offs: Decimal
+    stock_ins: Decimal
     stocktakes: Decimal
     revaluations: Decimal
     # stock at retail prices at the end of the last day

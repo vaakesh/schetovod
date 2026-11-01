@@ -15,12 +15,13 @@ interface Props {
 }
 
 // the signed sums between the opening and the closing balance, in the order of the report
-type Flow = "invoices" | "sales" | "write_offs" | "stocktakes" | "revaluations";
+type Flow = "invoices" | "sales" | "write_offs" | "stock_ins" | "stocktakes" | "revaluations";
 
 const FLOWS: { key: Flow; label: string }[] = [
   { key: "invoices", label: "Приход по накладным" },
   { key: "sales", label: "Продажи" },
   { key: "write_offs", label: "Списания" },
+  { key: "stock_ins", label: "Приходы товара" },
   { key: "stocktakes", label: "Переучёты" },
   { key: "revaluations", label: "Переоценка" },
 ];

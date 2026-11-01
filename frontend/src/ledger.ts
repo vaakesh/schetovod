@@ -16,6 +16,7 @@ export const KIND_LABELS: Record<LedgerKind, string> = {
   invoice: "Накладная",
   sale: "Продажа",
   write_off: "Списание",
+  stock_in: "Приход товара",
   stocktake: "Переучёт",
   revaluation: "Переоценка",
   cash_in: "Внесение",

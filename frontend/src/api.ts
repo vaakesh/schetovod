@@ -224,6 +224,7 @@ export function getBalance(on: string | null): Promise<LedgerBalance> {
 const LEDGER_PATHS: Record<ManualKind, string> = {
   sale: "/ledger/sale",
   write_off: "/ledger/write-off",
+  stock_in: "/ledger/stock-in",
   stocktake: "/ledger/stocktake",
   cash_in: "/ledger/cash-in",
   cash_out: "/ledger/cash-out",

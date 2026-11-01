@@ -143,6 +143,15 @@ class LedgerEntry(Base):
             ),
             name="outflow_sign",
         ),
+        # a stock inflow brings stock in, only its reversal takes it back out
+        CheckConstraint(
+            sqltext=(
+                f"kind <> '{LedgerKind.STOCK_IN}' "
+                "OR (reverses_id IS NULL AND amount > 0) "
+                "OR (reverses_id IS NOT NULL AND amount < 0)"
+            ),
+            name="stock_in_sign",
+        ),
         # a revaluation changes the price of something, the sign depends on the direction
         CheckConstraint(
             sqltext=f"kind <> '{LedgerKind.REVALUATION}' OR amount <> 0",
@@ -160,7 +169,8 @@ class LedgerEntry(Base):
         CheckConstraint(
             sqltext=(
                 f"kind NOT IN ('{LedgerKind.INVOICE}', '{LedgerKind.WRITE_OFF}', "
-                f"'{LedgerKind.STOCKTAKE}', '{LedgerKind.REVALUATION}') OR cash = 0"
+                f"'{LedgerKind.STOCK_IN}', '{LedgerKind.STOCKTAKE}', "
+                f"'{LedgerKind.REVALUATION}') OR cash = 0"
             ),
             name="no_cash",
         ),

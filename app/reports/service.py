@@ -87,6 +87,10 @@ class ReportService:
                 LedgerKind.WRITE_OFF,
                 zero,
             ),
+            stock_ins=sums.get(
+                LedgerKind.STOCK_IN,
+                zero,
+            ),
             stocktakes=sums.get(
                 LedgerKind.STOCKTAKE,
                 zero,

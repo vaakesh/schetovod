@@ -120,6 +120,27 @@ class LedgerService:
             ),
         )
 
+    async def add_stock_in(
+        self,
+        payload: OutflowCreate,
+    ) -> LedgerPosted:
+        """the stock goes up by the amount, the opposite of a write-off"""
+        await self.ledger.lock()
+        await check_date(
+            ledger=self.ledger,
+            on=payload.occurred_on,
+            stock=True,
+            cash=False,
+        )
+        return await self._post(
+            entry=LedgerEntry(
+                kind=LedgerKind.STOCK_IN,
+                occurred_on=payload.occurred_on,
+                amount=payload.amount,
+                comment=payload.comment,
+            ),
+        )
+
     async def add_cash_in(
         self,
         payload: OutflowCreate,

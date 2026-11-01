@@ -128,6 +128,20 @@ class TestCash(LedgerApi):
             == f"Период закрыт переучётом от {day()}"
         )
         assert (
+            self.post(
+                url="/ledger/stock-in",
+                payload={
+                    "occurred_on": day(
+                        shift=-1,
+                    ),
+                    "amount": "10.00",
+                    "comment": None,
+                },
+                expected=409,
+            )["detail"]
+            == f"Период закрыт переучётом от {day()}"
+        )
+        assert (
             self.cash(
                 kind="cash-in",
                 amount="10.00",

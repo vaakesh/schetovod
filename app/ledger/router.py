@@ -80,6 +80,19 @@ async def add_write_off(
 
 
 @router.post(
+    path="/ledger/stock-in",
+    response_model=LedgerPosted,
+)
+async def add_stock_in(
+    payload: OutflowCreate,
+    service: LedgerServiceDep,
+) -> LedgerPosted:
+    return await service.add_stock_in(
+        payload=payload,
+    )
+
+
+@router.post(
     path="/ledger/cash-in",
     response_model=LedgerPosted,
 )

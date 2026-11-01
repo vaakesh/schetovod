@@ -280,6 +280,7 @@ export type LedgerKind =
   | "invoice"
   | "sale"
   | "write_off"
+  | "stock_in"
   | "stocktake"
   | "revaluation"
   | "cash_in"
@@ -462,6 +463,7 @@ export interface LedgerReport {
   invoices: string;
   sales: string;
   write_offs: string;
+  stock_ins: string;
   stocktakes: string;
   revaluations: string;
   closing: string;

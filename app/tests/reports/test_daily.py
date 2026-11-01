@@ -68,6 +68,14 @@ class TestReport(LedgerApi):
             amount="100.00",
             shift=0,
         )
+        self.post(
+            url="/ledger/stock-in",
+            payload={
+                "occurred_on": day(),
+                "amount": "20.00",
+                "comment": "из мяса",
+            },
+        )
         self.cash(
             kind="cash-in",
             amount="500.00",
@@ -95,6 +103,7 @@ class TestReport(LedgerApi):
                 "invoices",
                 "sales",
                 "write_offs",
+                "stock_ins",
                 "stocktakes",
                 "revaluations",
                 "closing",
@@ -106,9 +115,10 @@ class TestReport(LedgerApi):
             # the reversed sale cancels out
             "sales": "-300.00",
             "write_offs": "-50.00",
+            "stock_ins": "20.00",
             "stocktakes": "-60.00",
             "revaluations": "10.00",
-            "closing": "5700.00",
+            "closing": "5720.00",
         }
         assert {
             key: report[key]
@@ -142,8 +152,9 @@ class TestReport(LedgerApi):
             ("revaluation", "10.00", "5660.00", "100.00"),
             ("stocktake", "-60.00", "5600.00", "100.00"),
             ("invoice", "100.00", "5700.00", "100.00"),
-            ("cash_in", "0", "5700.00", "600.00"),
-            ("cash_out", "0", "5700.00", "560.00"),
+            ("stock_in", "20.00", "5720.00", "100.00"),
+            ("cash_in", "0", "5720.00", "600.00"),
+            ("cash_out", "0", "5720.00", "560.00"),
         ]
 
     def test_period_bounds_are_inclusive_and_ordered(self) -> None:
@@ -207,7 +218,8 @@ class TestReport(LedgerApi):
                 values_only=True,
             )
         }
-        assert (totals["Остаток на начало"], totals["Остаток на конец"]) == (5000, 5700)
+        assert (totals["Остаток на начало"], totals["Остаток на конец"]) == (5000, 5720)
+        assert totals["Приходы товара"] == 20
         assert (
             totals["Касса на начало"],
             totals["Продажи наличными"],

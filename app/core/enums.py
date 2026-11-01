@@ -29,6 +29,7 @@ class LedgerKind(StrEnum):
     INVOICE = "invoice"
     SALE = "sale"
     WRITE_OFF = "write_off"
+    STOCK_IN = "stock_in"
     STOCKTAKE = "stocktake"
     REVALUATION = "revaluation"
     CASH_IN = "cash_in"

@@ -1,7 +1,7 @@
 import pytest
 
 from core.enums import LedgerKind
-from tests.ledger.helpers import LedgerApi, shifted
+from tests.ledger.helpers import LedgerApi, day, shifted
 
 
 class TestReverse(LedgerApi):
@@ -38,6 +38,52 @@ class TestReverse(LedgerApi):
             row for row in self.history()["entries"] if row["id"] == sale["id"]
         ]
         assert cancelled["reversed_by_id"] == reversal["id"]
+
+    def test_reversal_takes_a_stock_in_back_out(self) -> None:
+        self.stock(
+            amount="1000.00",
+        )
+        stock_in = self.post(
+            url="/ledger/stock-in",
+            payload={
+                "occurred_on": day(),
+                "amount": "300.00",
+                "comment": "из мяса",
+            },
+        )
+
+        reversal = self.reverse(
+            entry_id=stock_in["id"],
+        )
+
+        assert (reversal["amount"], reversal["balance"]) == ("-300.00", "1000.00")
+        entry = self.store.entries[-1]
+        assert (entry.kind, entry.reverses_id) == (LedgerKind.STOCK_IN, stock_in["id"])
+
+    def test_stocktake_blocks_the_reversal_of_a_stock_in(self) -> None:
+        stock_in = self.post(
+            url="/ledger/stock-in",
+            payload={
+                "occurred_on": day(
+                    shift=-1,
+                ),
+                "amount": "300.00",
+                "comment": None,
+            },
+        )
+        self.stocktake(
+            counted="300.00",
+        )
+
+        blocked = self.reverse(
+            entry_id=stock_in["id"],
+            expected=409,
+        )
+
+        assert (
+            blocked["detail"]
+            == "После этой записи был переучёт, исправьте остаток новым переучётом"
+        )
 
     @pytest.mark.parametrize(
         argnames=("target", "detail"),

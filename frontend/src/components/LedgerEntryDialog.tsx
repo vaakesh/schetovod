@@ -16,6 +16,7 @@ interface Props {
 const TITLES: Record<ManualKind, string> = {
   sale: "Продажа",
   write_off: "Списание",
+  stock_in: "Приход товара",
   stocktake: "Переучёт",
   cash_in: "Внесение в кассу",
   cash_out: "Выдача из кассы",
@@ -25,6 +26,7 @@ const TITLES: Record<ManualKind, string> = {
 const COMMENT_HINTS: Record<ManualKind, string> = {
   sale: "Например, выручка за смену",
   write_off: "Например, бой или просрочка",
+  stock_in: "Например, из мяса или обмен",
   stocktake: "Например, плановый переучёт",
   cash_in: "Например, размен",
   cash_out: "Например, забрал владелец или накладная № 17",
@@ -34,6 +36,7 @@ const COMMENT_HINTS: Record<ManualKind, string> = {
 const AMOUNT_LABELS: Record<ManualKind, string> = {
   sale: "Наличные, ₽",
   write_off: "Сумма, ₽",
+  stock_in: "Сумма, ₽",
   stocktake: "Насчитали, ₽",
   cash_in: "Сумма, ₽",
   cash_out: "Сумма, ₽",

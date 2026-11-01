@@ -29,6 +29,56 @@ class TestOutflow(LedgerApi):
         assert (entry.kind, entry.comment) == (LedgerKind.WRITE_OFF, "забрал владелец")
         assert self.store.locks == 2
 
+    def test_stock_in_brings_stock_in_and_leaves_the_till(self) -> None:
+        self.stock(
+            amount="1000.00",
+        )
+
+        stock_in = self.post(
+            url="/ledger/stock-in",
+            payload={
+                "occurred_on": day(),
+                "amount": "300.00",
+                "comment": "из мяса",
+            },
+        )
+
+        assert stock_in == {
+            "id": self.store.entries[-1].id,
+            "amount": "300.00",
+            "cash": "0",
+            "balance": "1300.00",
+            "cash_balance": "0",
+        }
+        entry = self.store.entries[-1]
+        assert (entry.kind, entry.comment) == (LedgerKind.STOCK_IN, "из мяса")
+
+    def test_stock_in_does_not_need_a_comment(self) -> None:
+        stock_in = self.post(
+            url="/ledger/stock-in",
+            payload={
+                "occurred_on": day(),
+                "amount": "300.00",
+                "comment": None,
+            },
+        )
+
+        assert stock_in["balance"] == "300.00"
+        assert self.store.entries[-1].comment is None
+
+    def test_returns_422_when_stock_in_amount_is_not_positive(self) -> None:
+        self.post(
+            url="/ledger/stock-in",
+            payload={
+                "occurred_on": day(),
+                "amount": "0",
+                "comment": None,
+            },
+            expected=422,
+        )
+
+        assert self.store.entries == []
+
     @pytest.mark.parametrize(
         argnames=("amount", "cash", "shift", "detail"),
         argvalues=[
