@@ -290,6 +290,17 @@ export type LedgerKind =
 // the kinds entered by hand in the entry dialog, a revaluation has its own form
 export type ManualKind = Exclude<LedgerKind, "invoice" | "revaluation">;
 
+// the kinds with a sum and a comment, one window takes several of them
+export type BatchKind = "write_off" | "stock_in" | "cash_in" | "cash_out";
+
+export type SingleKind = Exclude<ManualKind, BatchKind>;
+
+export interface LedgerBatchLine {
+  occurred_on: string | null;
+  amount: string | null;
+  comment: string | null;
+}
+
 export interface LedgerEntry {
   id: number;
   occurred_on: string;

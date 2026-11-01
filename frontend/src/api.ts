@@ -7,11 +7,13 @@ import type {
   InvoiceList,
   InvoiceSort,
   InvoiceStatus,
+  BatchKind,
   LedgerBalance,
+  LedgerBatchLine,
   LedgerPage,
   LedgerPosted,
+  SingleKind,
   LedgerReport,
-  ManualKind,
   Order,
   OrderList,
   PaymentCreate,
@@ -221,17 +223,21 @@ export function getBalance(on: string | null): Promise<LedgerBalance> {
   return request("GET", `/ledger/balance${query({ on })}`);
 }
 
-const LEDGER_PATHS: Record<ManualKind, string> = {
+const LEDGER_PATHS: Record<SingleKind, string> = {
   sale: "/ledger/sale",
-  write_off: "/ledger/write-off",
-  stock_in: "/ledger/stock-in",
   stocktake: "/ledger/stocktake",
-  cash_in: "/ledger/cash-in",
-  cash_out: "/ledger/cash-out",
   cash_count: "/ledger/cash-count",
 };
 
-export function addLedgerEntry(kind: ManualKind, body: unknown): Promise<LedgerPosted> {
+export function addLedgerBatch(kind: BatchKind, entries: LedgerBatchLine[]): Promise<unknown> {
+  return request("POST", "/ledger/batch", { kind, entries });
+}
+
+export function getLedgerComments(kind: BatchKind): Promise<string[]> {
+  return request("GET", `/ledger/comments${query({ kind })}`);
+}
+
+export function addLedgerEntry(kind: SingleKind, body: unknown): Promise<LedgerPosted> {
   return request("POST", LEDGER_PATHS[kind], body);
 }
 

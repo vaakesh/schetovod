@@ -5,7 +5,8 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import exists, func, select, tuple_
+from sqlalchemy import ARRAY, Text, exists, func, select, tuple_
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import InstrumentedAttribute, aliased, selectinload
 
 from core.db import SessionDep
@@ -49,6 +50,58 @@ class LedgerRepository:
 
     async def commit(self) -> None:
         await self.session.commit()
+
+    async def frequent_comments(
+        self,
+        kind: LedgerKind,
+        limit: int,
+    ) -> list[str]:
+        """repeated comments, the same word in another case is one, spelled as the latest"""
+        comment = func.trim(
+            LedgerEntry.comment,
+        )
+        key = func.lower(
+            comment,
+        )
+        latest = func.array_agg(
+            aggregate_order_by(
+                comment,
+                LedgerEntry.id.desc(),
+            ),
+            type_=ARRAY(
+                Text,
+            ),
+        )[1]
+        rows = await self.session.scalars(
+            select(
+                latest,
+            )
+            .where(
+                LedgerEntry.kind == kind,
+                LedgerEntry.reverses_id.is_(
+                    None,
+                ),
+                LedgerEntry.comment.is_not(
+                    None,
+                ),
+            )
+            .group_by(
+                key,
+            )
+            .having(
+                func.count() > 1,
+            )
+            .order_by(
+                func.count().desc(),
+                key,
+            )
+            .limit(
+                limit,
+            ),
+        )
+        return list(
+            rows,
+        )
 
     async def add_revaluation_items(
         self,

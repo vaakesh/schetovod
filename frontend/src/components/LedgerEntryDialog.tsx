@@ -1,53 +1,42 @@
 import { useEffect, useState } from "react";
 
 import { addLedgerEntry, getBalance } from "../api";
+import { calculate } from "../calc";
 import { formatMoney, formatSigned } from "../format";
-import { fromInputDate, toDecimal, toInputDate, todayInput, toText } from "../form";
+import { AMOUNT, fromInputDate, toInputDate, todayInput, toText } from "../form";
 import { message } from "../message";
-import type { LedgerBalance, ManualKind } from "../types";
+import type { LedgerBalance, SingleKind } from "../types";
+import CalcInput from "./CalcInput";
 import Modal from "./Modal";
 
 interface Props {
-  kind: ManualKind;
+  kind: SingleKind;
   onClose: () => void;
   onPosted: () => void;
 }
 
-const TITLES: Record<ManualKind, string> = {
+const TITLES: Record<SingleKind, string> = {
   sale: "Продажа",
-  write_off: "Списание",
-  stock_in: "Приход товара",
   stocktake: "Переучёт",
-  cash_in: "Внесение в кассу",
-  cash_out: "Выдача из кассы",
   cash_count: "Сверка кассы",
 };
 
-const COMMENT_HINTS: Record<ManualKind, string> = {
+const COMMENT_HINTS: Record<SingleKind, string> = {
   sale: "Например, выручка за смену",
-  write_off: "Например, бой или просрочка",
-  stock_in: "Например, из мяса или обмен",
   stocktake: "Например, плановый переучёт",
-  cash_in: "Например, размен",
-  cash_out: "Например, забрал владелец или накладная № 17",
   cash_count: "Например, пересчёт в конце смены",
 };
 
-const AMOUNT_LABELS: Record<ManualKind, string> = {
+const AMOUNT_LABELS: Record<SingleKind, string> = {
   sale: "Наличные, ₽",
-  write_off: "Сумма, ₽",
-  stock_in: "Сумма, ₽",
   stocktake: "Насчитали, ₽",
-  cash_in: "Сумма, ₽",
-  cash_out: "Сумма, ₽",
   cash_count: "В кассе по факту, ₽",
 };
 
-// the till kinds never touch the stock, a sale touches both
-const CASH_ONLY: ManualKind[] = ["cash_in", "cash_out", "cash_count"];
-
-// rubles with at most two decimals, the api rejects anything else
-const AMOUNT = /^\d+(\.\d{1,2})?$/;
+// a field may still hold an expression, an empty one has its own meaning
+function fieldValue(text: string, empty: string | null): string | null {
+  return text.trim() === "" ? empty : calculate(text);
+}
 
 // the later of the closing days, a date input compares as text
 function latest(days: (string | null | undefined)[]): string {
@@ -66,19 +55,18 @@ export default function LedgerEntryDialog({ kind, onClose, onPosted }: Props) {
   const sale = kind === "sale";
   const count = kind === "stocktake" || kind === "cash_count";
   // an empty part of a sale is zero, the other part may hold the whole sale
-  const value = toDecimal(amount) ?? (sale ? "0" : null);
-  const cardValue = toDecimal(card) ?? "0";
+  const value = fieldValue(amount, sale ? "0" : null);
+  const cardValue = fieldValue(card, "0");
   const total = Number(value) + (sale ? Number(cardValue) : 0);
-  const commentRequired = kind === "cash_out";
   const valid =
     value !== null &&
     AMOUNT.test(value) &&
-    (!sale || AMOUNT.test(cardValue)) &&
-    (count || total > 0) &&
-    (!commentRequired || toText(comment) !== null);
+    (!sale || (cardValue !== null && AMOUNT.test(cardValue))) &&
+    (count || total > 0);
 
-  const touchesStock = !CASH_ONLY.includes(kind);
-  const touchesCash = CASH_ONLY.includes(kind) || (sale && Number(value) > 0);
+  // a sale touches both the stock and the till
+  const touchesStock = kind !== "cash_count";
+  const touchesCash = kind === "cash_count" || (sale && Number(value) > 0);
   const minDate = latest([touchesStock ? books?.closed_on : null, touchesCash ? books?.cash_closed_on : null]);
   const expected = kind === "cash_count" ? books?.cash_balance : books?.balance;
 
@@ -142,25 +130,12 @@ export default function LedgerEntryDialog({ kind, onClose, onPosted }: Props) {
             <div className={sale ? "field-pair" : undefined}>
               <label className="field">
                 <span className="field-label">{AMOUNT_LABELS[kind]}</span>
-                <input
-                  className="input input-money"
-                  inputMode="decimal"
-                  autoFocus
-                  placeholder="0,00"
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                />
+                <CalcInput autoFocus value={amount} onChange={setAmount} />
               </label>
               {sale && (
                 <label className="field">
                   <span className="field-label">Безнал, ₽</span>
-                  <input
-                    className="input input-money"
-                    inputMode="decimal"
-                    placeholder="0,00"
-                    value={card}
-                    onChange={(event) => setCard(event.target.value)}
-                  />
+                  <CalcInput value={card} onChange={setCard} />
                 </label>
               )}
             </div>
@@ -189,10 +164,9 @@ export default function LedgerEntryDialog({ kind, onClose, onPosted }: Props) {
               </dl>
             )}
             <label className="field">
-              <span className="field-label">{commentRequired ? "На что" : "Комментарий"}</span>
+              <span className="field-label">Комментарий</span>
               <input
                 className="input"
-                required={commentRequired}
                 placeholder={COMMENT_HINTS[kind]}
                 value={comment}
                 onChange={(event) => setComment(event.target.value)}

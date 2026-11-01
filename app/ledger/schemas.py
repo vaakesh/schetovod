@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import (
     BaseModel,
@@ -20,6 +20,26 @@ class OutflowCreate(FormModel):
         ),
     ]
     comment: Text | None
+
+
+# the kinds that take a sum and a comment, several of them go in one batch
+BatchKind = Literal[
+    LedgerKind.WRITE_OFF,
+    LedgerKind.STOCK_IN,
+    LedgerKind.CASH_IN,
+    LedgerKind.CASH_OUT,
+]
+
+
+class LedgerBatchCreate(FormModel):
+    kind: BatchKind
+    entries: Annotated[
+        list[OutflowCreate],
+        Field(
+            min_length=1,
+            max_length=50,
+        ),
+    ]
 
 
 class SaleCreate(FormModel):
@@ -139,5 +159,12 @@ class LedgerPosted(BaseModel):
     id: int
     amount: Decimal
     cash: Decimal
+    balance: Decimal
+    cash_balance: Decimal
+
+
+class LedgerBatchPosted(BaseModel):
+    # every line is its own entry, it is reversed on its own
+    ids: list[int]
     balance: Decimal
     cash_balance: Decimal

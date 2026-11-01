@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
@@ -18,6 +19,29 @@ class FakeLedger:
 
     async def commit(self) -> None:
         self.store.commits += 1
+
+    async def frequent_comments(
+        self,
+        kind: LedgerKind,
+        limit: int,
+    ) -> list[str]:
+        latest: dict[str, str] = {}
+        counts: Counter[str] = Counter()
+        for entry in self.store.entries:
+            if (
+                entry.kind != kind
+                or entry.reverses_id is not None
+                or entry.comment is None
+            ):
+                continue
+            key = entry.comment.strip().lower()
+            latest[key] = entry.comment.strip()
+            counts[key] += 1
+        repeated = sorted(
+            (key for key, count in counts.items() if count > 1),
+            key=lambda key: (-counts[key], key),
+        )
+        return [latest[key] for key in repeated[:limit]]
 
     async def lock(self) -> None:
         self.store.locks += 1

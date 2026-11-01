@@ -6,9 +6,12 @@ from core.http import PageLimit, PageOffset
 from core.schema_types import InvoiceDate
 from ledger.revaluation import RevaluationServiceDep
 from ledger.schemas import (
+    BatchKind,
     CashCountCreate,
     CashOutCreate,
     LedgerBalance,
+    LedgerBatchCreate,
+    LedgerBatchPosted,
     LedgerPage,
     LedgerPosted,
     OutflowCreate,
@@ -63,6 +66,32 @@ async def add_sale(
 ) -> LedgerPosted:
     return await service.add_sale(
         payload=payload,
+    )
+
+
+@router.post(
+    path="/ledger/batch",
+    response_model=LedgerBatchPosted,
+)
+async def add_batch(
+    payload: LedgerBatchCreate,
+    service: LedgerServiceDep,
+) -> LedgerBatchPosted:
+    return await service.add_batch(
+        payload=payload,
+    )
+
+
+@router.get(
+    path="/ledger/comments",
+    response_model=list[str],
+)
+async def frequent_comments(
+    kind: BatchKind,
+    service: LedgerServiceDep,
+) -> list[str]:
+    return await service.frequent_comments(
+        kind=kind,
     )
 
 

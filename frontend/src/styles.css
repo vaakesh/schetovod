@@ -111,6 +111,11 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* the page stays in place under an open window, the kept room saves it from a jump here too */
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -2434,6 +2439,92 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* several ledger entries of one kind in one window */
+
+.modal-batch {
+  width: min(520px, calc(100% - 32px));
+}
+
+/* the lines scroll, the total and the buttons stay in sight */
+.batch-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-height: min(56dvh, 560px);
+  margin: 20px -4px 0;
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.batch-row {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.batch-row + .batch-row {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.batch-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.comment-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.comment-hint {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--hover);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.comment-hint:hover {
+  color: var(--text);
+}
+
+.comment-hint.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.comment-hint:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .comment-hint {
+    min-height: 38px;
+  }
+}
+
+.batch-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin: 14px 0 12px;
 }
 
 .field-label {

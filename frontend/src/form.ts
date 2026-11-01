@@ -11,6 +11,9 @@ export function toDecimal(input: string): string | null {
 // pieces or kilograms with grams, the api rejects anything else
 export const QUANTITY = /^\d+(\.\d{1,3})?$/;
 
+// rubles with at most two decimals, the api rejects anything else
+export const AMOUNT = /^\d+(\.\d{1,2})?$/;
+
 // the database pads decimals, a form field reads better without the trailing zeros
 export function trimDecimal(value: string | null): string | null {
   if (value === null || !value.includes(".")) {

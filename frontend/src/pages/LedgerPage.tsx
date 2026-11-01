@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { getLedger, reverseEntry } from "../api";
 import type { Ask } from "../components/ConfirmDialog";
+import LedgerBatchDialog from "../components/LedgerBatchDialog";
 import LedgerEntryDialog from "../components/LedgerEntryDialog";
 import LedgerTable from "../components/LedgerTable";
 import PageHead from "../components/PageHead";
@@ -11,7 +12,7 @@ import { formatMoney } from "../format";
 import { KIND_LABELS } from "../ledger";
 import { message } from "../message";
 import type { Route } from "../router";
-import type { LedgerEntry, ManualKind } from "../types";
+import type { BatchKind, LedgerEntry, ManualKind } from "../types";
 
 interface Props {
   go: (route: Route) => void;
@@ -22,6 +23,11 @@ const PAGE = 50;
 
 const STOCK_ACTIONS: ManualKind[] = ["sale", "write_off", "stock_in", "stocktake"];
 const CASH_ACTIONS: ManualKind[] = ["cash_in", "cash_out", "cash_count"];
+const BATCH_KINDS: string[] = ["write_off", "stock_in", "cash_in", "cash_out"] satisfies BatchKind[];
+
+function isBatch(kind: string): kind is BatchKind {
+  return BATCH_KINDS.includes(kind);
+}
 
 export default function LedgerPage({ go, ask }: Props) {
   const [entries, setEntries] = useState<LedgerEntry[] | null>(null);
@@ -167,7 +173,17 @@ export default function LedgerPage({ go, ask }: Props) {
           }}
         />
       )}
-      {dialog && dialog !== "revaluation" && dialog !== "shifts" && (
+      {dialog && isBatch(dialog) && (
+        <LedgerBatchDialog
+          kind={dialog}
+          onClose={() => setDialog(null)}
+          onPosted={() => {
+            setDialog(null);
+            void load();
+          }}
+        />
+      )}
+      {dialog && dialog !== "revaluation" && dialog !== "shifts" && !isBatch(dialog) && (
         <LedgerEntryDialog
           kind={dialog}
           onClose={() => setDialog(null)}
