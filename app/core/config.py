@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     auth_access_ttl_minutes: int = 15
     # moves forward on every refresh, a week of absence does not sign the user out
     auth_refresh_ttl_days: int = 30
+    # the SDK reads the same variables, without an endpoint the process stays silent
+    otel_sdk_disabled: bool = False
+    otel_exporter_otlp_traces_endpoint: str = ""
 
     @property
     def database_url(self) -> URL:

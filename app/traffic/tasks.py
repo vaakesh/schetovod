@@ -5,8 +5,9 @@ from taskiq import TaskiqEvents, TaskiqState
 
 from aqsi.client import aqsi_client
 from core.broker import broker
-from core.config import settings
+from core.config import now, settings
 from core.db import get_engine
+from core.metrics import receipts_last_success, receipts_loaded
 from traffic.repository import ReceiptRepository
 from traffic.service import TrafficService
 
@@ -39,6 +40,12 @@ async def import_receipts() -> None:
             ),
         )
         result = await service.load_new()
+    receipts_loaded.add(
+        amount=result.loaded,
+    )
+    receipts_last_success.set(
+        amount=now().timestamp(),
+    )
     logger.info(
         "receipts of aQsi: %d received, %d new",
         result.received,

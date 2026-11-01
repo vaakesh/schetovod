@@ -6,6 +6,19 @@ services:
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-1}
     volumes:
       - ./app:/app
+    networks:
+      - default
+      - observability
+
+  worker:
+    networks:
+      - default
+      - observability
+
+  scheduler:
+    networks:
+      - default
+      - observability
 
   # the same nginx config as in production, only the site comes from Vite
   frontend:
@@ -34,3 +47,8 @@ services:
   postgres:
     ports:
       - "127.0.0.1:${POSTGRES_PORT}:5432"
+
+networks:
+  # make up creates it when the local server-observability is not running
+  observability:
+    external: true

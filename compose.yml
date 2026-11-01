@@ -10,6 +10,14 @@ x-environment: &environment
   # the key of the aQsi cash register, the shifts are loaded with it
   AQSI_API_INTEGRATION: ${AQSI_API_INTEGRATION:-}
 
+# the collector lives in the external network observability of server-observability,
+# metrics do not go through it, the host Prometheus scrapes them from the ports below
+x-telemetry: &telemetry
+  OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
+  OTEL_RESOURCE_ATTRIBUTES: service.namespace=schetovod,deployment.environment.name=${DEPLOYMENT_ENVIRONMENT:-production},service.version=${APP_VERSION:-unknown}
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
+
 x-backend: &backend
   image: schetovod-backend
   # the app service builds the image, it is in no registry
@@ -30,9 +38,13 @@ services:
     build:
       context: ./app
     environment:
-      <<: *environment
+      <<: [*environment, *telemetry]
+      OTEL_SERVICE_NAME: schetovod-api
       # without it the app works, only the recognition by photo is refused
       OPENAI_API_TOKEN: ${OPENAI_API_TOKEN:-}
+    # /metrics has its own port: nginx proxies only 8000, so it never reaches the internet
+    ports:
+      - "127.0.0.1:11301:9000"
     volumes:
       - ./invoices:/invoices
     depends_on:
@@ -49,6 +61,11 @@ services:
   worker:
     <<: *backend
     command: ["taskiq", "worker", "core.broker:broker", "traffic.tasks", "--workers", "1"]
+    environment:
+      <<: [*environment, *telemetry]
+      OTEL_SERVICE_NAME: schetovod-worker
+    ports:
+      - "127.0.0.1:11302:9000"
     stop_grace_period: 60s
     depends_on:
       app:
@@ -60,6 +77,9 @@ services:
   scheduler:
     <<: *backend
     command: ["taskiq", "scheduler", "core.broker:scheduler", "traffic.tasks"]
+    environment:
+      <<: [*environment, *telemetry]
+      OTEL_SERVICE_NAME: schetovod-scheduler
     depends_on:
       app:
         condition: service_healthy

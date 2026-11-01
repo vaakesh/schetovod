@@ -1,10 +1,13 @@
 import logging
 
-from taskiq import SmartRetryMiddleware, TaskiqScheduler
+from fastapi.concurrency import run_in_threadpool
+from taskiq import SmartRetryMiddleware, TaskiqEvents, TaskiqScheduler, TaskiqState
+from taskiq.middlewares.opentelemetry_middleware import OpenTelemetryMiddleware
 from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import ListRedisScheduleSource, RedisStreamBroker
 
 from core.config import settings
+from core.telemetry import setup_telemetry, shutdown_telemetry
 
 # taskiq sets up the logs only for spawned workers, forked ones would lose the failures
 logging.basicConfig(
@@ -33,6 +36,8 @@ broker = RedisStreamBroker(
         max_delay_exponent=MAX_RETRY_DELAY,
         schedule_source=delayed_tasks,
     ),
+    # carries the trace through the task labels from the sender to the worker
+    OpenTelemetryMiddleware(),
 )
 
 scheduler = TaskiqScheduler(
@@ -44,3 +49,40 @@ scheduler = TaskiqScheduler(
         delayed_tasks,
     ],
 )
+
+
+# this handler comes first: it is registered before the tasks are imported
+@broker.on_event(
+    TaskiqEvents.WORKER_STARTUP,
+)
+async def start_worker_telemetry(
+    state: TaskiqState,
+) -> None:
+    state.telemetry = setup_telemetry(
+        serve_metrics=True,
+    )
+
+
+# only the scheduler starts the broker as a client, the api never does
+@broker.on_event(
+    TaskiqEvents.CLIENT_STARTUP,
+)
+async def start_scheduler_telemetry(
+    state: TaskiqState,
+) -> None:
+    state.telemetry = setup_telemetry(
+        serve_metrics=False,
+    )
+
+
+@broker.on_event(
+    TaskiqEvents.WORKER_SHUTDOWN,
+    TaskiqEvents.CLIENT_SHUTDOWN,
+)
+async def stop_telemetry(
+    state: TaskiqState,
+) -> None:
+    await run_in_threadpool(
+        func=shutdown_telemetry,
+        telemetry=state.telemetry,
+    )

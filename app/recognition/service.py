@@ -2,6 +2,7 @@ import json
 import logging
 from asyncio import timeout
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -11,6 +12,7 @@ from openai.types.responses import Response, ResponseInputItemParam
 from pydantic import JsonValue, ValidationError
 
 from core.config import settings
+from core.metrics import recognition_duration, recognition_tokens
 from recognition.client import client, prompt, recognition_failed
 from recognition.images import (
     MAX_CROP_ROUNDS,
@@ -162,6 +164,14 @@ async def inspect_images(images: list[UploadedImage], directory: Path) -> Respon
                     usage,
                     key,
                 )
+            recognition_tokens.add(
+                amount=usage.input_tokens,
+                attributes={"type": "input"},
+            )
+            recognition_tokens.add(
+                amount=usage.output_tokens,
+                attributes={"type": "output"},
+            )
             logger.info(
                 msg=(
                     f"OpenAI token usage: input={usage.input_tokens}, "
@@ -289,6 +299,23 @@ async def inspect_images(images: list[UploadedImage], directory: Path) -> Respon
 
 
 async def extract_invoice(images: list[UploadedImage]) -> dict[str, JsonValue]:
+    """recognize one invoice and measure how long it took and how it ended"""
+    started_at = perf_counter()
+    outcome = "failed"
+    try:
+        extracted = await recognize_invoice(
+            images=images,
+        )
+        outcome = "completed"
+        return extracted
+    finally:
+        recognition_duration.record(
+            amount=perf_counter() - started_at,
+            attributes={"outcome": outcome},
+        )
+
+
+async def recognize_invoice(images: list[UploadedImage]) -> dict[str, JsonValue]:
     """inspect all pages with optional crop calls, then return one invoice"""
     directory = await run_in_threadpool(
         func=save_images,

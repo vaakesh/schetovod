@@ -18,12 +18,19 @@ services:
     networks:
       - default
       - xray-egress
+      - observability
 
   worker:
     <<: *service
+    networks:
+      - default
+      - observability
 
   scheduler:
     <<: *service
+    networks:
+      - default
+      - observability
 
   frontend:
     <<: *service
@@ -39,4 +46,6 @@ services:
 
 networks:
   xray-egress:
+    external: true
+  observability:
     external: true

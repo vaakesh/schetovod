@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Annotated
 
@@ -110,15 +109,11 @@ async def recognize_invoice(
     except ValidationError as error:
         # the raw model output is archived, the log shows the validation errors
         logger.warning(
-            "recognized invoice did not pass validation\nerrors: %s\nextracted: %s",
+            "recognized invoice did not pass validation\nerrors: %s",
             error.errors(
                 include_url=False,
+                include_input=False,
                 include_context=False,
-            ),
-            json.dumps(
-                obj=extracted,
-                ensure_ascii=False,
-                indent=2,
             ),
         )
         raise RequestValidationError(
