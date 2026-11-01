@@ -12,6 +12,7 @@
   --ink-hover: #2a2d36;
   --on-ink: #ffffff;
   --accent: #4355d6;
+  --chart-fact: #c63549;
   --accent-hover: #3647bd;
   --accent-soft: #eceefc;
   --accent-wash: #f8f9fe;
@@ -60,6 +61,7 @@
   --ink-hover: #ffffff;
   --on-ink: #14161c;
   --accent: #929ff8;
+  --chart-fact: #f4808f;
   --accent-hover: #a9b3fa;
   --accent-soft: #2b3056;
   --accent-wash: #1f2235;
@@ -2901,15 +2903,75 @@ a.button {
   font-weight: 600;
 }
 
+.traffic-week {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.traffic-week-turns {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.traffic-week-total {
+  display: grid;
+  gap: 2px;
+}
+
+.traffic-week-total.end {
+  text-align: right;
+}
+
+.traffic-week-total > span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.traffic-week-total strong {
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.traffic-week-turn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.traffic-week-name {
+  min-width: 112px;
+  font-size: 15px;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* a calendar week, monday always stands in the first column */
 .traffic-days {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
-  margin: 12px 0 16px;
+  margin: 8px 0 16px;
+}
+
+.traffic-day-gap {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
 }
 
 .traffic-day {
   display: grid;
+  align-content: start;
   gap: 2px;
   padding: 10px 12px;
   font: inherit;
@@ -2951,6 +3013,67 @@ a.button {
   color: var(--muted);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+.traffic-day-fact {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-strong);
+}
+
+.traffic-day-fact-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.traffic-deviation {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.traffic-deviation.up {
+  color: var(--good);
+}
+
+.traffic-deviation.down {
+  color: var(--bad);
+}
+
+.traffic-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.traffic-result {
+  padding: 12px 16px;
+  background: var(--accent-wash);
+  border-radius: var(--radius);
+}
+
+.traffic-result dt {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.traffic-result dd {
+  margin: 4px 0 0;
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.traffic-result .traffic-result-note {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
 }
 
 .chart {
@@ -3006,6 +3129,14 @@ a.button {
   stroke-linejoin: round;
 }
 
+.chart-line-fact {
+  fill: none;
+  stroke: var(--chart-fact);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .chart-band {
   fill: var(--accent);
   fill-opacity: 0.1;
@@ -3017,6 +3148,12 @@ a.button {
 
 .chart-dot {
   fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart-dot-fact {
+  fill: var(--chart-fact);
   stroke: var(--surface);
   stroke-width: 2;
 }
@@ -3070,6 +3207,11 @@ a.button {
 .chart-key-line {
   height: 2px;
   background: var(--accent);
+}
+
+.chart-key-fact {
+  height: 2px;
+  background: var(--chart-fact);
 }
 
 .chart-key-band {
@@ -3147,10 +3289,34 @@ a.button {
   cursor: pointer;
 }
 
-/* eight days with their sums do not fit a row on an upright tablet */
+/* seven days with their sums barely fit an upright tablet */
 @media (max-width: 1023px) {
   .traffic-days {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .traffic-day,
+  .traffic-day-gap {
+    padding: 10px 8px;
+  }
+}
+
+/* a phone can not hold a week, the days of the page scroll sideways */
+@media (max-width: 699px) {
+  .traffic-week {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .traffic-week-turns {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    justify-content: center;
+  }
+
+  .traffic-days {
+    grid-template-columns: repeat(7, 96px);
+    padding-bottom: 8px;
+    overflow-x: auto;
   }
 }
 

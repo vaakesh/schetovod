@@ -15,7 +15,7 @@ import {
 } from "./chart";
 
 interface Props {
-  hours: { hour: number; value: ForecastValue }[];
+  hours: { hour: number; value: ForecastValue; fact: number | null }[];
   label: string;
   legend: string;
   format: (value: number) => string;
@@ -29,7 +29,7 @@ export default function ForecastChart({ hours, label, legend, format, formatTick
   const plotWidth = width - MARGIN.left - MARGIN.right;
   const slot = plotWidth / Math.max(hours.length, 1);
   const baseline = CHART_HEIGHT - MARGIN.bottom;
-  const ticks = niceTicks(Math.max(...hours.map(({ value }) => value.high), 0));
+  const ticks = niceTicks(Math.max(...hours.map(({ value, fact }) => Math.max(value.high, fact ?? 0)), 0));
   const top = ticks[ticks.length - 1] ?? 1;
   // an hour of refunds goes below zero, the axis starts at zero
   const y = (value: number) =>
@@ -39,7 +39,10 @@ export default function ForecastChart({ hours, label, legend, format, formatTick
   const upper = hours.map(({ value }, index) => `${x(index)} ${y(value.high)}`);
   const lower = hours.map(({ value }, index) => `${x(index)} ${y(value.low)}`).reverse();
   const middle = hours.map(({ value }, index) => `${x(index)} ${y(value.expected)}`);
+  const facts = hours.flatMap(({ fact }, index) => (fact === null ? [] : [{ index, fact }]));
+  const actual = facts.map(({ index, fact }) => `${x(index)} ${y(fact)}`);
   const shown = active === null ? undefined : hours[active];
+  const shownFact = shown?.fact ?? null;
 
   function follow(event: PointerEvent<SVGSVGElement>) {
     const left = event.currentTarget.getBoundingClientRect().left;
@@ -81,21 +84,31 @@ export default function ForecastChart({ hours, label, legend, format, formatTick
             />
           )}
           <path className="chart-line" d={`M${middle.join("L")}`} />
+          {actual.length > 1 && <path className="chart-line-fact" d={`M${actual.join("L")}`} />}
+          {/* a line of one point draws nothing */}
+          {facts.length === 1 && facts[0] && (
+            <circle className="chart-dot-fact" cx={x(facts[0].index)} cy={y(facts[0].fact)} r={5} />
+          )}
           {shown && active !== null && (
             <circle className="chart-dot" cx={x(active)} cy={y(shown.value.expected)} r={5} />
+          )}
+          {active !== null && shownFact !== null && (
+            <circle className="chart-dot-fact" cx={x(active)} cy={y(shownFact)} r={5} />
           )}
         </svg>
       )}
       <ChartLegend
         items={[
           { key: "median", label: legend, mark: "line" },
+          ...(facts.length > 0 ? [{ key: "fact", label: "По факту", mark: "fact" as const }] : []),
           { key: "spread", label: "Обычный разброс", mark: "band" },
         ]}
       />
       {shown && active !== null && (
-        <ChartTooltip x={x(active)} y={y(shown.value.high)} width={width}>
+        <ChartTooltip x={x(active)} y={y(Math.max(shown.value.high, shownFact ?? 0))} width={width}>
           <strong>{format(shown.value.expected)}</strong>
           <span>{hourRange(shown.hour)}</span>
+          {shownFact !== null && <span>по факту {format(shownFact)}</span>}
           <span>
             обычно {format(shown.value.low)}–{format(shown.value.high)}
           </span>

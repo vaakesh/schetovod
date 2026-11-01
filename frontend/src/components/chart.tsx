@@ -135,7 +135,7 @@ export function ChartTooltip({ x, y, width, children }: TooltipProps) {
 }
 
 interface LegendProps {
-  items: { key: string; label: string; mark: "line" | "bar" | "band" }[];
+  items: { key: string; label: string; mark: "line" | "fact" | "bar" | "band" }[];
 }
 
 export function ChartLegend({ items }: LegendProps) {

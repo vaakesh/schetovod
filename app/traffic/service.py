@@ -7,7 +7,7 @@ from fastapi import Depends
 
 from aqsi.client import AqsiClientDep
 from aqsi.schemas import AqsiReceipt
-from core.config import settings, today
+from core.config import settings, shop_now, today
 from core.enums import ReceiptKind
 from core.http import invalid
 from traffic import analytics
@@ -208,19 +208,32 @@ class TrafficService:
             invalid(
                 detail="Начало периода позже конца",
             )
+        moment = shop_now()
         date_to = min(
             date_to,
-            yesterday(),
+            moment.date(),
+        )
+        if (date_to - date_from).days + 1 < analytics.MIN_PERIOD_DAYS:
+            invalid(
+                detail="Период прогноза не короче пяти недель",
+            )
+        days = analytics.forecast(
+            rows=await self.receipts.hourly(
+                date_from=date_from,
+                date_to=date_to,
+            ),
+            date_from=date_from,
+            date_to=date_to,
+            today=moment.date(),
+            hour=moment.hour,
         )
         return TrafficForecast(
             date_from=date_from,
             date_to=date_to,
-            days=analytics.forecast(
-                rows=await self.receipts.hourly(
-                    date_from=date_from,
-                    date_to=date_to,
-                ),
-                today=today(),
+            days=days,
+            accuracy=analytics.accuracy(
+                days=days,
+                today=moment.date(),
             ),
         )
 

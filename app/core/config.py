@@ -89,10 +89,15 @@ def now() -> datetime:
     )
 
 
-def today() -> date:
-    """the current date in the shop's time zone, not the server's"""
-    return datetime.now(
+def shop_now() -> datetime:
+    """the current moment on the clock of the shop, not of the server"""
+    return now().astimezone(
         tz=ZoneInfo(
             key=settings.timezone,
         ),
-    ).date()
+    )
+
+
+def today() -> date:
+    """the current date in the shop's time zone, not the server's"""
+    return shop_now().date()

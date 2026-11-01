@@ -42,8 +42,29 @@ export function formatThousands(value: number): string {
   return value < 1000 ? count.format(value) : `${count.format(value / 1000)}к`;
 }
 
+// percent of the plan, a plan of nothing has no share to count
+export function deviation(fact: number, plan: number): number | null {
+  return plan > 0 ? Math.round(((fact - plan) / plan) * 100) : null;
+}
+
+export function formatDeviation(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
+  if (value === 0) {
+    return "0%";
+  }
+  return `${value > 0 ? "+" : "−"}${Math.abs(value)}%`;
+}
+
 // the days of the epoch keep the gaps on a time axis, the api date is DD-MM-YYYY
 export function dayNumber(value: string): number {
   const [day, month, year] = value.split("-").map(Number);
   return Date.UTC(year!, month! - 1, day!) / 86_400_000;
+}
+
+// the day and the month of a day of the epoch, DD.MM
+export function formatDayNumber(value: number): string {
+  const [, month, day] = new Date(value * 86_400_000).toISOString().slice(0, 10).split("-");
+  return `${day}.${month}`;
 }

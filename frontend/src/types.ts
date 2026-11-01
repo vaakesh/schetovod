@@ -409,6 +409,16 @@ export interface HourForecast {
   hour: number;
   receipts: ForecastValue;
   revenue: ForecastValue;
+  fact_receipts: number | null;
+  fact_revenue: string | null;
+}
+
+export interface DayFact {
+  until_hour: number | null;
+  receipts: number;
+  revenue: string;
+  plan_receipts: ForecastValue;
+  plan_revenue: ForecastValue;
 }
 
 export interface DayForecast {
@@ -418,12 +428,25 @@ export interface DayForecast {
   receipts: ForecastValue | null;
   revenue: ForecastValue | null;
   hours: HourForecast[];
+  fact: DayFact | null;
+}
+
+export interface ForecastScore {
+  accuracy: number;
+  bias: number;
+}
+
+export interface ForecastAccuracy {
+  days: number;
+  receipts: ForecastScore | null;
+  revenue: ForecastScore | null;
 }
 
 export interface TrafficForecast {
   date_from: string;
   date_to: string;
   days: DayForecast[];
+  accuracy: ForecastAccuracy | null;
 }
 
 export interface TrafficReport {

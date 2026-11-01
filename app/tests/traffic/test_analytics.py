@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from traffic.analytics import (
     HourRow,
+    accuracy,
     by_hour,
     by_weekday,
     daily,
@@ -12,7 +13,7 @@ from traffic.analytics import (
     spread,
     summary,
 )
-from traffic.schemas import ForecastValue
+from traffic.schemas import DayForecast, ForecastScore, ForecastValue
 
 # a monday
 MONDAY = date(
@@ -489,16 +490,412 @@ class TestForecast:
         assert (day.receipts, day.revenue) == (None, None)
         assert day.hours == []
 
-    def test_today_and_a_week_after_it_are_forecast(self) -> None:
-        days = forecast(
+    def test_a_sale_at_an_unusual_hour_stays_on_the_chart(self) -> None:
+        day = forecast_day(
+            day=MONDAY,
+            rows=[
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                ),
+            ],
+            actual=[
+                row(
+                    hour=12,
+                    sales=3,
+                ),
+            ],
+        )
+
+        assert [
+            (hour.hour, hour.receipts.expected, hour.fact_receipts)
+            for hour in day.hours
+        ] == [
+            (10, 1.0, 0),
+            (11, 0.0, 0),
+            (12, 0.0, 3),
+        ]
+
+    def test_a_past_day_without_sales_has_no_fact(self) -> None:
+        day = forecast_day(
+            day=MONDAY,
+            rows=[
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                ),
+            ],
+            actual=[
+                row(
+                    sales=0,
+                    revenue="-100.00",
+                ),
+            ],
+        )
+
+        assert day.fact is None
+        assert day.hours[0].fact_receipts is None
+
+    def test_a_day_to_come_has_no_fact(self) -> None:
+        day = forecast_day(
+            day=MONDAY,
+            rows=[
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                ),
+            ],
+        )
+
+        assert day.fact is None
+
+    def test_today_counts_only_the_finished_hours(self) -> None:
+        day = forecast_day(
+            day=MONDAY,
+            rows=[
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                    hour=10,
+                ),
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                    hour=12,
+                ),
+            ],
+            actual=[
+                row(
+                    hour=10,
+                    sales=2,
+                ),
+                row(
+                    hour=11,
+                    sales=3,
+                ),
+            ],
+            until_hour=11,
+        )
+
+        assert day.fact is not None
+        assert day.fact.until_hour == 11
+        assert day.fact.receipts == 2
+        assert [(hour.hour, hour.fact_receipts) for hour in day.hours] == [
+            (10, 2),
+            (11, None),
+            (12, None),
+        ]
+
+    def test_the_plan_up_to_an_hour_is_the_median_of_the_running_totals(self) -> None:
+        day = forecast_day(
+            day=MONDAY,
+            rows=[
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                    hour=10,
+                    sales=10,
+                ),
+                row(
+                    day=weeks_ago(
+                        weeks=2,
+                    ),
+                    hour=11,
+                    sales=10,
+                ),
+                row(
+                    day=weeks_ago(
+                        weeks=3,
+                    ),
+                    hour=12,
+                    sales=10,
+                ),
+            ],
+            until_hour=12,
+        )
+
+        assert day.fact is not None
+        # the medians of the hours would add up to nothing here
+        assert day.fact.plan_receipts.expected == 10.0
+
+    def test_today_without_sales_is_still_measured(self) -> None:
+        day = forecast_day(
+            day=MONDAY,
+            rows=[
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                ),
+            ],
+            until_hour=12,
+        )
+
+        assert day.fact is not None
+        assert day.fact.receipts == 0
+        assert day.hours[0].fact_receipts == 0
+
+
+class TestForecastPeriod:
+    FROM = weeks_ago(
+        weeks=8,
+    )
+
+    def period(
+        self,
+        rows: list[HourRow],
+        date_to: date = MONDAY,
+        today: date = MONDAY,
+    ) -> list[DayForecast]:
+        return forecast(
+            rows=rows,
+            date_from=self.FROM,
+            date_to=date_to,
+            today=today,
+            hour=12,
+        )
+
+    def test_the_first_four_weeks_have_no_forecast(self) -> None:
+        days = self.period(
             rows=[],
+        )
+
+        assert days[0].day == weeks_ago(
+            weeks=4,
+        )
+
+    def test_a_period_up_to_today_goes_a_week_on(self) -> None:
+        days = self.period(
+            rows=[],
+        )
+
+        assert days[-1].day == MONDAY + timedelta(
+            days=7,
+        )
+
+    def test_a_period_in_the_past_ends_with_it(self) -> None:
+        last = weeks_ago(
+            weeks=2,
+        )
+
+        days = self.period(
+            rows=[],
+            date_to=last,
+        )
+
+        assert days[-1].day == last
+
+    def test_the_base_grows_week_by_week(self) -> None:
+        rows = [
+            row(
+                day=weeks_ago(
+                    weeks=weeks,
+                ),
+            )
+            for weeks in range(1, 9)
+        ]
+
+        days = self.period(
+            rows=rows,
+        )
+
+        assert [day.based_on for day in days if day.weekday == MONDAY.weekday()] == [
+            4,
+            5,
+            6,
+            7,
+            8,
+            8,
+        ]
+
+    def test_a_day_does_not_see_itself_or_what_came_later(self) -> None:
+        low = [
+            row(
+                day=weeks_ago(
+                    weeks=weeks,
+                ),
+                sales=2,
+            )
+            for weeks in range(5, 9)
+        ]
+        high = [
+            row(
+                day=weeks_ago(
+                    weeks=weeks,
+                ),
+                sales=100,
+            )
+            for weeks in range(1, 5)
+        ]
+
+        first = self.period(
+            rows=[*low, *high],
+        )[0]
+
+        assert first.receipts is not None
+        assert first.receipts.expected == 2.0
+        assert first.fact is not None
+        assert first.fact.receipts == 100
+
+    def test_the_receipts_of_today_do_not_move_its_forecast(self) -> None:
+        rows = [
+            row(
+                day=weeks_ago(
+                    weeks=1,
+                ),
+            ),
+        ]
+        today = [
+            row(
+                sales=50,
+                hour=10,
+            ),
+        ]
+
+        before = self.period(
+            rows=rows,
+        )
+        after = self.period(
+            rows=[*rows, *today],
+        )
+
+        assert before[28].day == MONDAY
+        assert before[28].receipts == after[28].receipts
+        assert after[28].fact is not None
+        assert after[28].fact.receipts == 50
+        assert after[28].fact.until_hour == 12
+
+
+class TestAccuracy:
+    def compared(
+        self,
+        fact: str,
+        plan: str,
+        day: date,
+    ) -> DayForecast:
+        return forecast_day(
+            day=day,
+            rows=[
+                row(
+                    day=day
+                    - timedelta(
+                        weeks=1,
+                    ),
+                    sales=int(
+                        plan,
+                    ),
+                    revenue=plan,
+                ),
+            ],
+            actual=[
+                row(
+                    day=day,
+                    sales=int(
+                        fact,
+                    ),
+                    revenue=fact,
+                ),
+            ],
+        )
+
+    def test_the_misses_are_weighed_against_the_total(self) -> None:
+        result = accuracy(
+            days=[
+                self.compared(
+                    fact="90",
+                    plan="100",
+                    day=weeks_ago(
+                        weeks=2,
+                    ),
+                ),
+                self.compared(
+                    fact="110",
+                    plan="100",
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                ),
+            ],
             today=MONDAY,
         )
 
-        assert [day.day for day in days] == [
-            MONDAY
-            + timedelta(
-                days=shift,
+        assert result is not None
+        assert result.days == 2
+        assert result.receipts == ForecastScore(
+            accuracy=90.0,
+            bias=0.0,
+        )
+
+    def test_the_bias_shows_a_forecast_that_was_too_low(self) -> None:
+        result = accuracy(
+            days=[
+                self.compared(
+                    fact="120",
+                    plan="100",
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                ),
+            ],
+            today=MONDAY,
+        )
+
+        assert result is not None
+        assert result.revenue == ForecastScore(
+            accuracy=83.3,
+            bias=20.0,
+        )
+
+    def test_a_huge_miss_stops_at_zero(self) -> None:
+        result = accuracy(
+            days=[
+                self.compared(
+                    fact="10",
+                    plan="100",
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                ),
+            ],
+            today=MONDAY,
+        )
+
+        assert result is not None
+        assert result.receipts is not None
+        assert result.receipts.accuracy == 0
+
+    def test_today_and_the_days_off_are_left_out(self) -> None:
+        today = self.compared(
+            fact="100",
+            plan="100",
+            day=MONDAY,
+        )
+        day_off = forecast_day(
+            day=weeks_ago(
+                weeks=1,
+            ),
+            rows=[
+                row(
+                    day=weeks_ago(
+                        weeks=2,
+                    ),
+                ),
+            ],
+        )
+
+        assert (
+            accuracy(
+                days=[
+                    today,
+                    day_off,
+                ],
+                today=MONDAY,
             )
-            for shift in range(8)
-        ]
+            is None
+        )

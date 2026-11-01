@@ -1,12 +1,16 @@
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 from statistics import quantiles
 
 from traffic.schemas import (
+    DayFact,
     DayForecast,
     DayLoad,
+    ForecastAccuracy,
+    ForecastScore,
     ForecastValue,
     HeatCell,
     HourForecast,
@@ -26,6 +30,9 @@ WEEK = 7
 HORIZON = 7
 # how far back the first import goes, a forecast period finds nothing older
 BASE_WEEKS = 12
+# the start of a period is only the base, the forecast begins after it
+BASE_DAYS = 28
+MIN_PERIOD_DAYS = BASE_DAYS + WEEK
 TREND_DAYS = 7
 TREND_MIN_DAYS = 3
 
@@ -389,11 +396,37 @@ def hour_value(
     )
 
 
+def before_hour(
+    days: dict[date, dict[int, float]],
+    until_hour: int | None,
+) -> dict[date, dict[int, float]]:
+    if until_hour is None:
+        return days
+    return {
+        day: {hour: value for hour, value in hours.items() if hour < until_hour}
+        for day, hours in days.items()
+    }
+
+
+def hour_is_over(
+    fact: DayFact | None,
+    hour: int,
+) -> bool:
+    if fact is None:
+        return False
+    return fact.until_hour is None or hour < fact.until_hour
+
+
 def forecast_day(
     day: date,
     rows: list[HourRow],
+    actual: Sequence[HourRow] = (),
+    until_hour: int | None = None,
 ) -> DayForecast:
-    """the median of the same weekdays, a one-off rush does not move it"""
+    """
+    the median of the same weekdays, a one-off rush does not move it,
+    the rows are the past of the day, the actual ones are the day itself
+    """
     weekday = [row for row in rows if row.day.weekday() == day.weekday()]
     base = working_days(
         rows=weekday,
@@ -406,6 +439,7 @@ def forecast_day(
             receipts=None,
             revenue=None,
             hours=[],
+            fact=None,
         )
     sales: dict[date, dict[int, float]] = defaultdict(dict)
     revenue: dict[date, dict[int, float]] = defaultdict(dict)
@@ -416,6 +450,34 @@ def forecast_day(
             revenue[row.day][row.hour] = float(
                 row.revenue,
             )
+    done = [row for row in actual if until_hour is None or row.hour < until_hour]
+    fact = None
+    # today is measured from its first hour, a past day without sales was a day off
+    if until_hour is not None or working_days(
+        rows=done,
+    ):
+        fact = DayFact(
+            until_hour=until_hour,
+            receipts=sum(row.sales for row in done),
+            revenue=sum(
+                (row.revenue for row in done),
+                start=ZERO,
+            ),
+            plan_receipts=day_value(
+                days=before_hour(
+                    days=sales,
+                    until_hour=until_hour,
+                ),
+            ),
+            plan_revenue=day_value(
+                days=before_hour(
+                    days=revenue,
+                    until_hour=until_hour,
+                ),
+            ),
+        )
+    fact_sales = {row.hour: row.sales for row in done}
+    fact_revenue = {row.hour: row.revenue for row in done}
     return DayForecast(
         day=day,
         weekday=day.weekday(),
@@ -439,27 +501,137 @@ def forecast_day(
                     days=revenue,
                     hour=hour,
                 ),
+                fact_receipts=(
+                    fact_sales.get(
+                        hour,
+                        0,
+                    )
+                    if hour_is_over(
+                        fact=fact,
+                        hour=hour,
+                    )
+                    else None
+                ),
+                fact_revenue=(
+                    fact_revenue.get(
+                        hour,
+                        ZERO,
+                    )
+                    if hour_is_over(
+                        fact=fact,
+                        hour=hour,
+                    )
+                    else None
+                ),
             )
+            # a sale at an unusual hour must not fall off the chart
             for hour in sale_hours(
-                rows=weekday,
+                rows=[*weekday, *done],
             )
         ],
+        fact=fact,
     )
 
 
 def forecast(
     rows: list[HourRow],
+    date_from: date,
+    date_to: date,
     today: date,
+    hour: int,
 ) -> list[DayForecast]:
-    return [
-        forecast_day(
-            day=today
-            + timedelta(
-                days=ahead,
-            ),
-            rows=rows,
+    """every day stands on the days before it, it never sees itself or what came later"""
+    first = date_from + timedelta(
+        days=BASE_DAYS,
+    )
+    last = date_to
+    if date_to == today:
+        last += timedelta(
+            days=HORIZON,
         )
-        for ahead in range(
-            HORIZON + 1,
+    days = [
+        first
+        + timedelta(
+            days=shift,
+        )
+        for shift in range(
+            (last - first).days + 1,
         )
     ]
+    return [
+        forecast_day(
+            day=day,
+            rows=[
+                row
+                for row in rows
+                if row.day
+                < min(
+                    day,
+                    today,
+                )
+            ],
+            actual=[row for row in rows if row.day == day],
+            until_hour=hour if day == today else None,
+        )
+        for day in days
+    ]
+
+
+def score(
+    facts: list[float],
+    plans: list[float],
+) -> ForecastScore | None:
+    """the misses against the total, a quiet day does not weigh as much as a busy one"""
+    total_fact = sum(
+        facts,
+    )
+    total_plan = sum(
+        plans,
+    )
+    if total_fact <= 0 or total_plan <= 0:
+        return None
+    misses = sum(
+        abs(
+            fact - plan,
+        )
+        for fact, plan in zip(
+            facts,
+            plans,
+            strict=True,
+        )
+    )
+    return ForecastScore(
+        accuracy=round(
+            number=max(
+                100 - misses / total_fact * 100,
+                0,
+            ),
+            ndigits=1,
+        ),
+        bias=round(
+            number=(total_fact - total_plan) / total_plan * 100,
+            ndigits=1,
+        ),
+    )
+
+
+def accuracy(
+    days: list[DayForecast],
+    today: date,
+) -> ForecastAccuracy | None:
+    facts = [day.fact for day in days if day.fact is not None and day.day < today]
+    if not facts:
+        return None
+    return ForecastAccuracy(
+        days=len(
+            facts,
+        ),
+        receipts=score(
+            facts=[float(fact.receipts) for fact in facts],
+            plans=[fact.plan_receipts.expected for fact in facts],
+        ),
+        revenue=score(
+            facts=[float(fact.revenue) for fact in facts],
+            plans=[fact.plan_revenue.expected for fact in facts],
+        ),
+    )

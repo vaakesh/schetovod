@@ -62,6 +62,19 @@ class HourForecast(BaseModel):
     hour: int
     receipts: ForecastValue
     revenue: ForecastValue
+    # null while the hour is not over, a part of an hour looks like a fall
+    fact_receipts: int | None
+    fact_revenue: Decimal | None
+
+
+class DayFact(BaseModel):
+    # the hours before it are over, null when the whole day is
+    until_hour: int | None
+    receipts: int
+    revenue: Decimal
+    # the same hours of the past days, a plan for the whole day would be out of reach
+    plan_receipts: ForecastValue
+    plan_revenue: ForecastValue
 
 
 class DayForecast(BaseModel):
@@ -72,14 +85,31 @@ class DayForecast(BaseModel):
     receipts: ForecastValue | None
     revenue: ForecastValue | None
     hours: list[HourForecast]
+    # null for a day to come and for a past day without sales
+    fact: DayFact | None
+
+
+class ForecastScore(BaseModel):
+    # percent, 100 is a forecast without a single miss
+    accuracy: float
+    # percent, above zero means the forecast was too low
+    bias: float
+
+
+class ForecastAccuracy(BaseModel):
+    # the finished days with sales, today and the days off are left out
+    days: int
+    receipts: ForecastScore | None
+    revenue: ForecastScore | None
 
 
 class TrafficForecast(BaseModel):
     date_from: OutputDate
-    # today is cut off, its receipts must not move its own forecast
+    # today at most, it is forecast by the days before it alone
     date_to: OutputDate
-    # today comes first
+    # by date, from the fifth week of the period, a period up to today goes a week on
     days: list[DayForecast]
+    accuracy: ForecastAccuracy | None
 
 
 class TrafficReport(BaseModel):

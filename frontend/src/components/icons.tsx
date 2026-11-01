@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 
 const PATHS = {
   brand: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />,
+  chevronLeft: <path d="m15 5-7 7 7 7" />,
+  chevronRight: <path d="m9 5 7 7-7 7" />,
   invoices: (
     <>
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
