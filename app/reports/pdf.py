@@ -15,6 +15,7 @@ from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     Flowable,
     KeepTogether,
+    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -588,14 +589,21 @@ def invoices_pdf_filename(invoices: list[PrintedInvoice]) -> str:
 
 
 def invoices_pdf(invoices: list[PrintedInvoice]) -> bytes:
-    """the invoices one after another on portrait pages, at the retail prices"""
+    """
+    the invoices one after another on portrait pages, at the retail prices,
+    every date starts on a page of its own, the invoices come sorted by date
+    """
     _register_fonts()
     styles = _Styles()
     story: list[Flowable] = []
     for index, invoice in enumerate(
         invoices,
     ):
-        if index:
+        if index and invoice.invoice_date != invoices[index - 1].invoice_date:
+            story.append(
+                PageBreak(),
+            )
+        elif index:
             story.append(
                 Spacer(
                     width=0,
