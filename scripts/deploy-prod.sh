@@ -69,6 +69,8 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
     printf '%s\n' 'На сервере есть изменения отслеживаемых файлов; деплой остановлен' >&2
     exit 1
 fi
+# git writes them under the umask of the deploy, Grafana reads them as another user
+chmod -R a+rX grafana
 
 # build before stopping the current application
 compose build app frontend
