@@ -1,7 +1,14 @@
 import logging
 
 from fastapi.concurrency import run_in_threadpool
-from taskiq import SmartRetryMiddleware, TaskiqEvents, TaskiqScheduler, TaskiqState
+from taskiq import (
+    SmartRetryMiddleware,
+    TaskiqEvents,
+    TaskiqMessage,
+    TaskiqResult,
+    TaskiqScheduler,
+    TaskiqState,
+)
 from taskiq.middlewares.opentelemetry_middleware import OpenTelemetryMiddleware
 from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import ListRedisScheduleSource, RedisStreamBroker
@@ -19,6 +26,28 @@ RETRY_STEP = 15 * 60
 MAX_RETRY_DELAY = 2 * 60 * 60
 # about 7 hours of waiting in all, the next run goes on from where this one stopped
 ATTEMPTS = 8
+QUEUE_TIME_LABEL = "_taskiq_queue_time"
+
+
+class TaskTelemetryMiddleware(OpenTelemetryMiddleware):
+    """a delayed attempt brings the queue time back as a string, the parent subtracts it
+    from a float and fails before the ack, so the stream would repeat the task forever"""
+
+    def post_execute(
+        self,
+        message: TaskiqMessage,
+        result: TaskiqResult,
+    ) -> None:
+        queue_time = message.labels.get(QUEUE_TIME_LABEL)
+        if queue_time is not None:
+            message.labels[QUEUE_TIME_LABEL] = float(
+                queue_time,
+            )
+        super().post_execute(
+            message=message,
+            result=result,
+        )
+
 
 # holds the delayed attempts, without it a Redis broker repeats a task at once
 delayed_tasks = ListRedisScheduleSource(
@@ -37,7 +66,7 @@ broker = RedisStreamBroker(
         schedule_source=delayed_tasks,
     ),
     # carries the trace through the task labels from the sender to the worker
-    OpenTelemetryMiddleware(),
+    TaskTelemetryMiddleware(),
 )
 
 scheduler = TaskiqScheduler(
