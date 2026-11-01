@@ -2355,6 +2355,27 @@ button {
   color: var(--muted);
 }
 
+/* a band over the entries of a day, the day under it starts with no line of its own */
+.ledger-day td,
+.ledger-day td:first-child,
+.ledger-day td:last-child {
+  padding-top: 9px;
+  padding-bottom: 9px;
+  font-size: 13px;
+  background: var(--bg);
+}
+
+.ledger-day-date {
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-day-weekday {
+  margin-left: 8px;
+  color: var(--muted);
+}
+
 /* shown instead of the comment and the balance columns on a narrow screen */
 .op-comment,
 .op-after {

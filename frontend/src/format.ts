@@ -58,3 +58,16 @@ export function plural(count: number, one: string, few: string, many: string): s
 export function formatDate(value: string | null): string {
   return value === null ? EMPTY : value.replaceAll("-", ".");
 }
+
+const WEEKDAY = new Intl.DateTimeFormat("ru-RU", { weekday: "long" });
+
+// the heading of a day, a date of the current year goes without the year
+export function formatDay(value: string): { date: string; weekday: string } {
+  const [day = 0, month = 0, year = 0] = value.split("-").map(Number);
+  const date = year === new Date().getFullYear() ? value.slice(0, 5) : value;
+  return {
+    date: date.replaceAll("-", "."),
+    // the local midnight of that day, the time zone can not move it to the next one
+    weekday: WEEKDAY.format(new Date(year, month - 1, day)),
+  };
+}
