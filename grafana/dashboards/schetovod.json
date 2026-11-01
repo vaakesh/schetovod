@@ -1,15 +1,28 @@
 {
   "uid": "schetovod-overview",
   "title": "Schetovod",
-  "description": "API, воркер, контейнеры и логи Счетовода. Метрики Prometheus раз в 15 секунд.",
+  "description": "Магазин: состояние, запросы, распознавание, фоновые задачи, контейнеры и логи. Трафик маленький, поэтому панели показывают штуки за период, а не скорость.",
   "tags": ["schetovod"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "graphTooltip": 1,
-  "refresh": "30s",
-  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "enable": true,
+        "iconColor": "blue",
+        "expr": "changes(process_start_time_seconds{job=\"schetovod-api\"}[2m]) > 0",
+        "step": "60s",
+        "titleFormat": "Deploy"
+      }
+    ]
+  },
   "templating": {
     "list": [
       {
@@ -27,11 +40,12 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "API up",
+      "title": "API",
       "description": "Prometheus достаёт до /metrics приложения.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
-      "targets": [{ "refId": "A", "expr": "up{job=\"schetovod-api\"}" }],
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [{ "refId": "A", "expr": "up{job=\"schetovod-api\"}", "instant": true }],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -43,11 +57,12 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Worker up",
+      "title": "Worker",
       "description": "Prometheus достаёт до /metrics воркера.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
-      "targets": [{ "refId": "A", "expr": "up{job=\"schetovod-worker\"}" }],
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [{ "refId": "A", "expr": "up{job=\"schetovod-worker\"}", "instant": true }],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -59,205 +74,435 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Requests per second",
-      "description": "Без /health.",
+      "title": "5xx errors",
+      "description": "Ответы 5xx за выбранный период.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(schetovod_http_server_request_duration_seconds_count[$__rate_interval]))" }
+        {
+          "refId": "A",
+          "instant": true,
+          "expr": "round(sum((max_over_time(schetovod_http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[$__range]) unless schetovod_http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"} offset $__range) or increase(schetovod_http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[$__range]))) or vector(0)"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "reqps" } }
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
     },
     {
       "id": 4,
       "type": "stat",
-      "title": "5xx in range",
-      "description": "Ответы 5xx за выбранный период.",
+      "title": "Failed recognitions",
+      "description": "Неудачные распознавания за выбранный период. Накладная, не прошедшая проверку после ответа модели, сюда не входит.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
       "targets": [
-        { "refId": "A", "expr": "sum(increase(schetovod_http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[$__range])) or vector(0)" }
+        {
+          "refId": "A",
+          "instant": true,
+          "expr": "round(sum((max_over_time(schetovod_recognition_duration_seconds_count{outcome=\"failed\"}[$__range]) unless schetovod_recognition_duration_seconds_count{outcome=\"failed\"} offset $__range) or increase(schetovod_recognition_duration_seconds_count{outcome=\"failed\"}[$__range]))) or vector(0)"
+        }
       ],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
-            ]
-          }
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
         }
       }
     },
     {
       "id": 5,
-      "type": "timeseries",
-      "title": "Requests by status",
+      "type": "stat",
+      "title": "Task errors",
+      "description": "Упавшие запуски задач taskiq за выбранный период, повторы считаются отдельно.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (http_response_status_code) (rate(schetovod_http_server_request_duration_seconds_count[$__rate_interval]))",
-          "legendFormat": "{{http_response_status_code}}"
+          "instant": true,
+          "expr": "round(sum((max_over_time(schetovod_task_errors_total[$__range]) unless schetovod_task_errors_total offset $__range) or increase(schetovod_task_errors_total[$__range]))) or vector(0)"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "reqps" } }
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
     },
     {
       "id": 6,
-      "type": "timeseries",
-      "title": "Response time p95 by route",
-      "description": "Самый долгий маршрут — распознавание накладной, оно идёт минутами.",
+      "type": "stat",
+      "title": "Since last import",
+      "description": "Сколько прошло с последней удачной загрузки чеков aQsi. Загрузка идёт по понедельникам и при старте воркера, красный цвет — больше 8 дней.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(schetovod_http_server_request_duration_seconds_bucket[$__rate_interval])))",
-          "legendFormat": "{{http_route}}"
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "targets": [{ "refId": "A", "expr": "time() - max(schetovod_receipts_last_success_seconds)", "instant": true }],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 691200 }] }
         }
-      ],
-      "fieldConfig": { "defaults": { "unit": "s" } }
+      }
     },
+    { "id": 100, "type": "row", "title": "Requests", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 }, "collapsed": false, "panels": [] },
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Container CPU",
-      "description": "Данные cAdvisor, обновляются раз в 30 секунд.",
+      "title": "Requests over time",
+      "description": "Штук запросов за столбик, без /health. Цвет — класс ответа, синие метки — деплои.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
-      "interval": "30s",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 5 },
+      "interval": "15m",
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{job=\"cadvisor\",name=~\"schetovod-.*\"}[$__rate_interval])) * 100",
-          "legendFormat": "{{name}}"
+          "expr": "round(sum by (class) (label_replace((max_over_time(schetovod_http_server_request_duration_seconds_count[$__interval]) unless schetovod_http_server_request_duration_seconds_count offset $__interval) or increase(schetovod_http_server_request_duration_seconds_count[$__interval]), \"class\", \"${1}xx\", \"http_response_status_code\", \"(.).*\")))",
+          "legendFormat": "{{class}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent" } }
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "min": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 0,
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "showPoints": "never",
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "2xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "3xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "4xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "5xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      }
     },
     {
       "id": 8,
-      "type": "timeseries",
-      "title": "Container memory",
+      "type": "stat",
+      "title": "Requests",
+      "description": "Всего запросов за выбранный период, без /health.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
-      "interval": "30s",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 5 },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (name) (container_memory_working_set_bytes{job=\"cadvisor\",name=~\"schetovod-.*\"})",
-          "legendFormat": "{{name}}"
+          "instant": true,
+          "expr": "round(sum((max_over_time(schetovod_http_server_request_duration_seconds_count[$__range]) unless schetovod_http_server_request_duration_seconds_count offset $__range) or increase(schetovod_http_server_request_duration_seconds_count[$__range]))) or vector(0)"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "bytes" } }
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } } }
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Response time p95",
+      "description": "95% запросов за период уложились в это время. Распознавание идёт отдельной панелью, здесь оно тоже учтено.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 5 },
+      "targets": [
+        {
+          "refId": "A",
+          "instant": true,
+          "expr": "histogram_quantile(0.95, sum by (le) ((max_over_time(schetovod_http_server_request_duration_seconds_bucket[$__range]) unless schetovod_http_server_request_duration_seconds_bucket offset $__range) or increase(schetovod_http_server_request_duration_seconds_bucket[$__range])))"
+        }
+      ],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "text" } } }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "4xx responses",
+      "description": "Ответы 4xx за период. Часть из них нормальна: истёкшая сессия даёт 401.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 9 },
+      "targets": [
+        {
+          "refId": "A",
+          "instant": true,
+          "expr": "round(sum((max_over_time(schetovod_http_server_request_duration_seconds_count{http_response_status_code=~\"4..\"}[$__range]) unless schetovod_http_server_request_duration_seconds_count{http_response_status_code=~\"4..\"} offset $__range) or increase(schetovod_http_server_request_duration_seconds_count{http_response_status_code=~\"4..\"}[$__range]))) or vector(0)"
+        }
+      ],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } } }
     },
     {
       "id": 11,
       "type": "stat",
-      "title": "Since last receipts import",
-      "description": "Сколько прошло с последней удачной загрузки чеков aQsi. Значение появляется после первой удачной загрузки с момента старта воркера.",
+      "title": "In progress",
+      "description": "Запросы, которые обрабатываются прямо сейчас.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 20 },
-      "targets": [{ "refId": "A", "expr": "time() - schetovod_receipts_last_success_seconds" }],
-      "fieldConfig": { "defaults": { "unit": "dtdurations" } }
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 9 },
+      "targets": [{ "refId": "A", "instant": true, "expr": "sum(schetovod_http_server_active_requests) or vector(0)" }],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } } }
     },
     {
       "id": 12,
-      "type": "stat",
-      "title": "Task errors in range",
-      "description": "Упавшие запуски задач taskiq за выбранный период, повторы тоже считаются.",
+      "type": "table",
+      "title": "Routes",
+      "description": "Запросы, время p95 и ошибки по маршрутам за выбранный период, самые частые сверху. Время считается по корзинам, поэтому оно приблизительное.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 20 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 13 },
       "targets": [
-        { "refId": "A", "expr": "sum(increase(schetovod_task_errors_total[$__range])) or vector(0)" }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
-            ]
-          }
+        {
+          "refId": "A",
+          "instant": true,
+          "format": "table",
+          "expr": "round(sum by (http_route) ((max_over_time(schetovod_http_server_request_duration_seconds_count{http_route!=\"\"}[$__range]) unless schetovod_http_server_request_duration_seconds_count{http_route!=\"\"} offset $__range) or increase(schetovod_http_server_request_duration_seconds_count{http_route!=\"\"}[$__range])))"
+        },
+        {
+          "refId": "B",
+          "instant": true,
+          "format": "table",
+          "expr": "histogram_quantile(0.95, sum by (http_route, le) ((max_over_time(schetovod_http_server_request_duration_seconds_bucket{http_route!=\"\"}[$__range]) unless schetovod_http_server_request_duration_seconds_bucket{http_route!=\"\"} offset $__range) or increase(schetovod_http_server_request_duration_seconds_bucket{http_route!=\"\"}[$__range])))"
+        },
+        {
+          "refId": "C",
+          "instant": true,
+          "format": "table",
+          "expr": "round(sum by (http_route) ((max_over_time(schetovod_http_server_request_duration_seconds_count{http_route!=\"\",http_response_status_code=~\"4..\"}[$__range]) unless schetovod_http_server_request_duration_seconds_count{http_route!=\"\",http_response_status_code=~\"4..\"} offset $__range) or increase(schetovod_http_server_request_duration_seconds_count{http_route!=\"\",http_response_status_code=~\"4..\"}[$__range]))) or 0 * sum by (http_route) (max_over_time(schetovod_http_server_request_duration_seconds_count{http_route!=\"\"}[$__range]))"
+        },
+        {
+          "refId": "D",
+          "instant": true,
+          "format": "table",
+          "expr": "round(sum by (http_route) ((max_over_time(schetovod_http_server_request_duration_seconds_count{http_route!=\"\",http_response_status_code=~\"5..\"}[$__range]) unless schetovod_http_server_request_duration_seconds_count{http_route!=\"\",http_response_status_code=~\"5..\"} offset $__range) or increase(schetovod_http_server_request_duration_seconds_count{http_route!=\"\",http_response_status_code=~\"5..\"}[$__range]))) or 0 * sum by (http_route) (max_over_time(schetovod_http_server_request_duration_seconds_count{http_route!=\"\"}[$__range]))"
         }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "http_route", "mode": "outer" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "Time 1": true, "Time 2": true, "Time 3": true, "Time 4": true },
+            "renameByName": {
+              "http_route": "Route",
+              "Value #A": "Requests",
+              "Value #B": "p95",
+              "Value #C": "4xx",
+              "Value #D": "5xx"
+            },
+            "indexByName": { "http_route": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #D": 4 }
+          }
+        },
+        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "field": "Requests", "desc": true }] } }
+      ],
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "fieldConfig": {
+        "defaults": { "noValue": "0", "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p95" }, "properties": [{ "id": "unit", "value": "s" }, { "id": "noValue", "value": "—" }, { "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "Requests" }, "properties": [{ "id": "decimals", "value": 0 }, { "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "4xx" }, "properties": [{ "id": "decimals", "value": 0 }, { "id": "custom.width", "value": 90 }] },
+          { "matcher": { "id": "byName", "options": "5xx" }, "properties": [{ "id": "decimals", "value": 0 }, { "id": "custom.width", "value": 90 }] }
+        ]
       }
     },
+    { "id": 101, "type": "row", "title": "Recognition", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }, "collapsed": false, "panels": [] },
     {
       "id": 13,
       "type": "stat",
-      "title": "Failed recognitions in range",
+      "title": "Recognitions",
+      "description": "Распознаваний накладных за выбранный период.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 20 },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 23 },
       "targets": [
-        { "refId": "A", "expr": "sum(increase(schetovod_recognition_duration_seconds_count{outcome=\"failed\"}[$__range])) or vector(0)" }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
-            ]
-          }
+        {
+          "refId": "A",
+          "instant": true,
+          "expr": "round(sum((max_over_time(schetovod_recognition_duration_seconds_count[$__range]) unless schetovod_recognition_duration_seconds_count offset $__range) or increase(schetovod_recognition_duration_seconds_count[$__range]))) or vector(0)"
         }
-      }
+      ],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } } }
     },
     {
       "id": 14,
       "type": "stat",
-      "title": "OpenAI tokens in range",
-      "description": "Входные и выходные токены распознавания за выбранный период.",
+      "title": "Recognition time p95",
+      "description": "95% распознаваний за период уложились в это время. При малом числе накладных это почти максимум, значение приблизительное.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 20 },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 23 },
       "targets": [
-        { "refId": "A", "expr": "sum(increase(schetovod_recognition_tokens_total[$__range])) or vector(0)" }
+        {
+          "refId": "A",
+          "instant": true,
+          "expr": "histogram_quantile(0.95, sum by (le) ((max_over_time(schetovod_recognition_duration_seconds_bucket[$__range]) unless schetovod_recognition_duration_seconds_bucket offset $__range) or increase(schetovod_recognition_duration_seconds_bucket[$__range])))"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short" } }
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 0, "noValue": "—", "color": { "mode": "fixed", "fixedColor": "text" } } }
     },
     {
       "id": 15,
-      "type": "timeseries",
-      "title": "Recognition time p95",
+      "type": "stat",
+      "title": "Input tokens",
+      "description": "Входные токены OpenAI за выбранный период.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 23 },
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le, outcome) (rate(schetovod_recognition_duration_seconds_bucket[$__rate_interval])))",
-          "legendFormat": "{{outcome}}"
+          "instant": true,
+          "expr": "round(sum((max_over_time(schetovod_recognition_tokens_total{type=\"input\"}[$__range]) unless schetovod_recognition_tokens_total{type=\"input\"} offset $__range) or increase(schetovod_recognition_tokens_total{type=\"input\"}[$__range]))) or vector(0)"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "s" } }
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } } }
     },
     {
       "id": 16,
-      "type": "timeseries",
-      "title": "Receipts loaded from aQsi",
+      "type": "stat",
+      "title": "Output tokens",
+      "description": "Выходные токены OpenAI за выбранный период, рассуждения модели входят сюда.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 23 },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(increase(schetovod_receipts_loaded_total[$__rate_interval]))",
-          "legendFormat": "new receipts"
+          "instant": true,
+          "expr": "round(sum((max_over_time(schetovod_recognition_tokens_total{type=\"output\"}[$__range]) unless schetovod_recognition_tokens_total{type=\"output\"} offset $__range) or increase(schetovod_recognition_tokens_total{type=\"output\"}[$__range]))) or vector(0)"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "short" } }
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } } }
+    },
+    { "id": 102, "type": "row", "title": "Background tasks", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 }, "collapsed": false, "panels": [] },
+    {
+      "id": 17,
+      "type": "stat",
+      "title": "Successful tasks",
+      "description": "Удачные запуски задач taskiq за выбранный период.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 28 },
+      "targets": [
+        {
+          "refId": "A",
+          "instant": true,
+          "expr": "round(sum((max_over_time(schetovod_task_success_total[$__range]) unless schetovod_task_success_total offset $__range) or increase(schetovod_task_success_total[$__range]))) or vector(0)"
+        }
+      ],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } } }
     },
     {
-      "id": 9,
+      "id": 18,
+      "type": "stat",
+      "title": "New receipts",
+      "description": "Новые чеки aQsi, сохранённые за выбранный период.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 28 },
+      "targets": [
+        {
+          "refId": "A",
+          "instant": true,
+          "expr": "round(sum((max_over_time(schetovod_receipts_loaded_total[$__range]) unless schetovod_receipts_loaded_total offset $__range) or increase(schetovod_receipts_loaded_total[$__range]))) or vector(0)"
+        }
+      ],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } } }
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "Average queue wait",
+      "description": "Сколько задача в среднем ждала воркера с момента его запуска.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 28 },
+      "targets": [
+        {
+          "refId": "A",
+          "instant": true,
+          "expr": "sum(schetovod_task_wait_time_seconds_sum) / sum(schetovod_task_wait_time_seconds_count)"
+        }
+      ],
+      "options": { "graphMode": "none", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "s", "noValue": "—", "color": { "mode": "fixed", "fixedColor": "text" } } }
+    },
+    { "id": 103, "type": "row", "title": "Containers", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 }, "collapsed": false, "panels": [] },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "CPU",
+      "description": "Процент одного ядра, сглажено за 5 минут. Данные cAdvisor.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "interval": "1m",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum by (service) (label_replace(rate(container_cpu_usage_seconds_total{job=\"cadvisor\",name=~\"schetovod(-prod)?-(app|worker|scheduler|frontend|postgres|redis)-1\"}[5m]), \"service\", \"$2\", \"name\", \"schetovod(-prod)?-(.+)-1\"))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["lastNotNull", "max"], "sortBy": "Last *", "sortDesc": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never", "spanNulls": 300000 }
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Memory",
+      "description": "Рабочая память контейнеров. Во время деплоя старый и новый контейнер не складываются.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+      "interval": "1m",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (service) (label_replace(container_memory_working_set_bytes{job=\"cadvisor\",name=~\"schetovod(-prod)?-(app|worker|scheduler|frontend|postgres|redis)-1\"}, \"service\", \"$2\", \"name\", \"schetovod(-prod)?-(.+)-1\"))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["lastNotNull", "max"], "sortBy": "Last *", "sortDesc": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never", "spanNulls": 300000 }
+        }
+      }
+    },
+    { "id": 104, "type": "row", "title": "Logs", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 }, "collapsed": false, "panels": [] },
+    {
+      "id": 22,
       "type": "logs",
       "title": "Warnings and errors",
+      "description": "Логи хранятся 72 часа. Строку можно раскрыть и перейти к её трейсу.",
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 32 },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 42 },
       "targets": [
         {
           "refId": "A",
@@ -276,12 +521,12 @@
       }
     },
     {
-      "id": 10,
+      "id": 23,
       "type": "logs",
       "title": "Logs: $service",
       "description": "Сервис выбирается в списке вверху.",
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 42 },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 49 },
       "targets": [
         {
           "refId": "A",
