@@ -33,6 +33,16 @@ BASE_WEEKS = 12
 # the start of a period is only the base, the forecast begins after it
 BASE_DAYS = 28
 MIN_PERIOD_DAYS = BASE_DAYS + WEEK
+
+
+@dataclass
+class DayTakings:
+    day: date
+    # the refunds are already taken away
+    revenue: Decimal
+    card: Decimal
+
+
 TREND_DAYS = 7
 TREND_MIN_DAYS = 3
 

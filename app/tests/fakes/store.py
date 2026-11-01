@@ -7,6 +7,7 @@ from ledger.models import LedgerEntry, RevaluationItem
 from orders.models import Order
 from products.models import Product, ProductAlias
 from products.pricing import normalize_name
+from profit.models import OperatingExpense
 from suppliers.models import Supplier
 from traffic.models import Receipt
 
@@ -64,6 +65,7 @@ class FakeStore:
         # the lines live in order.items
         self.orders: dict[int, Order] = {}
         self.receipts: list[Receipt] = []
+        self.expenses: list[OperatingExpense] = []
         self.users: dict[int, User] = {}
         self.user_sessions: dict[int, UserSession] = {}
         self.commits = 0

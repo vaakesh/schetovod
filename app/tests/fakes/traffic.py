@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from core.config import settings
 from core.enums import ReceiptKind
 from tests.fakes.store import FakeStore
-from traffic.analytics import HourRow
+from traffic.analytics import DayTakings, HourRow
 from traffic.models import Receipt
 
 
@@ -28,6 +28,31 @@ class FakeReceipts:
         added = [receipt for receipt in receipts if receipt.aqsi_id not in present]
         self.store.receipts += added
         return len(added)
+
+    async def daily_takings(self) -> list[DayTakings]:
+        days: dict[date, DayTakings] = {}
+        for receipt in self.store.receipts:
+            local = receipt.processed_at.astimezone(
+                tz=ZoneInfo(
+                    key=settings.timezone,
+                ),
+            ).date()
+            row = days.setdefault(
+                local,
+                DayTakings(
+                    day=local,
+                    revenue=Decimal(
+                        value=0,
+                    ),
+                    card=Decimal(
+                        value=0,
+                    ),
+                ),
+            )
+            sign = 1 if receipt.kind == ReceiptKind.SALE else -1
+            row.revenue += sign * receipt.total
+            row.card += sign * receipt.card
+        return [days[day] for day in sorted(days)]
 
     async def hourly(
         self,

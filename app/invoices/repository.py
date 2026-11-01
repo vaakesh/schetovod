@@ -29,6 +29,13 @@ class InvoiceRow:
 
 
 @dataclass
+class DayPurchases:
+    day: date
+    cost: Decimal
+    retail: Decimal
+
+
+@dataclass
 class DebtRow:
     invoice: Invoice
     supplier_name: str
@@ -235,6 +242,44 @@ class InvoiceRepository:
             )
             .with_for_update(),
         )
+
+    async def daily_purchases(
+        self,
+        date_from: date,
+    ) -> list[DayPurchases]:
+        """the posted invoices by the day they entered the ledger, oldest first"""
+        rows = await self.session.execute(
+            statement=select(
+                LedgerEntry.occurred_on,
+                func.sum(
+                    InvoiceItem.cost_price_total,
+                ),
+                func.sum(
+                    InvoiceItem.quantity * InvoiceItem.retail_price,
+                ),
+            )
+            .join(
+                target=InvoiceItem,
+                onclause=InvoiceItem.invoice_id == LedgerEntry.invoice_id,
+            )
+            .where(
+                LedgerEntry.occurred_on >= date_from,
+            )
+            .group_by(
+                LedgerEntry.occurred_on,
+            )
+            .order_by(
+                LedgerEntry.occurred_on,
+            ),
+        )
+        return [
+            DayPurchases(
+                day=day,
+                cost=cost,
+                retail=retail,
+            )
+            for day, cost, retail in rows.tuples()
+        ]
 
     async def cost_totals(
         self,

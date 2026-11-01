@@ -41,6 +41,7 @@ const PATHS = {
       <path d="M3 20a6 6 0 0 1 12 0M15.5 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a6 6 0 0 1 3 5.5" />
     </>
   ),
+  profit: <path d="M9 20V4h5a4.5 4.5 0 0 1 0 9H6.5M6.5 16.5H14" />,
   upload: <path d="M12 16V5M7 10l5-5 5 5M5 19h14" />,
   photo: (
     <>

@@ -14,6 +14,7 @@ from invoices.router import router as invoices_router
 from ledger.router import router as ledger_router
 from orders.router import router as orders_router
 from products.router import router as products_router
+from profit.router import router as profit_router
 from recognition.client import close_client
 from reports.router import router as reports_router
 from suppliers.router import router as suppliers_router
@@ -84,6 +85,9 @@ protected.include_router(
 )
 protected.include_router(
     router=traffic_router,
+)
+protected.include_router(
+    router=profit_router,
 )
 
 app.include_router(

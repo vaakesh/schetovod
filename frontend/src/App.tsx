@@ -13,6 +13,7 @@ import InvoicesPage from "./pages/InvoicesPage";
 import LedgerPage from "./pages/LedgerPage";
 import OrdersPage from "./pages/OrdersPage";
 import PostedInvoicePage from "./pages/PostedInvoicePage";
+import ProfitPage from "./pages/ProfitPage";
 import ReportPage from "./pages/ReportPage";
 import TrafficPage from "./pages/TrafficPage";
 import UploadPage from "./pages/UploadPage";
@@ -183,6 +184,8 @@ export default function App({ onSignedOut }: Props) {
         return <ReportPage go={go} />;
       case "traffic":
         return <TrafficPage />;
+      case "profit":
+        return <ProfitPage ask={ask} />;
       case "upload":
         return <UploadPage batch={batch} go={go} />;
       case "invoices":

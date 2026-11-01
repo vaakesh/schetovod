@@ -362,6 +362,59 @@ export interface ShiftImportResult {
   skipped: SkippedShift[];
 }
 
+export type ExpenseBasis = "month" | "year" | "work_day" | "revenue_percent" | "card_percent";
+
+export interface ExpenseForm {
+  name: string;
+  basis: ExpenseBasis;
+  amount: string;
+  // the first day of the month
+  starts_on: string;
+}
+
+export interface ExpenseOut extends ExpenseForm {
+  id: number;
+}
+
+export interface ExpenseCharge {
+  name: string;
+  total: string;
+}
+
+export interface ProfitMonth {
+  month: string;
+  in_progress: boolean;
+  work_days: number;
+  revenue: string;
+  card: string;
+  margin: string | null;
+  margin_estimated: boolean;
+  gross: string | null;
+  stock_difference: string | null;
+  write_offs: string | null;
+  charges: ExpenseCharge[];
+  expenses: string;
+  profit: string | null;
+}
+
+export interface ProfitMargin {
+  percent: string;
+  cost: string;
+  retail: string;
+  date_from: string;
+  date_to: string;
+}
+
+export interface ProfitReport {
+  last_receipt_at: string | null;
+  // newest first
+  months: ProfitMonth[];
+  average_profit: string | null;
+  break_even_day: string | null;
+  margin: ProfitMargin | null;
+  expenses: ExpenseOut[];
+}
+
 export interface TrafficSummary {
   receipts: number;
   days: number;

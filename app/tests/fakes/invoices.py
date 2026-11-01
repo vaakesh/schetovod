@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from core.enums import InvoiceSort, InvoiceStatus
 from invoices.models import Invoice, InvoiceItem, InvoicePayment
-from invoices.repository import DebtRow, InvoiceRow
+from invoices.repository import DayPurchases, DebtRow, InvoiceRow
 from tests.fakes.ledger import FakeLedger
 from tests.fakes.store import ZERO, FakeStore
 
@@ -173,6 +173,28 @@ class FakeInvoices:
         if invoice is None or invoice.status != InvoiceStatus.CONFIRMED:
             return None
         return invoice
+
+    async def daily_purchases(
+        self,
+        date_from: date,
+    ) -> list[DayPurchases]:
+        days: dict[date, DayPurchases] = {}
+        for entry in self.store.entries:
+            if entry.invoice_id is None or entry.occurred_on < date_from:
+                continue
+            row = days.setdefault(
+                entry.occurred_on,
+                DayPurchases(
+                    day=entry.occurred_on,
+                    cost=ZERO,
+                    retail=ZERO,
+                ),
+            )
+            for item in self.store.items:
+                if item.invoice_id == entry.invoice_id:
+                    row.cost += item.cost_price_total
+                    row.retail += item.quantity * item.retail_price
+        return [days[day] for day in sorted(days)]
 
     async def cost_totals(
         self,

@@ -25,6 +25,17 @@ class ReceiptKind(StrEnum):
     REFUND = "refund"
 
 
+class ExpenseBasis(StrEnum):
+    # the amount is rubles for a month or for a year
+    MONTH = "month"
+    YEAR = "year"
+    # rubles for every day with sales
+    WORK_DAY = "work_day"
+    # the amount is a percent of the takings
+    REVENUE_PERCENT = "revenue_percent"
+    CARD_PERCENT = "card_percent"
+
+
 class LedgerKind(StrEnum):
     INVOICE = "invoice"
     SALE = "sale"

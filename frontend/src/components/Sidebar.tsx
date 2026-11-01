@@ -37,7 +37,10 @@ const GROUPS: Group[] = [
   },
   {
     title: "Аналитика",
-    items: [{ route: { page: "traffic" }, label: "Покупатели", icon: "traffic" }],
+    items: [
+      { route: { page: "traffic" }, label: "Покупатели", icon: "traffic" },
+      { route: { page: "profit" }, label: "Прибыль", icon: "profit" },
+    ],
   },
 ];
 

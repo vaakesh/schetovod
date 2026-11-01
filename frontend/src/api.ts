@@ -3,6 +3,7 @@ import type {
   Catalog,
   ConfirmedInvoice,
   DraftForm,
+  ExpenseForm,
   InvoiceDraft,
   InvoiceList,
   InvoiceSort,
@@ -20,6 +21,7 @@ import type {
   PostedInvoice,
   ProductEdit,
   ProductSummary,
+  ProfitReport,
   RevaluationCreate,
   RevaluationLineOut,
   ShiftImportResult,
@@ -252,6 +254,22 @@ export function getTrafficReport(dateFrom: string, dateTo: string): Promise<Traf
 
 export function getTrafficForecast(dateFrom: string, dateTo: string): Promise<TrafficForecast> {
   return request("GET", `/traffic/forecast${query({ date_from: dateFrom, date_to: dateTo })}`);
+}
+
+export function getProfitReport(): Promise<ProfitReport> {
+  return request("GET", "/profit");
+}
+
+export function addExpense(body: ExpenseForm): Promise<ProfitReport> {
+  return request("POST", "/profit/expenses", body);
+}
+
+export function editExpense(id: number, body: ExpenseForm): Promise<ProfitReport> {
+  return request("PUT", `/profit/expenses/${id}`, body);
+}
+
+export function stopExpense(id: number): Promise<ProfitReport> {
+  return request("DELETE", `/profit/expenses/${id}`);
 }
 
 export function addRevaluation(body: RevaluationCreate): Promise<LedgerPosted> {

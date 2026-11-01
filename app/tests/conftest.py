@@ -17,9 +17,11 @@ from ledger.repository import LedgerRepository
 from main import app
 from orders.repository import OrderRepository
 from products.repository import ProductRepository
+from profit.repository import ExpenseRepository
 from suppliers.repository import SupplierRepository
 from tests.fakes import (
     FakeAuth,
+    FakeExpenses,
     FakeInvoices,
     FakeLedger,
     FakeOrders,
@@ -127,6 +129,9 @@ def repositories(test_app: FastAPI, store: FakeStore) -> None:
                 store=store,
             ),
             ReceiptRepository: lambda: FakeReceipts(
+                store=store,
+            ),
+            ExpenseRepository: lambda: FakeExpenses(
                 store=store,
             ),
         },

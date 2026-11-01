@@ -10,7 +10,7 @@ from aqsi.client import start_of_day
 from core.config import settings
 from core.db import SessionDep
 from core.enums import ReceiptKind
-from traffic.analytics import HourRow
+from traffic.analytics import DayTakings, HourRow
 from traffic.models import Receipt
 
 # postgres takes a limited number of parameters in one statement
@@ -144,6 +144,56 @@ class ReceiptRepository:
                 revenue=revenue,
             )
             for row_day, row_hour, sales, revenue in rows.tuples()
+        ]
+
+    async def daily_takings(self) -> list[DayTakings]:
+        """every day of the shop with receipts, oldest first, the refunds are taken away"""
+        day = cast(
+            expression=func.timezone(
+                settings.timezone,
+                Receipt.processed_at,
+            ),
+            type_=Date,
+        ).label(
+            name="day",
+        )
+        is_sale = Receipt.kind == ReceiptKind.SALE
+        rows = await self.session.execute(
+            statement=select(
+                day,
+                func.sum(
+                    case(
+                        (
+                            is_sale,
+                            Receipt.total,
+                        ),
+                        else_=-Receipt.total,
+                    ),
+                ),
+                func.sum(
+                    case(
+                        (
+                            is_sale,
+                            Receipt.card,
+                        ),
+                        else_=-Receipt.card,
+                    ),
+                ),
+            )
+            .group_by(
+                day,
+            )
+            .order_by(
+                day,
+            ),
+        )
+        return [
+            DayTakings(
+                day=row_day,
+                revenue=revenue,
+                card=card,
+            )
+            for row_day, revenue, card in rows.tuples()
         ]
 
     async def last_receipt_at(self) -> datetime | None:
