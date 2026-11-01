@@ -13,7 +13,7 @@ from core.http import invalid
 from traffic import analytics
 from traffic.models import Receipt
 from traffic.repository import ReceiptRepositoryDep
-from traffic.schemas import ReceiptImportResult, TrafficReport
+from traffic.schemas import ReceiptImportResult, TrafficForecast, TrafficReport
 
 # the receipt types of aQsi that a customer stands behind
 KINDS = {
@@ -58,6 +58,13 @@ def receipt_row(
         positions=len(
             receipt.positions,
         ),
+    )
+
+
+def yesterday() -> date:
+    """the last whole day, a part of today would pull every average down"""
+    return today() - timedelta(
+        days=1,
     )
 
 
@@ -163,26 +170,14 @@ class TrafficService:
             invalid(
                 detail="Начало периода позже конца",
             )
-        current = today()
-        # today is not over, a part of a day would pull every average down
-        yesterday = current - timedelta(
-            days=1,
-        )
         date_to = min(
             date_to,
-            yesterday,
+            yesterday(),
         )
-        base_from = current - timedelta(
-            weeks=analytics.BASE_WEEKS,
+        period = await self.receipts.hourly(
+            date_from=date_from,
+            date_to=date_to,
         )
-        rows = await self.receipts.hourly(
-            date_from=min(
-                date_from,
-                base_from,
-            ),
-            date_to=yesterday,
-        )
-        period = [row for row in rows if date_from <= row.day <= date_to]
         return TrafficReport(
             date_from=date_from,
             date_to=date_to,
@@ -202,9 +197,30 @@ class TrafficService:
             daily=analytics.daily(
                 rows=period,
             ),
-            forecast=analytics.forecast(
-                rows=[row for row in rows if row.day >= base_from],
-                today=current,
+        )
+
+    async def forecast(
+        self,
+        date_from: date,
+        date_to: date,
+    ) -> TrafficForecast:
+        if date_from > date_to:
+            invalid(
+                detail="Начало периода позже конца",
+            )
+        date_to = min(
+            date_to,
+            yesterday(),
+        )
+        return TrafficForecast(
+            date_from=date_from,
+            date_to=date_to,
+            days=analytics.forecast(
+                rows=await self.receipts.hourly(
+                    date_from=date_from,
+                    date_to=date_to,
+                ),
+                today=today(),
             ),
         )
 

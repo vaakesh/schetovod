@@ -52,11 +52,16 @@ class DayLoad(BaseModel):
     trend: float | None
 
 
-class HourForecast(BaseModel):
-    hour: int
-    receipts: float
+class ForecastValue(BaseModel):
+    expected: float
     low: float
     high: float
+
+
+class HourForecast(BaseModel):
+    hour: int
+    receipts: ForecastValue
+    revenue: ForecastValue
 
 
 class DayForecast(BaseModel):
@@ -64,10 +69,17 @@ class DayForecast(BaseModel):
     weekday: int
     # the number of past days the forecast stands on, no sums without them
     based_on: int
-    receipts: float | None
-    low: float | None
-    high: float | None
+    receipts: ForecastValue | None
+    revenue: ForecastValue | None
     hours: list[HourForecast]
+
+
+class TrafficForecast(BaseModel):
+    date_from: OutputDate
+    # today is cut off, its receipts must not move its own forecast
+    date_to: OutputDate
+    # today comes first
+    days: list[DayForecast]
 
 
 class TrafficReport(BaseModel):
@@ -80,4 +92,3 @@ class TrafficReport(BaseModel):
     by_weekday: list[WeekdayLoad]
     heatmap: list[HeatCell]
     daily: list[DayLoad]
-    forecast: list[DayForecast]

@@ -2882,9 +2882,28 @@ a.button {
   gap: 24px;
 }
 
+.traffic-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin-bottom: 8px;
+}
+
+.traffic-head .traffic-note {
+  margin-bottom: 0;
+}
+
+.traffic-subtitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .traffic-days {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 8px;
   margin: 12px 0 16px;
 }
@@ -2925,6 +2944,13 @@ a.button {
   margin-top: 4px;
   font-size: 18px;
   font-weight: 600;
+}
+
+.traffic-day-money {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .chart {
@@ -3121,6 +3147,13 @@ a.button {
   cursor: pointer;
 }
 
+/* eight days with their sums do not fit a row on an upright tablet */
+@media (max-width: 1023px) {
+  .traffic-days {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 699px) {
   .traffic-tiles,
   .traffic-pair {
@@ -3131,10 +3164,6 @@ a.button {
   .traffic-pair {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
-  }
-
-  .traffic-days {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .traffic-card {

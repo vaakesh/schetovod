@@ -399,21 +399,31 @@ export interface DayLoad {
   trend: number | null;
 }
 
-export interface HourForecast {
-  hour: number;
-  receipts: number;
+export interface ForecastValue {
+  expected: number;
   low: number;
   high: number;
+}
+
+export interface HourForecast {
+  hour: number;
+  receipts: ForecastValue;
+  revenue: ForecastValue;
 }
 
 export interface DayForecast {
   day: string;
   weekday: number;
   based_on: number;
-  receipts: number | null;
-  low: number | null;
-  high: number | null;
+  receipts: ForecastValue | null;
+  revenue: ForecastValue | null;
   hours: HourForecast[];
+}
+
+export interface TrafficForecast {
+  date_from: string;
+  date_to: string;
+  days: DayForecast[];
 }
 
 export interface TrafficReport {
@@ -425,7 +435,6 @@ export interface TrafficReport {
   by_weekday: WeekdayLoad[];
   heatmap: HeatCell[];
   daily: DayLoad[];
-  forecast: DayForecast[];
 }
 
 export interface RevaluationLine {

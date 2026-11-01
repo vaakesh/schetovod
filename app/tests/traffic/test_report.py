@@ -68,7 +68,6 @@ class TestTrafficReport:
         assert report["last_receipt_at"] is None
         assert report["summary"]["receipts"] == 0
         assert report["by_hour"] == []
-        assert [day["based_on"] for day in report["forecast"]] == [0] * 7
 
     def test_today_is_left_out_of_the_period(self) -> None:
         # the fixed clock stands on 16-10-2026
@@ -117,31 +116,97 @@ class TestTrafficReport:
         assert report["daily"][0]["day"] == "15-10-2026"
         assert report["by_hour"][0]["hour"] == 1
 
-    def test_the_forecast_does_not_depend_on_the_period(self) -> None:
-        # thursday, the same weekday as the 22nd
+    def test_the_start_can_not_be_after_the_end(self) -> None:
+        response = self.client.get(
+            url="/traffic/report",
+            params={
+                "date_from": "02-10-2026",
+                "date_to": "01-10-2026",
+            },
+        )
+
+        assert response.status_code == 422
+
+    def forecast(
+        self,
+        date_from: str = "01-10-2026",
+        date_to: str = "15-10-2026",
+    ) -> dict[str, Any]:
+        response = self.client.get(
+            url="/traffic/forecast",
+            params={
+                "date_from": date_from,
+                "date_to": date_to,
+            },
+        )
+        assert response.status_code == 200
+        return response.json()
+
+    def test_the_forecast_starts_today_and_goes_a_week_on(self) -> None:
+        forecast = self.forecast()
+
+        # the fixed clock stands on 16-10-2026
+        assert forecast["days"][0]["day"] == "16-10-2026"
+        assert forecast["days"][-1]["day"] == "23-10-2026"
+        assert [day["based_on"] for day in forecast["days"]] == [0] * 8
+
+    def test_the_forecast_stands_on_the_chosen_period(self) -> None:
+        # thursdays, the same weekday as the 22nd
+        for day in (1, 15):
+            self.add(
+                at=datetime(
+                    year=2026,
+                    month=10,
+                    day=day,
+                    hour=9,
+                    tzinfo=UTC,
+                ),
+            )
+
+        whole = self.forecast()
+        short = self.forecast(
+            date_from="10-10-2026",
+        )
+
+        assert whole["days"][6]["day"] == "22-10-2026"
+        assert whole["days"][6]["based_on"] == 2
+        assert short["days"][6]["based_on"] == 1
+
+    def test_the_receipts_of_today_do_not_move_its_forecast(self) -> None:
+        # a friday, the same weekday as today
         self.add(
             at=datetime(
                 year=2026,
                 month=10,
-                day=15,
+                day=9,
                 hour=9,
                 tzinfo=UTC,
             ),
         )
-
-        report = self.report(
-            date_from="01-09-2026",
-            date_to="02-09-2026",
+        before = self.forecast(
+            date_to="16-10-2026",
         )
 
-        assert report["summary"]["receipts"] == 0
-        thursday = report["forecast"][5]
-        assert thursday["day"] == "22-10-2026"
-        assert (thursday["based_on"], thursday["receipts"]) == (1, 1.0)
+        self.add(
+            at=datetime(
+                year=2026,
+                month=10,
+                day=16,
+                hour=9,
+                tzinfo=UTC,
+            ),
+        )
+        after = self.forecast(
+            date_to="16-10-2026",
+        )
 
-    def test_the_start_can_not_be_after_the_end(self) -> None:
+        assert after == before
+        assert after["date_to"] == "15-10-2026"
+        assert after["days"][0]["based_on"] == 1
+
+    def test_the_forecast_start_can_not_be_after_the_end(self) -> None:
         response = self.client.get(
-            url="/traffic/report",
+            url="/traffic/forecast",
             params={
                 "date_from": "02-10-2026",
                 "date_to": "01-10-2026",

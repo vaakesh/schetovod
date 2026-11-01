@@ -7,6 +7,7 @@ from statistics import quantiles
 from traffic.schemas import (
     DayForecast,
     DayLoad,
+    ForecastValue,
     HeatCell,
     HourForecast,
     HourLoad,
@@ -21,10 +22,9 @@ ZERO = Decimal(
     value=0,
 )
 WEEK = 7
-# days ahead, every one of them is forecast on its own
+# days after today, every one of them is forecast on its own
 HORIZON = 7
-# the same weekdays a forecast stands on and how far back they are looked for
-BASE_DAYS = 8
+# how far back the first import goes, a forecast period finds nothing older
 BASE_WEEKS = 12
 TREND_DAYS = 7
 TREND_MIN_DAYS = 3
@@ -308,7 +308,7 @@ def summary(
 
 
 def spread(
-    values: list[int],
+    values: list[float],
 ) -> tuple[float, float, float]:
     """the lower quartile, the median and the upper quartile"""
     if (
@@ -317,8 +317,9 @@ def spread(
         )
         == 1
     ):
-        only = float(
-            values[0],
+        only = round(
+            number=values[0],
+            ndigits=1,
         )
         return (
             only,
@@ -346,68 +347,103 @@ def spread(
     )
 
 
+def forecast_value(
+    values: list[float],
+) -> ForecastValue:
+    low, middle, high = spread(
+        values=values,
+    )
+    return ForecastValue(
+        expected=middle,
+        low=low,
+        high=high,
+    )
+
+
+def day_value(
+    days: dict[date, dict[int, float]],
+) -> ForecastValue:
+    return forecast_value(
+        values=[
+            sum(
+                hours.values(),
+            )
+            for hours in days.values()
+        ],
+    )
+
+
+def hour_value(
+    days: dict[date, dict[int, float]],
+    hour: int,
+) -> ForecastValue:
+    """an hour missing on a day counts as a quiet one"""
+    return forecast_value(
+        values=[
+            hours.get(
+                hour,
+                0,
+            )
+            for hours in days.values()
+        ],
+    )
+
+
 def forecast_day(
     day: date,
     rows: list[HourRow],
 ) -> DayForecast:
-    """the median of the latest same weekdays, a one-off rush does not move it"""
-    sales: dict[date, dict[int, int]] = defaultdict(dict)
-    for row in rows:
-        if row.day.weekday() == day.weekday() and row.sales > 0:
-            sales[row.day][row.hour] = row.sales
-    base = sorted(
-        sales,
-        reverse=True,
-    )[:BASE_DAYS]
+    """the median of the same weekdays, a one-off rush does not move it"""
+    weekday = [row for row in rows if row.day.weekday() == day.weekday()]
+    base = working_days(
+        rows=weekday,
+    )
     if not base:
         return DayForecast(
             day=day,
             weekday=day.weekday(),
             based_on=0,
             receipts=None,
-            low=None,
-            high=None,
+            revenue=None,
             hours=[],
         )
-    low, middle, high = spread(
-        values=[
-            sum(
-                sales[past].values(),
+    sales: dict[date, dict[int, float]] = defaultdict(dict)
+    revenue: dict[date, dict[int, float]] = defaultdict(dict)
+    for row in weekday:
+        if row.day in base:
+            sales[row.day][row.hour] = row.sales
+            # a forecast is an estimate, not an amount of the books
+            revenue[row.day][row.hour] = float(
+                row.revenue,
             )
-            for past in base
-        ],
-    )
-    hours: list[HourForecast] = []
-    for hour in hour_span(
-        hours={hour for past in base for hour in sales[past]},
-    ):
-        hour_low, hour_middle, hour_high = spread(
-            values=[
-                sales[past].get(
-                    hour,
-                    0,
-                )
-                for past in base
-            ],
-        )
-        hours.append(
-            HourForecast(
-                hour=hour,
-                receipts=hour_middle,
-                low=hour_low,
-                high=hour_high,
-            ),
-        )
     return DayForecast(
         day=day,
         weekday=day.weekday(),
         based_on=len(
             base,
         ),
-        receipts=middle,
-        low=low,
-        high=high,
-        hours=hours,
+        receipts=day_value(
+            days=sales,
+        ),
+        revenue=day_value(
+            days=revenue,
+        ),
+        hours=[
+            HourForecast(
+                hour=hour,
+                receipts=hour_value(
+                    days=sales,
+                    hour=hour,
+                ),
+                revenue=hour_value(
+                    days=revenue,
+                    hour=hour,
+                ),
+            )
+            for hour in sale_hours(
+                rows=weekday,
+            )
+        ],
     )
 
 
@@ -424,7 +460,6 @@ def forecast(
             rows=rows,
         )
         for ahead in range(
-            1,
             HORIZON + 1,
         )
     ]

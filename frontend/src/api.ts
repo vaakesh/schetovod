@@ -25,6 +25,7 @@ import type {
   ShiftImportResult,
   SupplierEdit,
   SupplierSummary,
+  TrafficForecast,
   TrafficReport,
   UserSummary,
 } from "./types";
@@ -247,6 +248,10 @@ export function importShifts(dateFrom: string, dateTo: string): Promise<ShiftImp
 
 export function getTrafficReport(dateFrom: string, dateTo: string): Promise<TrafficReport> {
   return request("GET", `/traffic/report${query({ date_from: dateFrom, date_to: dateTo })}`);
+}
+
+export function getTrafficForecast(dateFrom: string, dateTo: string): Promise<TrafficForecast> {
+  return request("GET", `/traffic/forecast${query({ date_from: dateFrom, date_to: dateTo })}`);
 }
 
 export function addRevaluation(body: RevaluationCreate): Promise<LedgerPosted> {

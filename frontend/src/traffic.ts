@@ -37,6 +37,11 @@ export function formatRubles(value: string | number | null): string {
   return value === null ? "—" : `${rubles.format(Number(value))} ₽`;
 }
 
+// thousands of rubles do not fit the margin of a chart in full
+export function formatThousands(value: number): string {
+  return value < 1000 ? count.format(value) : `${count.format(value / 1000)}к`;
+}
+
 // the days of the epoch keep the gaps on a time axis, the api date is DD-MM-YYYY
 export function dayNumber(value: string): number {
   const [day, month, year] = value.split("-").map(Number);

@@ -1,11 +1,12 @@
 interface Props {
   start: string;
   end: string;
+  max?: string;
   onStart: (value: string) => void;
   onEnd: (value: string) => void;
 }
 
-export default function PeriodFields({ start, end, onStart, onEnd }: Props) {
+export default function PeriodFields({ start, end, max, onStart, onEnd }: Props) {
   return (
     <div className="report-period">
       <label className="field">
@@ -25,6 +26,7 @@ export default function PeriodFields({ start, end, onStart, onEnd }: Props) {
           type="date"
           value={end}
           min={start}
+          max={max}
           onChange={(event) => onEnd(event.target.value)}
         />
       </label>

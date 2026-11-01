@@ -65,9 +65,10 @@ interface GridProps {
   ticks: number[];
   y: (value: number) => number;
   width: number;
+  format?: (tick: number) => string;
 }
 
-export function ChartGrid({ ticks, y, width }: GridProps) {
+export function ChartGrid({ ticks, y, width, format }: GridProps) {
   return (
     <g>
       {ticks.map((tick) => (
@@ -80,7 +81,7 @@ export function ChartGrid({ ticks, y, width }: GridProps) {
             y2={y(tick)}
           />
           <text className="chart-axis" x={MARGIN.left - 8} y={y(tick) + 4} textAnchor="end">
-            {tick.toLocaleString("ru-RU")}
+            {format ? format(tick) : tick.toLocaleString("ru-RU")}
           </text>
         </g>
       ))}

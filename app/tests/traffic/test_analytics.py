@@ -12,6 +12,7 @@ from traffic.analytics import (
     spread,
     summary,
 )
+from traffic.schemas import ForecastValue
 
 # a monday
 MONDAY = date(
@@ -305,7 +306,11 @@ class TestForecast:
 
         assert day.weekday == 0
         assert day.based_on == 2
-        assert day.receipts == 15.0
+        assert day.receipts == ForecastValue(
+            expected=15.0,
+            low=12.5,
+            high=17.5,
+        )
 
     def test_a_one_off_rush_does_not_move_the_median(self) -> None:
         day = forecast_day(
@@ -325,10 +330,13 @@ class TestForecast:
             ],
         )
 
-        assert day.receipts == 12.0
-        assert (day.low, day.high) == (11.0, 13.0)
+        assert day.receipts == ForecastValue(
+            expected=12.0,
+            low=11.0,
+            high=13.0,
+        )
 
-    def test_only_the_latest_eight_days_are_used(self) -> None:
+    def test_every_same_weekday_of_the_rows_is_used(self) -> None:
         day = forecast_day(
             day=MONDAY,
             rows=[
@@ -342,8 +350,100 @@ class TestForecast:
             ],
         )
 
-        assert day.based_on == 8
-        assert day.receipts == 10.0
+        assert day.based_on == 12
+        assert day.receipts == ForecastValue(
+            expected=10.0,
+            low=10.0,
+            high=100.0,
+        )
+
+    def test_the_revenue_is_forecast_by_day_and_by_hour(self) -> None:
+        day = forecast_day(
+            day=MONDAY,
+            rows=[
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                    revenue="1000.00",
+                ),
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                    hour=11,
+                    revenue="500.00",
+                ),
+                row(
+                    day=weeks_ago(
+                        weeks=2,
+                    ),
+                    revenue="2000.00",
+                ),
+            ],
+        )
+
+        assert day.revenue == ForecastValue(
+            expected=1750.0,
+            low=1625.0,
+            high=1875.0,
+        )
+        assert [(hour.hour, hour.revenue.expected) for hour in day.hours] == [
+            (10, 1500.0),
+            (11, 250.0),
+        ]
+
+    def test_a_refund_lowers_the_revenue_and_not_the_customers(self) -> None:
+        day = forecast_day(
+            day=MONDAY,
+            rows=[
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                    sales=2,
+                    revenue="1000.00",
+                ),
+                # only a refund in this hour
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                    hour=11,
+                    sales=0,
+                    revenue="-100.00",
+                ),
+            ],
+        )
+
+        assert day.receipts == ForecastValue(
+            expected=2.0,
+            low=2.0,
+            high=2.0,
+        )
+        assert day.revenue == ForecastValue(
+            expected=900.0,
+            low=900.0,
+            high=900.0,
+        )
+        assert [hour.hour for hour in day.hours] == [10]
+
+    def test_a_day_with_only_a_refund_is_not_a_base_day(self) -> None:
+        day = forecast_day(
+            day=MONDAY,
+            rows=[
+                row(
+                    day=weeks_ago(
+                        weeks=1,
+                    ),
+                    sales=0,
+                    revenue="-100.00",
+                ),
+            ],
+        )
+
+        assert day.based_on == 0
+        assert day.revenue is None
 
     def test_an_hour_missing_on_a_day_counts_as_a_quiet_one(self) -> None:
         day = forecast_day(
@@ -373,7 +473,7 @@ class TestForecast:
             ],
         )
 
-        assert [(hour.hour, hour.receipts) for hour in day.hours] == [
+        assert [(hour.hour, hour.receipts.expected) for hour in day.hours] == [
             (10, 3.0),
             (11, 0.0),
             (12, 1.0),
@@ -386,10 +486,10 @@ class TestForecast:
         )
 
         assert day.based_on == 0
-        assert (day.receipts, day.low, day.high) == (None, None, None)
+        assert (day.receipts, day.revenue) == (None, None)
         assert day.hours == []
 
-    def test_a_week_is_forecast_from_tomorrow(self) -> None:
+    def test_today_and_a_week_after_it_are_forecast(self) -> None:
         days = forecast(
             rows=[],
             today=MONDAY,
@@ -400,5 +500,5 @@ class TestForecast:
             + timedelta(
                 days=shift,
             )
-            for shift in range(1, 8)
+            for shift in range(8)
         ]

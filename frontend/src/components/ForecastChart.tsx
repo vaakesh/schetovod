@@ -1,7 +1,7 @@
 import type { PointerEvent } from "react";
 
-import { formatPeople, hourRange } from "../traffic";
-import type { HourForecast } from "../types";
+import { hourRange } from "../traffic";
+import type { ForecastValue } from "../types";
 import {
   CHART_HEIGHT,
   ChartGrid,
@@ -15,26 +15,30 @@ import {
 } from "./chart";
 
 interface Props {
-  hours: HourForecast[];
+  hours: { hour: number; value: ForecastValue }[];
   label: string;
+  legend: string;
+  format: (value: number) => string;
+  formatTick?: (tick: number) => string;
 }
 
-export default function ForecastChart({ hours, label }: Props) {
+export default function ForecastChart({ hours, label, legend, format, formatTick }: Props) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const { active, setActive, onKeyDown } = useActive(hours.length);
 
   const plotWidth = width - MARGIN.left - MARGIN.right;
   const slot = plotWidth / Math.max(hours.length, 1);
   const baseline = CHART_HEIGHT - MARGIN.bottom;
-  const ticks = niceTicks(Math.max(...hours.map((hour) => hour.high), 0));
+  const ticks = niceTicks(Math.max(...hours.map(({ value }) => value.high), 0));
   const top = ticks[ticks.length - 1] ?? 1;
+  // an hour of refunds goes below zero, the axis starts at zero
   const y = (value: number) =>
-    baseline - (value / Math.max(top, 1)) * (baseline - MARGIN.top);
+    baseline - (Math.max(value, 0) / Math.max(top, 1)) * (baseline - MARGIN.top);
   const x = (index: number) => MARGIN.left + slot * (index + 0.5);
 
-  const upper = hours.map((hour, index) => `${x(index)} ${y(hour.high)}`);
-  const lower = hours.map((hour, index) => `${x(index)} ${y(hour.low)}`).reverse();
-  const middle = hours.map((hour, index) => `${x(index)} ${y(hour.receipts)}`);
+  const upper = hours.map(({ value }, index) => `${x(index)} ${y(value.high)}`);
+  const lower = hours.map(({ value }, index) => `${x(index)} ${y(value.low)}`).reverse();
+  const middle = hours.map(({ value }, index) => `${x(index)} ${y(value.expected)}`);
   const shown = active === null ? undefined : hours[active];
 
   function follow(event: PointerEvent<SVGSVGElement>) {
@@ -57,13 +61,13 @@ export default function ForecastChart({ hours, label }: Props) {
           onBlur={() => setActive(null)}
           onKeyDown={onKeyDown}
         >
-          <ChartGrid ticks={ticks} y={y} width={width} />
+          <ChartGrid ticks={ticks} y={y} width={width} format={formatTick} />
           <ChartLabels
             plotWidth={plotWidth}
-            labels={hours.map((hour, index) => ({
-              key: hour.hour,
+            labels={hours.map(({ hour }, index) => ({
+              key: hour,
               x: x(index),
-              text: `${hour.hour}:00`,
+              text: `${hour}:00`,
             }))}
           />
           <path className="chart-band" d={`M${[...upper, ...lower].join("L")}Z`} />
@@ -78,22 +82,22 @@ export default function ForecastChart({ hours, label }: Props) {
           )}
           <path className="chart-line" d={`M${middle.join("L")}`} />
           {shown && active !== null && (
-            <circle className="chart-dot" cx={x(active)} cy={y(shown.receipts)} r={5} />
+            <circle className="chart-dot" cx={x(active)} cy={y(shown.value.expected)} r={5} />
           )}
         </svg>
       )}
       <ChartLegend
         items={[
-          { key: "median", label: "Ожидается покупателей", mark: "line" },
+          { key: "median", label: legend, mark: "line" },
           { key: "spread", label: "Обычный разброс", mark: "band" },
         ]}
       />
       {shown && active !== null && (
-        <ChartTooltip x={x(active)} y={y(shown.high)} width={width}>
-          <strong>{formatPeople(shown.receipts)}</strong>
+        <ChartTooltip x={x(active)} y={y(shown.value.high)} width={width}>
+          <strong>{format(shown.value.expected)}</strong>
           <span>{hourRange(shown.hour)}</span>
           <span>
-            обычно {formatPeople(shown.low)}–{formatPeople(shown.high)}
+            обычно {format(shown.value.low)}–{format(shown.value.high)}
           </span>
         </ChartTooltip>
       )}
