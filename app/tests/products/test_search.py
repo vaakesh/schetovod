@@ -1,9 +1,9 @@
 from typing import Any
 
 import pytest
-from products.pricing import normalize_name
 
 from products.models import ProductAlias
+from products.pricing import normalize_name
 from tests.helpers import InvoiceApi
 
 

@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+
 from products.pricing import (
     markup_for_price,
     normalize_name,

@@ -52,10 +52,13 @@ compose stop frontend scheduler worker app
 compose up -d --wait --wait-timeout 120 postgres redis
 # the app is stopped, nothing is written after the dump
 backup_database
-# only the app entrypoint applies migrations
+# run by hand: the dump must come first and a failure must stop the deploy here
+compose run --rm -T migrate
 compose up -d --no-deps --wait --wait-timeout 180 app
-compose up -d --no-build --wait --wait-timeout 120 frontend worker scheduler
+compose up -d --no-deps --no-build --wait --wait-timeout 120 frontend worker scheduler
 compose exec -T frontend wget -q -O - http://127.0.0.1/api/health
 git rev-parse --short HEAD > backups/deployed-version
+# every build leaves the old image without a tag, the release is already up at this point
+docker image prune -f > /dev/null || printf '%s\n' 'Старые образы не удалены' >&2
 printf '\nВерсия: %s\n' "$(git rev-parse HEAD)"
 compose ps

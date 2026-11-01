@@ -1,0 +1,100 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - README.md
+      - app/README.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# a new push waits for the running deploy, a deploy is never cancelled halfway
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: app
+    env:
+      # the settings need them at import, only the migrations reach the database
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci
+      POSTGRES_DB: ci
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      JWT_SECRET: not-a-secret-only-for-the-tests-in-ci
+    # the tests run on fakes, a broken migration would show up only on the stopped production
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run ty check
+      - run: uv run pytest
+      - run: uv run alembic upgrade head
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.21.0
+      - run: npm ci
+      - run: npm run build
+
+  deploy:
+    needs:
+      - backend
+      - frontend
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          SSH_TARGET: ${{ secrets.DEPLOY_TARGET }}
+        run: |
+          install -m 700 -d ~/.ssh
+          install -m 600 /dev/null ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # the key can do nothing else, the server treats the command as the commit to deploy
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ServerAliveInterval=30 \
+            "$SSH_TARGET" "$GITHUB_SHA"

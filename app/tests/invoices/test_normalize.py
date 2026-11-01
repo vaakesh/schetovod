@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+
 from invoices.calculations import (
     LinePrices,
     check_read_prices,
@@ -11,7 +12,6 @@ from invoices.calculations import (
     source_total_field,
     to_kopecks,
 )
-
 from invoices.extraction import InvoiceExtraction, InvoiceItemExtraction
 
 # lines of a real invoice with VAT, unit prices without VAT are printed rounded

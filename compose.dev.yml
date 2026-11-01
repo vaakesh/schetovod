@@ -1,6 +1,5 @@
 services:
   app:
-    # the migrations still run only at the start of the container
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
       # 0 only for plain http

@@ -1,8 +1,7 @@
 from typing import Any
 
-from products.pricing import normalize_name
-
 from products.models import ProductAlias
+from products.pricing import normalize_name
 from tests.fakes import INN
 from tests.helpers import InvoiceApi
 
