@@ -81,6 +81,16 @@ async def receive_invoice(
 
 
 @router.post(
+    path="/invoice/blank",
+    response_model=InvoiceDraft,
+)
+async def create_blank_invoice(
+    service: InvoiceDraftServiceDep,
+) -> InvoiceDraft:
+    return await service.create_blank()
+
+
+@router.post(
     path="/invoice/image",
     response_model=InvoiceDraft,
 )

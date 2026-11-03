@@ -14,6 +14,7 @@ interface Props {
   go: (route: Route) => void;
   uploadJson: (files: File[]) => void;
   uploadImages: (files: File[]) => void;
+  createBlank: () => void;
   uploading: UploadKind | null;
   notice: string | null;
 }
@@ -52,7 +53,14 @@ function target(item: InvoiceListItem): Route | null {
   return null;
 }
 
-export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, notice }: Props) {
+export default function InvoicesPage({
+  go,
+  uploadJson,
+  uploadImages,
+  createBlank,
+  uploading,
+  notice,
+}: Props) {
   const [filter, setFilter] = useState<Filter>(FILTERS[0]!);
   const [sort, setSort] = useState<InvoiceSort>("newest");
   const [search, setSearch] = useState("");
@@ -181,6 +189,7 @@ export default function InvoicesPage({ go, uploadJson, uploadImages, uploading, 
       onJson={uploadJson}
       onImages={uploadImages}
       onBatch={() => go({ page: "upload" })}
+      onManual={createBlank}
     />
   );
 

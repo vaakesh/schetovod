@@ -286,14 +286,16 @@ class InvoicePlanner:
                         quantity=line.form.quantity,
                     ),
                 )
-        plan.issues.extend(
-            check_totals(
-                cost_total=form.totals.cost_total,
-                base_total=form.totals.base_total,
-                prices=[line.prices for line in plan.lines],
-                with_vat=any(line.vat_percent for line in form.lines),
-            ),
-        )
+        # an invoice entered by hand has no printed total unless the user types it in
+        if extraction.items or form.totals.cost_total is not None:
+            plan.issues.extend(
+                check_totals(
+                    cost_total=form.totals.cost_total,
+                    base_total=form.totals.base_total,
+                    prices=[line.prices for line in plan.lines],
+                    with_vat=any(line.vat_percent for line in form.lines),
+                ),
+            )
 
         if (
             plan.supplier is not None

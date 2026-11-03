@@ -308,3 +308,96 @@ class TestSaveForm(InvoiceApi):
         )
 
         assert response.status_code == 404
+
+
+class TestBlankInvoice(InvoiceApi):
+    def blank(self) -> dict[str, Any]:
+        response = self.client.post(
+            url="/invoice/blank",
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def test_starts_empty_without_a_totals_warning(self) -> None:
+        draft = self.blank()
+
+        assert draft["form"] == {
+            "invoice_number": None,
+            "invoice_date": None,
+            "supplier": None,
+            "totals": {"cost_total": None, "base_total": None},
+            "lines": [],
+        }
+        assert not draft["ready"]
+        assert [issue["message"] for issue in draft["issues"]] == [
+            "номер накладной не указан",
+            "дата накладной не указана",
+            "продавец не выбран",
+            "в накладной нет строк",
+        ]
+        assert self.store.invoices[draft["id"]].status == InvoiceStatus.DRAFT
+
+    def test_one_line_typed_by_hand_is_posted(self) -> None:
+        supplier, _, salt = self.known_supplier()
+        draft = self.blank()
+        form = draft["form"] | {
+            "invoice_number": "17",
+            "invoice_date": "01-11-2026",
+            "supplier": {"id": supplier.id},
+            "lines": [
+                {
+                    "line_no": None,
+                    "name": "Соль",
+                    "quantity": "2",
+                    "unit": "шт",
+                    "vat_percent": None,
+                    "cost_price_total": "60.00",
+                    "product_id": salt.id,
+                    "retail_price": None,
+                },
+            ],
+        }
+
+        draft = self.save(
+            draft=draft,
+            form=form,
+        )
+
+        assert draft["issues"] == []
+        assert draft["ready"]
+        response = self.confirm(
+            draft=draft,
+        )
+        assert response.status_code == 200, response.text
+        assert self.store.invoices[draft["id"]].status == InvoiceStatus.CONFIRMED
+
+    def test_a_total_typed_in_is_still_checked(self) -> None:
+        supplier, _, salt = self.known_supplier()
+        draft = self.blank()
+        form = draft["form"] | {
+            "invoice_number": "17",
+            "invoice_date": "01-11-2026",
+            "supplier": {"id": supplier.id},
+            "totals": {"cost_total": "100.00", "base_total": None},
+            "lines": [
+                {
+                    "line_no": None,
+                    "name": "Соль",
+                    "quantity": "2",
+                    "unit": "шт",
+                    "vat_percent": None,
+                    "cost_price_total": "60.00",
+                    "product_id": salt.id,
+                    "retail_price": None,
+                },
+            ],
+        }
+
+        draft = self.save(
+            draft=draft,
+            form=form,
+        )
+
+        assert [issue["message"] for issue in draft["issues"]] == [
+            "итог к оплате: в накладной 100.00, по строкам 60.00",
+        ]

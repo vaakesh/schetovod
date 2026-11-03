@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getDraftOrder, logout, receiveInvoice, recognizeInvoice } from "./api";
+import {
+  createBlankInvoice,
+  getDraftOrder,
+  logout,
+  receiveInvoice,
+  recognizeInvoice,
+} from "./api";
 import { useBatchUpload, type BatchUpload } from "./batch";
 import { useConfirm } from "./components/ConfirmDialog";
 import Icon from "./components/icons";
@@ -140,6 +146,10 @@ export default function App({ onSignedOut }: Props) {
     void upload("image", () => recognizeInvoice(files));
   }
 
+  function createBlank() {
+    void upload("manual", createBlankInvoice);
+  }
+
   async function signOut() {
     if (!(await leave())) {
       return;
@@ -194,6 +204,7 @@ export default function App({ onSignedOut }: Props) {
             go={go}
             uploadJson={uploadJson}
             uploadImages={uploadImages}
+            createBlank={createBlank}
             uploading={uploading}
             notice={notice}
           />

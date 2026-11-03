@@ -384,6 +384,11 @@ export function receiveInvoice(body: unknown): Promise<InvoiceDraft> {
   return request("POST", "/invoice", body);
 }
 
+// an empty draft filled in by hand
+export function createBlankInvoice(): Promise<InvoiceDraft> {
+  return request("POST", "/invoice/blank");
+}
+
 // the photos are pages of one invoice, the backend recognizes them in one request
 export function recognizeInvoice(files: File[]): Promise<InvoiceDraft> {
   const body = new FormData();

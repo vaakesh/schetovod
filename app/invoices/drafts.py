@@ -7,7 +7,11 @@ from pydantic import JsonValue
 
 from core.enums import InvoiceStatus
 from invoices.calculations import sum_known, to_kopecks
-from invoices.extraction import InvoiceExtraction
+from invoices.extraction import (
+    InvoiceExtraction,
+    SupplierExtraction,
+    TotalsExtraction,
+)
 from invoices.forms import number_form_lines, numbered_extraction
 from invoices.models import Invoice
 from invoices.planning import InvoicePlanner, PlannedLine
@@ -59,6 +63,41 @@ class InvoiceDraftService:
                 invoice_date=invoice.invoice_date,
                 status=InvoiceStatus.DRAFT,
                 extracted=extracted,
+                form=None,
+            ),
+        )
+        draft = await self._draft(
+            draft_invoice=draft_invoice,
+        )
+        await self.invoices.commit()
+        return draft
+
+    async def create_blank(
+        self,
+    ) -> InvoiceDraft:
+        """an empty draft the user fills in by hand, nothing was read from a document"""
+        extraction = InvoiceExtraction(
+            supplier=SupplierExtraction(
+                name=None,
+                inn=None,
+            ),
+            invoice_number=None,
+            invoice_date=None,
+            items=[],
+            totals=TotalsExtraction(
+                base_total=None,
+                cost_total=None,
+            ),
+        )
+        draft_invoice = await self.invoices.create(
+            invoice=Invoice(
+                supplier_id=None,
+                invoice_number=None,
+                invoice_date=None,
+                status=InvoiceStatus.DRAFT,
+                extracted=extraction.model_dump(
+                    mode="json",
+                ),
                 form=None,
             ),
         )

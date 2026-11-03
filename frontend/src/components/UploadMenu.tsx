@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 
 import Icon from "./icons";
 
-export type UploadKind = "json" | "image";
+export type UploadKind = "json" | "image" | "manual";
 
 export const UPLOAD_LOADING: Record<UploadKind, string> = {
   json: "Читаем накладную…",
   image: "Распознаём накладную, это может занять несколько минут…",
+  manual: "Создаём накладную…",
 };
 
 interface Props {
@@ -15,9 +16,10 @@ interface Props {
   onJson: (files: File[]) => void;
   onImages: (files: File[]) => void;
   onBatch: () => void;
+  onManual: () => void;
 }
 
-export default function UploadMenu({ uploading, onJson, onImages, onBatch }: Props) {
+export default function UploadMenu({ uploading, onJson, onImages, onBatch, onManual }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const jsonInput = useRef<HTMLInputElement>(null);
@@ -127,6 +129,21 @@ export default function UploadMenu({ uploading, onJson, onImages, onBatch }: Pro
             <span>
               <span className="menu-title">Несколько накладных</span>
               <span className="menu-meta">До 10 сразу, у каждой свой контейнер с фото</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="menu-item upload-option"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onManual();
+            }}
+          >
+            <Icon name="plus" />
+            <span>
+              <span className="menu-title">Вручную</span>
+              <span className="menu-meta">Пустая накладная, нужные строки вносите сами</span>
             </span>
           </button>
           <button
