@@ -155,7 +155,12 @@ export default function ReportPage({ go }: Props) {
             </section>
           </div>
 
-          <LedgerTable entries={report.entries} go={go} empty="За период записей нет" />
+          {/* the report comes oldest first, the screen shows the latest on top */}
+          <LedgerTable
+            entries={[...report.entries].reverse()}
+            go={go}
+            empty="За период записей нет"
+          />
         </>
       )}
     </main>
