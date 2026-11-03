@@ -1,6 +1,6 @@
 import { useEffect, useState, type MouseEvent } from "react";
 
-import { ensureSession, getReport, reportPdfUrl, reportXlsxUrl } from "../api";
+import { ensureSession, getReport, reportPdfUrl } from "../api";
 import LedgerTable from "../components/LedgerTable";
 import PageHead from "../components/PageHead";
 import PeriodFields from "../components/PeriodFields";
@@ -82,24 +82,14 @@ export default function ReportPage({ go }: Props) {
       <PageHead title="Отчёт">
         <PeriodFields start={start} end={end} onStart={setStart} onEnd={setEnd} />
         {dateFrom !== null && dateTo !== null && report && (
-          <>
-            <a
-              className="button button-soft"
-              href={reportPdfUrl(dateFrom, dateTo)}
-              download
-              onClick={download}
-            >
-              Скачать pdf
-            </a>
-            <a
-              className="button button-soft"
-              href={reportXlsxUrl(dateFrom, dateTo)}
-              download
-              onClick={download}
-            >
-              Скачать xlsx
-            </a>
-          </>
+          <a
+            className="button button-soft"
+            href={reportPdfUrl(dateFrom, dateTo)}
+            download
+            onClick={download}
+          >
+            Скачать pdf
+          </a>
         )}
       </PageHead>
 

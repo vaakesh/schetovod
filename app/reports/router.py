@@ -11,11 +11,9 @@ from reports.pdf import (
 )
 from reports.schemas import LedgerReport, PeriodReport
 from reports.service import ReportServiceDep
-from reports.xlsx import report_filename, report_workbook
 
 router = APIRouter()
 
-XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 PDF_MEDIA_TYPE = "application/pdf"
 
 
@@ -31,40 +29,6 @@ async def ledger_report(
     return await service.report(
         date_from=date_from,
         date_to=date_to,
-    )
-
-
-@router.get(
-    path="/ledger/report.xlsx",
-    response_class=Response,
-    responses={
-        200: {
-            "content": {
-                XLSX_MEDIA_TYPE: {},
-            },
-        },
-    },
-)
-async def ledger_report_xlsx(
-    service: ReportServiceDep,
-    date_from: ReportDate,
-    date_to: ReportDate,
-) -> Response:
-    report = await service.report(
-        date_from=date_from,
-        date_to=date_to,
-    )
-    filename = report_filename(
-        report=report,
-    )
-    return Response(
-        content=report_workbook(
-            report=report,
-        ),
-        media_type=XLSX_MEDIA_TYPE,
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-        },
     )
 
 

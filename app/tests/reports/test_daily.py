@@ -1,7 +1,4 @@
-from io import BytesIO
 from typing import Any
-
-from openpyxl import load_workbook
 
 from tests.ledger.helpers import LedgerApi, day
 
@@ -11,10 +8,9 @@ class TestReport(LedgerApi):
         self,
         date_from: str,
         date_to: str,
-        url: str = "/ledger/report",
     ) -> Any:
         return self.client.get(
-            url=url,
+            url="/ledger/report",
             params={
                 "date_from": date_from,
                 "date_to": date_to,
@@ -184,56 +180,3 @@ class TestReport(LedgerApi):
             422,
             "Начало периода позже его конца",
         )
-
-    def test_xlsx_has_the_totals_and_the_entries(self) -> None:
-        self.make_ledger()
-
-        response = self.report(
-            date_from=day(
-                shift=-3,
-            ),
-            date_to=day(),
-            url="/ledger/report.xlsx",
-        )
-
-        assert response.status_code == 200, response.text
-        assert (
-            response.headers["content-disposition"]
-            == f'attachment; filename="otchet_{
-                day(
-                    shift=-3,
-                )
-            }_{day()}.xlsx"'
-        )
-        workbook = load_workbook(
-            filename=BytesIO(
-                initial_bytes=response.content,
-            ),
-        )
-        assert workbook.sheetnames == ["Итоги", "Записи"]
-        totals = {
-            label: amount
-            for label, amount in workbook["Итоги"].iter_rows(
-                min_row=3,
-                values_only=True,
-            )
-        }
-        assert (totals["Остаток на начало"], totals["Остаток на конец"]) == (5000, 5720)
-        assert totals["Приходы товара"] == 20
-        assert (
-            totals["Касса на начало"],
-            totals["Продажи наличными"],
-            totals["Касса на конец"],
-            totals["Продажи безналом"],
-        ) == (0, 100, 560, 200)
-        rows = list(
-            workbook["Записи"].iter_rows(
-                min_row=2,
-                values_only=True,
-            ),
-        )
-        assert [(row[2], row[5]) for row in rows[1:4]] == [
-            (f"Продажа, сторнирована записью №{rows[3][0]}", -700),
-            ("Продажа", -300),
-            (f"Продажа, сторно №{rows[1][0]}", 700),
-        ]

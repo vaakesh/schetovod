@@ -286,10 +286,6 @@ export function getReport(dateFrom: string, dateTo: string): Promise<LedgerRepor
 }
 
 // the browser downloads the file by the url and takes the name from the response
-export function reportXlsxUrl(dateFrom: string, dateTo: string): string {
-  return `/api/ledger/report.xlsx${query({ date_from: dateFrom, date_to: dateTo })}`;
-}
-
 export function reportPdfUrl(dateFrom: string, dateTo: string): string {
   return `/api/ledger/report.pdf${query({ date_from: dateFrom, date_to: dateTo })}`;
 }
