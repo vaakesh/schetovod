@@ -228,6 +228,10 @@ class PaymentOut(BaseModel):
 
 class PostedInvoice(BaseModel):
     id: int
+    # confirmed, or reversed when its posting was cancelled
+    status: InvoiceStatus
+    # why the invoice can not be reversed now, None when it can, always set once reversed
+    reverse_block: str | None
     invoice_number: str
     invoice_date: OutputDate
     supplier: SupplierSummary
@@ -244,6 +248,20 @@ class PostedInvoice(BaseModel):
 class InvoiceConfirm(FormModel):
     # the day the goods came, the inflow goes into the ledger on it
     occurred_on: InvoiceDate
+
+
+class InvoiceReverse(FormModel):
+    # a new draft with the lines of the invoice, to post it again with the fixes
+    copy_to_draft: bool
+
+
+class ReversedInvoice(BaseModel):
+    id: int
+    reversal_entry_id: int
+    # the copy to fix, None when no copy was asked for
+    draft_id: int | None
+    # stock at retail prices after the reversal
+    balance: Decimal
 
 
 class PaymentCreate(FormModel):

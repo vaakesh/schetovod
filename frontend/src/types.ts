@@ -210,7 +210,15 @@ export interface ConfirmedInvoice {
   balance: string;
 }
 
-export type InvoiceStatus = "draft" | "confirmed" | "declined";
+export type InvoiceStatus = "draft" | "confirmed" | "declined" | "reversed";
+
+export interface ReversedInvoice {
+  id: number;
+  reversal_entry_id: number;
+  // the copy to fix, null when no copy was asked for
+  draft_id: number | null;
+  balance: string;
+}
 
 // the newest uploads first, or the biggest debt first
 export type InvoiceSort = "newest" | "debt";
@@ -250,6 +258,10 @@ export interface PostedLine {
 
 export interface PostedInvoice {
   id: number;
+  // confirmed, or reversed once its posting was cancelled
+  status: InvoiceStatus;
+  // why the invoice can not be reversed now, null when it can
+  reverse_block: string | null;
   invoice_number: string;
   invoice_date: string;
   supplier: SupplierSummary;

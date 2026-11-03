@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getLedger, reverseEntry } from "../api";
+import { getLedger, reverseEntry, reverseInvoice } from "../api";
 import type { Ask } from "../components/ConfirmDialog";
 import LedgerBatchDialog from "../components/LedgerBatchDialog";
 import LedgerEntryDialog from "../components/LedgerEntryDialog";
@@ -86,9 +86,17 @@ export default function LedgerPage({ go, ask }: Props) {
   }
 
   async function reverse(entry: LedgerEntry) {
+    // an invoice is reversed with its revaluation, the invoice turns into a reversed one
+    const invoiceId = entry.kind === "invoice" ? entry.invoice_id : null;
     const ok = await ask({
-      title: `Сторнировать запись №${entry.id}?`,
-      text: "Появится обратная запись той же датой, исходная останется в журнале.",
+      title:
+        invoiceId !== null
+          ? `Сторнировать накладную ${entry.invoice_number ?? `№${invoiceId}`}?`
+          : `Сторнировать запись №${entry.id}?`,
+      text:
+        invoiceId !== null
+          ? "Приход отменится встречной записью той же датой, переоценка по накладной тоже. Цены товаров в каталоге не изменятся."
+          : "Появится обратная запись той же датой, исходная останется в журнале.",
       action: "Сторнировать",
       danger: true,
     });
@@ -97,7 +105,11 @@ export default function LedgerPage({ go, ask }: Props) {
     }
     setError(null);
     try {
-      await reverseEntry(entry.id);
+      if (invoiceId !== null) {
+        await reverseInvoice(invoiceId, false);
+      } else {
+        await reverseEntry(entry.id);
+      }
       await load();
     } catch (reason) {
       setError(message(reason));

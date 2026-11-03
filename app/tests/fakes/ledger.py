@@ -142,9 +142,23 @@ class FakeLedger:
         invoice_id: int,
     ) -> LedgerEntry | None:
         for entry in self.store.entries:
-            if entry.invoice_id == invoice_id:
+            if entry.invoice_id == invoice_id and entry.reverses_id is None:
                 return entry
         return None
+
+    async def revaluations_of_invoice(
+        self,
+        invoice_id: int,
+    ) -> list[LedgerEntry]:
+        item_ids = {
+            item.id for item in self.store.items if item.invoice_id == invoice_id
+        }
+        entry_ids = {
+            item.ledger_entry_id
+            for item in self.store.revaluations
+            if item.invoice_item_id in item_ids
+        }
+        return [entry for entry in self.store.entries if entry.id in entry_ids]
 
     async def aqsi_shifts_present(
         self,

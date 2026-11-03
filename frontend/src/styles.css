@@ -2038,6 +2038,15 @@ button {
   background: var(--accent);
 }
 
+.status-reversed::before {
+  background: var(--bad);
+}
+
+.page-head-meta .status-dot {
+  margin-right: 12px;
+  color: var(--bad);
+}
+
 .list-empty {
   margin: 0;
   padding: 32px 24px;

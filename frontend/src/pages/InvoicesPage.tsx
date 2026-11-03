@@ -34,20 +34,22 @@ const FILTERS: Filter[] = [
   { status: "confirmed", unpaid: false, label: "Проведённые" },
   { status: "confirmed", unpaid: true, label: "Неоплаченные" },
   { status: "declined", unpaid: false, label: "Отклонённые" },
+  { status: "reversed", unpaid: false, label: "Сторнированные" },
 ];
 
 const STATUS_LABELS: Record<InvoiceStatus, string> = {
   draft: "Черновик",
   confirmed: "Проведена",
   declined: "Отклонена",
+  reversed: "Сторнирована",
 };
 
-// a declined upload has nothing to open
+// a declined upload has nothing to open, a reversed invoice still shows what was posted
 function target(item: InvoiceListItem): Route | null {
   if (item.status === "draft") {
     return { page: "draft", id: item.id };
   }
-  if (item.status === "confirmed") {
+  if (item.status === "confirmed" || item.status === "reversed") {
     return { page: "posted", id: item.id };
   }
   return null;

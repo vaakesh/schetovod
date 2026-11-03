@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, status
 from core.enums import LedgerKind
 from core.http import conflict, invalid
 from ledger.models import LedgerEntry
-from ledger.repository import LedgerRepositoryDep, LedgerRow
+from ledger.repository import LedgerRepository, LedgerRepositoryDep, LedgerRow
 from ledger.rules import check_date, counts_cash, counts_stock
 from ledger.schemas import (
     BatchKind,
@@ -318,57 +318,15 @@ class LedgerService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Запись журнала не найдена",
             )
+        # an invoice has its own reversal, it also turns the invoice into a reversed one
         if entry.kind == LedgerKind.INVOICE:
             conflict(
-                detail="Проведённую накладную нельзя сторнировать",
+                detail="Накладную сторнируйте на её странице",
             )
-        if entry.reverses_id is not None:
-            conflict(
-                detail="Сторно нельзя сторнировать",
-            )
-        if await self.ledger.is_reversed(
-            entry_id=entry.id,
-        ):
-            conflict(
-                detail="Запись уже сторнирована",
-            )
-        if counts_stock(
-            entry=entry,
-        ) and await self.ledger.has_count_after(
-            entry=entry,
-            kind=LedgerKind.STOCKTAKE,
-        ):
-            conflict(
-                detail="После этой записи был переучёт, исправьте остаток новым переучётом",
-            )
-        if counts_cash(
-            entry=entry,
-        ) and await self.ledger.has_count_after(
-            entry=entry,
-            kind=LedgerKind.CASH_COUNT,
-        ):
-            conflict(
-                detail="После этой записи была сверка кассы, исправьте кассу новой сверкой",
-            )
-        if entry.kind == LedgerKind.REVALUATION:
-            for item in await self.ledger.revaluation_items_of(
-                entry_id=entry.id,
-            ):
-                # a price changed again since then is left as it is
-                if item.product.retail_price == item.new_price:
-                    reprice(
-                        product=item.product,
-                        price=item.old_price,
-                    )
-        return await self._post(
-            entry=LedgerEntry(
-                kind=entry.kind,
-                occurred_on=entry.occurred_on,
-                amount=-entry.amount,
-                cash=-entry.cash,
-                # reverses_id already says what it cancels
-                comment=None,
-                reverses_id=entry.id,
+        return await self.finish(
+            entry=await reverse_entry(
+                ledger=self.ledger,
+                entry=entry,
             ),
         )
 
@@ -405,6 +363,75 @@ LedgerServiceDep = Annotated[
         dependency=LedgerService,
     ),
 ]
+
+
+async def check_reversible(
+    ledger: LedgerRepository,
+    entry: LedgerEntry,
+) -> None:
+    """a reversal may not change what a later count fixed"""
+    if entry.reverses_id is not None:
+        conflict(
+            detail="Сторно нельзя сторнировать",
+        )
+    if await ledger.is_reversed(
+        entry_id=entry.id,
+    ):
+        conflict(
+            detail="Запись уже сторнирована",
+        )
+    if counts_stock(
+        entry=entry,
+    ) and await ledger.has_count_after(
+        entry=entry,
+        kind=LedgerKind.STOCKTAKE,
+    ):
+        conflict(
+            detail="После этой записи был переучёт, исправьте остаток новым переучётом",
+        )
+    if counts_cash(
+        entry=entry,
+    ) and await ledger.has_count_after(
+        entry=entry,
+        kind=LedgerKind.CASH_COUNT,
+    ):
+        conflict(
+            detail="После этой записи была сверка кассы, исправьте кассу новой сверкой",
+        )
+
+
+async def reverse_entry(
+    ledger: LedgerRepository,
+    entry: LedgerEntry,
+) -> LedgerEntry:
+    """the ledger is never edited, a mistake is cancelled by an opposite entry on the same day"""
+    await check_reversible(
+        ledger=ledger,
+        entry=entry,
+    )
+    if entry.kind == LedgerKind.REVALUATION:
+        for item in await ledger.revaluation_items_of(
+            entry_id=entry.id,
+        ):
+            # a price changed again since then is left as it is
+            if item.product.retail_price == item.new_price:
+                reprice(
+                    product=item.product,
+                    price=item.old_price,
+                )
+    return await ledger.create(
+        entry=LedgerEntry(
+            kind=entry.kind,
+            occurred_on=entry.occurred_on,
+            amount=-entry.amount,
+            cash=-entry.cash,
+            # reverses_id already says what it cancels
+            comment=None,
+            invoice_id=entry.invoice_id,
+            invoice_status=entry.invoice_status,
+            reverses_id=entry.id,
+        ),
+    )
 
 
 def entry_supplier_name(row: LedgerRow) -> str | None:

@@ -11,7 +11,7 @@ from sqlalchemy.orm import InstrumentedAttribute, aliased, selectinload
 
 from core.db import SessionDep
 from core.enums import LedgerKind
-from invoices.models import Invoice
+from invoices.models import Invoice, InvoiceItem
 from ledger.models import LedgerEntry, RevaluationItem
 from suppliers.models import Supplier
 
@@ -137,6 +137,37 @@ class LedgerRepository:
             result,
         )
 
+    async def revaluations_of_invoice(
+        self,
+        invoice_id: int,
+    ) -> list[LedgerEntry]:
+        """the revaluations of the old stock the lines of the invoice brought"""
+        result = await self.session.scalars(
+            statement=select(
+                LedgerEntry,
+            )
+            .where(
+                LedgerEntry.id.in_(
+                    other=select(
+                        RevaluationItem.ledger_entry_id,
+                    )
+                    .join(
+                        target=InvoiceItem,
+                        onclause=InvoiceItem.id == RevaluationItem.invoice_item_id,
+                    )
+                    .where(
+                        InvoiceItem.invoice_id == invoice_id,
+                    ),
+                ),
+            )
+            .order_by(
+                LedgerEntry.id,
+            ),
+        )
+        return list(
+            result,
+        )
+
     async def sums_by_kind(
         self,
         date_from: date,
@@ -212,6 +243,10 @@ class LedgerRepository:
                 LedgerEntry,
             ).where(
                 LedgerEntry.invoice_id == invoice_id,
+                # the posting itself, not its reversal
+                LedgerEntry.reverses_id.is_(
+                    other=None,
+                ),
             ),
         )
 

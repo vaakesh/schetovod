@@ -20,6 +20,7 @@ from invoices.extraction import InvoiceExtraction
 from invoices.payments import InvoicePaymentServiceDep
 from invoices.posting import InvoicePostingServiceDep
 from invoices.queries import InvoiceQueryServiceDep
+from invoices.reversal import InvoiceReversalServiceDep
 from invoices.schemas import (
     AddedProducts,
     ConfirmedInvoice,
@@ -27,8 +28,10 @@ from invoices.schemas import (
     InvoiceConfirm,
     InvoiceDraft,
     InvoiceList,
+    InvoiceReverse,
     PaymentCreate,
     PostedInvoice,
+    ReversedInvoice,
 )
 from recognition.images import read_images
 from recognition.service import extract_invoice
@@ -170,6 +173,21 @@ async def get_posted(
 ) -> PostedInvoice:
     return await service.get_posted(
         invoice_id=invoice_id,
+    )
+
+
+@router.post(
+    path="/invoice/{invoice_id}/reverse",
+    response_model=ReversedInvoice,
+)
+async def reverse_invoice(
+    invoice_id: int,
+    payload: InvoiceReverse,
+    service: InvoiceReversalServiceDep,
+) -> ReversedInvoice:
+    return await service.reverse_invoice(
+        invoice_id=invoice_id,
+        copy_to_draft=payload.copy_to_draft,
     )
 
 

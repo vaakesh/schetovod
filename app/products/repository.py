@@ -8,7 +8,8 @@ from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.orm import aliased, selectinload
 
 from core.db import SessionDep
-from invoices.models import InvoiceItem
+from core.enums import InvoiceStatus
+from invoices.models import Invoice, InvoiceItem
 from products.models import Product, ProductAlias
 
 
@@ -234,15 +235,20 @@ class ProductRepository:
 
 def select_with_last_item() -> Select[Product, InvoiceItem]:
     """products with their last posted line, the line is None while a product was never posted"""
-    # the newest line of every product, items exist only for confirmed invoices
+    # the newest line of every product, a reversed invoice never brought its goods
     last_item_id = (
         select(
             func.max(
                 InvoiceItem.id,
             ),
         )
+        .join(
+            target=Invoice,
+            onclause=Invoice.id == InvoiceItem.invoice_id,
+        )
         .where(
             InvoiceItem.product_id == Product.id,
+            Invoice.status == InvoiceStatus.CONFIRMED,
         )
         .scalar_subquery()
     )

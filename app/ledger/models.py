@@ -8,7 +8,9 @@ from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -68,13 +70,15 @@ class LedgerEntry(Base):
     )
     invoice_id: Mapped[BigInt | None] = mapped_column(
         nullable=True,
-        unique=True,
     )
-    # copied from the invoice, only a confirmed invoice can be posted
+    # copied from the invoice, only a confirmed invoice can be posted,
+    # a reversal turns the invoice and both of its entries into reversed ones
     invoice_status: Mapped[InvoiceStatus | None] = mapped_column(
         invoice_status_enum,
         CheckConstraint(
-            sqltext=f"invoice_status = '{InvoiceStatus.CONFIRMED}'",
+            sqltext=(
+                f"invoice_status IN ('{InvoiceStatus.CONFIRMED}', '{InvoiceStatus.REVERSED}')"
+            ),
             name="invoice_status_confirmed",
         ),
         nullable=True,
@@ -104,7 +108,8 @@ class LedgerEntry(Base):
     )
 
     __table_args__ = (
-        # also blocks declining an invoice that is already posted
+        # also blocks declining an invoice that is already posted,
+        # a reversal of the invoice carries its new status over to the entries
         ForeignKeyConstraint(
             columns=[
                 "invoice_id",
@@ -114,6 +119,16 @@ class LedgerEntry(Base):
                 "invoices.id",
                 "invoices.status",
             ],
+            onupdate="CASCADE",
+        ),
+        # an invoice is posted once, its reversal points to the same invoice
+        Index(
+            "ledger_entries_invoice_id_key",
+            "invoice_id",
+            unique=True,
+            postgresql_where=text(
+                text="reverses_id IS NULL",
+            ),
         ),
         # an invoice entry always points to an invoice, other kinds never do
         CheckConstraint(
@@ -129,9 +144,13 @@ class LedgerEntry(Base):
             sqltext=f"kind = '{LedgerKind.SALE}' OR aqsi_shift_id IS NULL",
             name="aqsi_shift_sale",
         ),
-        # an invoice brings stock in and is never reversed, its invoice can not be unposted
+        # an invoice brings stock in, only its reversal takes it back out
         CheckConstraint(
-            sqltext=f"kind <> '{LedgerKind.INVOICE}' OR (amount >= 0 AND reverses_id IS NULL)",
+            sqltext=(
+                f"kind <> '{LedgerKind.INVOICE}' "
+                "OR (reverses_id IS NULL AND amount >= 0) "
+                "OR (reverses_id IS NOT NULL AND amount <= 0)"
+            ),
             name="invoice_amount",
         ),
         # a sale or a write-off takes stock out, only its reversal brings it back

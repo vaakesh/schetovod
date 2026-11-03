@@ -183,7 +183,7 @@ export default function App({ onSignedOut }: Props) {
           />
         );
       case "posted":
-        return <PostedInvoicePage key={route.id} id={route.id} go={go} />;
+        return <PostedInvoicePage key={route.id} id={route.id} ask={ask} go={go} />;
       case "catalog":
         return <CatalogPage ask={ask} go={go} cart={cart ?? null} onCart={setCart} />;
       case "orders":

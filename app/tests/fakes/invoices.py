@@ -145,13 +145,19 @@ class FakeInvoices:
     async def get_confirmed(
         self,
         invoice_id: int,
+        with_reversed: bool = False,
     ) -> Invoice | None:
         invoice = self.store.invoices.get(
             invoice_id,
         )
+        statuses = {InvoiceStatus.CONFIRMED}
+        if with_reversed:
+            statuses.add(
+                InvoiceStatus.REVERSED,
+            )
         if (
             invoice is None
-            or invoice.status != InvoiceStatus.CONFIRMED
+            or invoice.status not in statuses
             or invoice.supplier_id is None
         ):
             return None
@@ -180,7 +186,11 @@ class FakeInvoices:
     ) -> list[DayPurchases]:
         days: dict[date, DayPurchases] = {}
         for entry in self.store.entries:
-            if entry.invoice_id is None or entry.occurred_on < date_from:
+            if (
+                entry.invoice_id is None
+                or entry.invoice_status != InvoiceStatus.CONFIRMED
+                or entry.occurred_on < date_from
+            ):
                 continue
             row = days.setdefault(
                 entry.occurred_on,
@@ -251,7 +261,11 @@ class FakeInvoices:
     ) -> list[DebtRow]:
         rows = []
         for entry in self.store.entries:
-            if entry.invoice_id is None or entry.occurred_on > on:
+            if (
+                entry.invoice_id is None
+                or entry.invoice_status != InvoiceStatus.CONFIRMED
+                or entry.occurred_on > on
+            ):
                 continue
             invoice = self.store.invoices[entry.invoice_id]
             if invoice.supplier_id is None:

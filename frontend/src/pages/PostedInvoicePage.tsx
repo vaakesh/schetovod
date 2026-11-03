@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { getPosted } from "../api";
+import { getPosted, reverseInvoice } from "../api";
+import type { Ask } from "../components/ConfirmDialog";
 import PageHead from "../components/PageHead";
 import PaymentsBlock from "../components/PaymentsBlock";
 import { formatDate, formatMoney, formatNumber, formatText } from "../format";
@@ -10,12 +11,15 @@ import type { PostedInvoice } from "../types";
 
 interface Props {
   id: number;
+  ask: Ask;
   go: (route: Route) => void;
 }
 
-export default function PostedInvoicePage({ id, go }: Props) {
+export default function PostedInvoicePage({ id, ask, go }: Props) {
   const [invoice, setInvoice] = useState<PostedInvoice | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   // the pinned name column gets its edge only once the table is scrolled sideways
   const [scrolled, setScrolled] = useState(false);
 
@@ -24,6 +28,43 @@ export default function PostedInvoicePage({ id, go }: Props) {
       .then(setInvoice)
       .catch((reason) => setError(message(reason)));
   }, [id]);
+
+  async function reverse(copyToDraft: boolean) {
+    if (!invoice) {
+      return;
+    }
+    const ok = await ask(
+      copyToDraft
+        ? {
+            title: `Исправить накладную ${invoice.invoice_number}?`,
+            text: "Накладная будет сторнирована, а её строки откроются черновиком. Исправьте его и проведите заново.",
+            action: "Сторнировать и исправить",
+          }
+        : {
+            title: `Сторнировать накладную ${invoice.invoice_number}?`,
+            text: "Приход отменится встречной записью в журнале тем же днём. Цены товаров в каталоге не изменятся.",
+            action: "Сторнировать",
+            danger: true,
+          },
+    );
+    if (!ok) {
+      return;
+    }
+    setActionError(null);
+    setBusy(true);
+    try {
+      const result = await reverseInvoice(invoice.id, copyToDraft);
+      if (result.draft_id !== null) {
+        go({ page: "draft", id: result.draft_id });
+        return;
+      }
+      setInvoice(await getPosted(invoice.id));
+    } catch (reason) {
+      setActionError(message(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (error) {
     return (
@@ -61,8 +102,35 @@ export default function PostedInvoicePage({ id, go }: Props) {
             <span className="title-word">от</span> {formatDate(invoice.invoice_date)}
           </>
         }
-        meta={`${invoice.supplier.name} · ИНН ${formatText(invoice.supplier.inn)}`}
+        meta={
+          <>
+            {invoice.status === "reversed" && (
+              <span className="status-dot status-reversed">Сторнирована</span>
+            )}
+            {`${invoice.supplier.name} · ИНН ${formatText(invoice.supplier.inn)}`}
+          </>
+        }
       >
+        {invoice.status === "confirmed" && invoice.reverse_block === null && (
+          <>
+            <button
+              type="button"
+              className="button button-ghost"
+              disabled={busy}
+              onClick={() => void reverse(false)}
+            >
+              Сторнировать
+            </button>
+            <button
+              type="button"
+              className="button button-soft"
+              disabled={busy}
+              onClick={() => void reverse(true)}
+            >
+              Исправить
+            </button>
+          </>
+        )}
         <a
           className="button button-soft"
           href="#/ledger"
@@ -74,6 +142,14 @@ export default function PostedInvoicePage({ id, go }: Props) {
           Запись журнала №{invoice.ledger_entry_id}
         </a>
       </PageHead>
+      {invoice.status === "confirmed" && invoice.reverse_block !== null && (
+        <p className="page-notice">{invoice.reverse_block}</p>
+      )}
+      {actionError && (
+        <div className="alert list-alert">
+          <pre>{actionError}</pre>
+        </div>
+      )}
 
       <section className="sheet">
         <div
@@ -147,7 +223,8 @@ export default function PostedInvoicePage({ id, go }: Props) {
         </div>
       </section>
 
-      <PaymentsBlock invoice={invoice} onChange={setInvoice} />
+      {/* a reversed invoice owes nothing and had no payments */}
+      {invoice.status === "confirmed" && <PaymentsBlock invoice={invoice} onChange={setInvoice} />}
     </main>
   );
 }

@@ -24,6 +24,7 @@ import type {
   ProfitReport,
   RevaluationCreate,
   RevaluationLineOut,
+  ReversedInvoice,
   ShiftImportResult,
   SupplierEdit,
   SupplierSummary,
@@ -408,6 +409,11 @@ export function saveForm(id: number, form: DraftForm): Promise<InvoiceDraft> {
 
 export function confirmInvoice(id: number, occurredOn: string): Promise<ConfirmedInvoice> {
   return request("POST", `/invoice/${id}/confirm`, { occurred_on: occurredOn });
+}
+
+// cancels the posting, with a copy the lines come back as a draft to fix
+export function reverseInvoice(id: number, copyToDraft: boolean): Promise<ReversedInvoice> {
+  return request("POST", `/invoice/${id}/reverse`, { copy_to_draft: copyToDraft });
 }
 
 export function addInvoiceProducts(id: number): Promise<AddedProducts> {

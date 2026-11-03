@@ -95,10 +95,10 @@ class Invoice(Base):
     )
 
     __table_args__ = (
-        # confirmed invoices need an identity, drafts and declined uploads may be incomplete
+        # posted invoices need an identity, drafts and declined uploads may be incomplete
         CheckConstraint(
             sqltext=(
-                f"status <> '{InvoiceStatus.CONFIRMED}' OR "
+                f"status NOT IN ('{InvoiceStatus.CONFIRMED}', '{InvoiceStatus.REVERSED}') OR "
                 "(supplier_id IS NOT NULL AND invoice_number IS NOT NULL "
                 "AND invoice_date IS NOT NULL)"
             ),
@@ -114,7 +114,7 @@ class Invoice(Base):
             "id",
             "status",
         ),
-        # only confirmed invoices are unique, a declined one may be uploaded again
+        # only confirmed invoices are unique, a declined or reversed one may be posted again
         Index(
             "invoices_supplier_id_invoice_number_invoice_date_key",
             "supplier_id",

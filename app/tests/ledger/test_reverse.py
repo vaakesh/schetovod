@@ -122,7 +122,7 @@ class TestReverse(LedgerApi):
                 entry_id=inflow.id,
                 expected=409,
             )["detail"]
-            == "Проведённую накладную нельзя сторнировать"
+            == "Накладную сторнируйте на её странице"
         )
         self.reverse(
             entry_id=999,

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from pydantic import JsonValue
 
 from core.http import invalid
-from core.schema_types import MAX_LINE_NO
+from core.schema_types import MAX_LINE_NO, format_invoice_date
 from invoices.calculations import printed_cost_total_field, source_total_field
 from invoices.extraction import InvoiceExtraction, InvoiceItemExtraction
 from invoices.models import Invoice
@@ -39,14 +41,9 @@ async def initial_form(
             "invoice_number": read["invoice_number"],
             "invoice_date": read["invoice_date"],
             "supplier": supplier,
-            "totals": {
-                "cost_total": read["totals"][
-                    printed_cost_total_field(
-                        invoice=extraction,
-                    )
-                ],
-                "base_total": read["totals"]["base_total"],
-            },
+            "totals": printed_totals(
+                extraction=extraction,
+            ),
             "lines": [
                 {
                     "line_no": line_no,
@@ -69,6 +66,89 @@ async def initial_form(
                 )
             ],
         },
+    )
+
+
+def printed_totals(
+    extraction: InvoiceExtraction,
+) -> dict[str, JsonValue]:
+    """the totals as the model read them, to check the lines against"""
+    read = extraction.totals.model_dump(
+        mode="json",
+    )
+    return {
+        "cost_total": read[
+            printed_cost_total_field(
+                invoice=extraction,
+            )
+        ],
+        "base_total": read["base_total"],
+    }
+
+
+def posted_form(
+    invoice: Invoice,
+    extraction: InvoiceExtraction,
+) -> DraftForm:
+    """the form of a posted invoice as it was posted, a copy to fix starts from it"""
+    if invoice.invoice_date is None:
+        raise RuntimeError(
+            "a posted invoice has a date",
+        )
+    totals: JsonValue = printed_totals(
+        extraction=extraction,
+    )
+    # the totals the user checked the lines against before posting
+    if invoice.form is not None:
+        totals = invoice.form["totals"]
+    # the form takes the strict text formats of the extraction
+    return DraftForm.model_validate(
+        obj={
+            "invoice_number": invoice.invoice_number,
+            "invoice_date": format_invoice_date(
+                value=invoice.invoice_date,
+            ),
+            "supplier": {"id": invoice.supplier_id},
+            "totals": totals,
+            "lines": [
+                {
+                    "line_no": item.line_no,
+                    "name": item.name,
+                    "quantity": _decimal_text(
+                        value=item.quantity,
+                    ),
+                    "unit": item.unit,
+                    "vat_percent": None
+                    if item.vat_percent is None
+                    else _decimal_text(
+                        value=item.vat_percent,
+                    ),
+                    "cost_price_total": _decimal_text(
+                        value=item.cost_price_total,
+                    ),
+                    "product_id": item.product_id,
+                    # the shelf price the invoice set, so the markup is not taken anew
+                    "retail_price": int(
+                        item.retail_price,
+                    ),
+                    "revalue_quantity": None,
+                }
+                for item in sorted(
+                    invoice.items,
+                    key=lambda item: item.line_no,
+                )
+            ],
+        },
+    )
+
+
+def _decimal_text(
+    value: Decimal,
+) -> str:
+    # fixed point, a stored value never turns into an exponent
+    return format(
+        value,
+        "f",
     )
 
 

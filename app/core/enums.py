@@ -5,6 +5,8 @@ class InvoiceStatus(StrEnum):
     DRAFT = "draft"
     CONFIRMED = "confirmed"
     DECLINED = "declined"
+    # a confirmed invoice cancelled by a reversal in the ledger, it stays for the history
+    REVERSED = "reversed"
 
 
 class OrderStatus(StrEnum):

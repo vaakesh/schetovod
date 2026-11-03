@@ -1,6 +1,8 @@
 from collections.abc import Collection
 from decimal import Decimal
 
+from core.enums import InvoiceStatus
+from invoices.models import InvoiceItem
 from products.models import Product, ProductAlias
 from products.repository import CatalogRow, ProductRow
 from tests.fakes.store import FakeStore
@@ -87,30 +89,41 @@ class FakeProducts:
         return [
             ProductRow(
                 product=product,
-                # items are appended as invoices are posted, the last one is the newest
-                last_item=next(
-                    (
-                        item
-                        for item in reversed(
-                            self.store.items,
-                        )
-                        if item.product_id == product.id
-                    ),
-                    None,
+                last_item=self.last_item(
+                    product_id=product.id,
                 ),
             )
             for product in found[:limit]
         ]
+
+    def last_item(
+        self,
+        product_id: int,
+    ) -> InvoiceItem | None:
+        """items are appended as invoices are posted, the last confirmed one is the newest"""
+        for item in reversed(
+            self.store.items,
+        ):
+            invoice = self.store.invoices.get(
+                item.invoice_id,
+            )
+            if item.product_id == product_id and (
+                invoice is None or invoice.status == InvoiceStatus.CONFIRMED
+            ):
+                return item
+        return None
 
     async def last_cost_prices(
         self,
         product_ids: Collection[int],
     ) -> dict[int, Decimal]:
         costs: dict[int, Decimal] = {}
-        # items are appended as invoices are posted, the last one wins
-        for item in self.store.items:
-            if item.product_id in product_ids:
-                costs[item.product_id] = item.cost_price
+        for product_id in product_ids:
+            item = self.last_item(
+                product_id=product_id,
+            )
+            if item is not None:
+                costs[product_id] = item.cost_price
         return costs
 
     async def rows(
@@ -120,15 +133,8 @@ class FakeProducts:
         return {
             product.id: ProductRow(
                 product=product,
-                last_item=next(
-                    (
-                        item
-                        for item in reversed(
-                            self.store.items,
-                        )
-                        if item.product_id == product.id
-                    ),
-                    None,
+                last_item=self.last_item(
+                    product_id=product.id,
                 ),
             )
             for product in self.store.products.values()
@@ -143,15 +149,8 @@ class FakeProducts:
         return [
             CatalogRow(
                 product=product,
-                last_item=next(
-                    (
-                        item
-                        for item in reversed(
-                            self.store.items,
-                        )
-                        if item.product_id == product.id
-                    ),
-                    None,
+                last_item=self.last_item(
+                    product_id=product.id,
                 ),
                 aliases=[
                     alias

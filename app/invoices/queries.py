@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, status
 from core.enums import InvoiceSort, InvoiceStatus
 from invoices.models import Invoice
 from invoices.repository import InvoiceRepository, InvoiceRepositoryDep
+from invoices.reversal import reverse_block
 from invoices.schemas import (
     InvoiceList,
     InvoiceListItem,
@@ -73,6 +74,7 @@ class InvoiceQueryService:
     ) -> PostedInvoice:
         invoice = await self.invoices.get_confirmed(
             invoice_id=invoice_id,
+            with_reversed=True,
         )
         entry = await self.ledger.get_for_invoice(
             invoice_id=invoice_id,
@@ -82,6 +84,12 @@ class InvoiceQueryService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Проведённая накладная не найдена",
             )
+        blocked = await reverse_block(
+            invoices=self.invoices,
+            ledger=self.ledger,
+            invoice=invoice,
+            entry=entry,
+        )
         supplier = invoice.supplier
         if (
             supplier is None
@@ -93,7 +101,7 @@ class InvoiceQueryService:
             )
         items = sorted(
             invoice.items,
-            key=lambda item: item.id,
+            key=lambda item: item.line_no,
         )
         cost_total = sum(
             (item.cost_price_total for item in items),
@@ -112,6 +120,8 @@ class InvoiceQueryService:
         )
         return PostedInvoice(
             id=invoice.id,
+            status=invoice.status,
+            reverse_block=blocked,
             invoice_number=invoice.invoice_number,
             invoice_date=invoice.invoice_date,
             supplier=supplier_summary(
@@ -141,7 +151,12 @@ class InvoiceQueryService:
             retail_total=entry.amount,
             ledger_entry_id=entry.id,
             paid=paid,
-            debt=cost_total - paid,
+            # a reversed invoice owes nothing
+            debt=cost_total - paid
+            if invoice.status == InvoiceStatus.CONFIRMED
+            else Decimal(
+                value=0,
+            ),
             payments=[
                 PaymentOut(
                     id=payment.id,

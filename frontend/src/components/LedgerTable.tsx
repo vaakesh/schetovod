@@ -16,9 +16,9 @@ interface Props {
   imported?: Set<number>;
 }
 
-// an invoice is never reversed, a reversal and a reversed entry are final
+// a reversal and a reversed entry are final
 function reversible(entry: LedgerEntry): boolean {
-  return entry.kind !== "invoice" && entry.reverses_id === null && entry.reversed_by_id === null;
+  return entry.reverses_id === null && entry.reversed_by_id === null;
 }
 
 function DayHeading({ value, columns }: { value: string; columns: number }) {

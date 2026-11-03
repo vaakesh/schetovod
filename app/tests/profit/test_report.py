@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from core.enums import ExpenseBasis, LedgerKind, ReceiptKind
+from core.enums import ExpenseBasis, InvoiceStatus, LedgerKind, ReceiptKind
 from invoices.models import InvoiceItem
 from ledger.models import LedgerEntry
 from profit import service as profit_service
@@ -97,6 +97,7 @@ class TestProfit:
                     value=0,
                 ),
                 invoice_id=invoice_id,
+                invoice_status=InvoiceStatus.CONFIRMED,
             ),
         )
         self.store.items.append(

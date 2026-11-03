@@ -320,7 +320,14 @@ def _report_day(
     cash_notes: list[CashNote] = []
     for row in rows:
         entry = row.entry
-        if entry.kind == LedgerKind.INVOICE and entry.invoice_id is not None:
+        if entry.kind == LedgerKind.INVOICE:
+            # a reversed invoice and its reversal cancel each other out
+            if (
+                entry.invoice_id is None
+                or entry.reverses_id is not None
+                or row.reversed_by_id is not None
+            ):
+                continue
             invoices.append(
                 ReportInvoice(
                     supplier_name=entry_supplier_name(

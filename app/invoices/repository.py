@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import ScalarSelect, case, delete, func, or_, select
+from sqlalchemy import ScalarSelect, and_, case, delete, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from core.db import SessionDep
@@ -153,7 +153,13 @@ class InvoiceRepository:
             )
             .outerjoin(
                 target=LedgerEntry,
-                onclause=LedgerEntry.invoice_id == Invoice.id,
+                # the posting itself, not its reversal
+                onclause=and_(
+                    LedgerEntry.invoice_id == Invoice.id,
+                    LedgerEntry.reverses_id.is_(
+                        other=None,
+                    ),
+                ),
             )
             .order_by(
                 *order,
@@ -205,15 +211,25 @@ class InvoiceRepository:
     async def get_confirmed(
         self,
         invoice_id: int,
+        with_reversed: bool = False,
     ) -> Invoice | None:
         """with the supplier and the lines with their products"""
+        statuses = [
+            InvoiceStatus.CONFIRMED,
+        ]
+        if with_reversed:
+            statuses.append(
+                InvoiceStatus.REVERSED,
+            )
         return await self.session.scalar(
             statement=select(
                 Invoice,
             )
             .where(
                 Invoice.id == invoice_id,
-                Invoice.status == InvoiceStatus.CONFIRMED,
+                Invoice.status.in_(
+                    statuses,
+                ),
             )
             .options(
                 selectinload(
@@ -264,6 +280,8 @@ class InvoiceRepository:
             )
             .where(
                 LedgerEntry.occurred_on >= date_from,
+                # a reversed invoice and its reversal carry the reversed status, both are left out
+                LedgerEntry.invoice_status == InvoiceStatus.CONFIRMED,
             )
             .group_by(
                 LedgerEntry.occurred_on,
@@ -385,6 +403,8 @@ class InvoiceRepository:
             )
             .where(
                 LedgerEntry.occurred_on <= on,
+                # a reversed invoice owes nothing
+                LedgerEntry.invoice_status == InvoiceStatus.CONFIRMED,
                 cost_total > paid,
             )
             .order_by(
