@@ -4,6 +4,18 @@ const PATHS = {
   brand: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />,
   chevronLeft: <path d="m15 5-7 7 7 7" />,
   chevronRight: <path d="m9 5 7 7-7 7" />,
+  sidebarClose: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16m7-11-3 3 3 3" />
+    </>
+  ),
+  sidebarOpen: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16m4-11 3 3-3 3" />
+    </>
+  ),
   invoices: (
     <>
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />

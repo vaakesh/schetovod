@@ -58,6 +58,8 @@ function section(route: Route): Route["page"] {
 interface Props {
   route: Route;
   cart: Order | null | undefined;
+  hidden: boolean;
+  toggle: () => void;
   uploading: boolean;
   // photos are being recognized, signing out would lose their answers
   working: boolean;
@@ -65,28 +67,43 @@ interface Props {
   signOut: () => void;
 }
 
-export default function Sidebar({ route, cart, uploading, working, go, signOut }: Props) {
+export default function Sidebar({ route, cart, hidden, toggle, uploading, working, go, signOut }: Props) {
   const [theme, toggleTheme] = useTheme();
   const current = section(route);
   const themeLabel = theme === "dark" ? "Светлая тема" : "Тёмная тема";
+  const toggleLabel = hidden ? "Показать меню" : "Скрыть меню";
 
   return (
     <aside className="sidebar">
-      <button
-        type="button"
-        className="brand"
-        aria-label="Счетовод — на главную"
-        title="На главную"
-        disabled={uploading}
-        onClick={() => go({ page: "invoices" })}
-      >
-        <span className="brand-mark" aria-hidden="true">
-          <Icon name="brand" size={16} />
-        </span>
-        <span className="brand-name">Счетовод</span>
-      </button>
+      <div className="sidebar-head">
+        <button
+          type="button"
+          className="brand"
+          hidden={hidden}
+          aria-label="Счетовод — на главную"
+          title="На главную"
+          disabled={uploading}
+          onClick={() => go({ page: "invoices" })}
+        >
+          <span className="brand-mark" aria-hidden="true">
+            <Icon name="brand" size={16} />
+          </span>
+          <span className="brand-name">Счетовод</span>
+        </button>
+        <button
+          type="button"
+          className="sidebar-toggle"
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          aria-controls="sidebar-sections"
+          aria-expanded={!hidden}
+          onClick={toggle}
+        >
+          <Icon name={hidden ? "sidebarOpen" : "sidebarClose"} />
+        </button>
+      </div>
 
-      <nav className="nav" aria-label="Разделы">
+      <nav id="sidebar-sections" className="nav" aria-label="Разделы" hidden={hidden}>
         <SlidingThumb selector=".nav-item.active" className="nav-thumb" />
         {GROUPS.map((group) => (
           <section key={group.title} className="nav-group" aria-label={group.title}>
@@ -119,7 +136,7 @@ export default function Sidebar({ route, cart, uploading, working, go, signOut }
         ))}
       </nav>
 
-      <div className="nav-bottom">
+      <div className="nav-bottom" hidden={hidden}>
         <button
           type="button"
           className="nav-item nav-theme"

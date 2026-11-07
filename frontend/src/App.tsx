@@ -30,6 +30,16 @@ import type { InvoiceDraft, Order } from "./types";
 
 type Guard = () => Promise<boolean>;
 
+const SIDEBAR_KEY = "sidebar-hidden";
+
+function savedSidebarHidden(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 function batchStatus({ running, done, failed, total }: BatchUpload): string {
   if (running) {
     return `Распознаём накладные: готово ${done} из ${total}`;
@@ -47,6 +57,7 @@ export default function App({ onSignedOut }: Props) {
   const route = useRoute();
   const motion = useRouteMotion(route);
   const [ask, confirmDialog] = useConfirm();
+  const [sidebarHidden, setSidebarHidden] = useState(savedSidebarHidden);
   // a page with unsaved edits asks before it is left
   const guard = useRef<Guard | null>(null);
   const [uploaded, setUploaded] = useState<InvoiceDraft | null>(null);
@@ -164,6 +175,16 @@ export default function App({ onSignedOut }: Props) {
     }
   }
 
+  function toggleSidebar() {
+    const next = !sidebarHidden;
+    setSidebarHidden(next);
+    try {
+      window.localStorage.setItem(SIDEBAR_KEY, String(next));
+    } catch {
+      // the choice lasts until the page is reloaded
+    }
+  }
+
   function page() {
     switch (route.page) {
       case "draft":
@@ -219,10 +240,12 @@ export default function App({ onSignedOut }: Props) {
   }
 
   return (
-    <div className="shell">
+    <div className={sidebarHidden ? "shell shell-sidebar-hidden" : "shell"}>
       <Sidebar
         route={route}
         cart={cart}
+        hidden={sidebarHidden}
+        toggle={toggleSidebar}
         uploading={uploading !== null}
         working={uploading !== null || batch.running}
         go={(next) => void go(next)}
