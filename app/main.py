@@ -13,6 +13,7 @@ from core.telemetry import is_health_check, setup_telemetry, shutdown_telemetry
 from invoices.router import router as invoices_router
 from ledger.router import router as ledger_router
 from orders.router import router as orders_router
+from price_tags.router import router as price_tags_router
 from products.router import router as products_router
 from profit.router import router as profit_router
 from recognition.client import close_client
@@ -88,6 +89,9 @@ protected.include_router(
 )
 protected.include_router(
     router=profit_router,
+)
+protected.include_router(
+    router=price_tags_router,
 )
 
 app.include_router(

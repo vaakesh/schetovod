@@ -1377,6 +1377,107 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/* the price tag form, the columns follow the paper form */
+
+.price-tags-alert {
+  margin: 0 0 16px;
+  white-space: pre-line;
+}
+
+.price-tags td {
+  vertical-align: middle;
+}
+
+/* eleven columns, narrower gaps keep them on a laptop screen */
+.price-tags th,
+.price-tags td {
+  padding-right: 6px;
+  padding-left: 6px;
+}
+
+.price-tags .cell {
+  margin: 0;
+}
+
+.price-tags .cell-short {
+  width: 44px;
+}
+
+.price-tag-size {
+  width: 72px;
+}
+
+.price-tag-pack {
+  width: 80px;
+}
+
+.price-tags td.price-tag-name {
+  min-width: 200px;
+  width: 32%;
+}
+
+.price-tags td.price-tag-subtitle-cell {
+  min-width: 150px;
+  width: 22%;
+}
+
+.price-tag-sub {
+  font-weight: 400;
+}
+
+.price-tag-rub {
+  width: 64px;
+}
+
+.price-tags td.price-tag-origin {
+  min-width: 170px;
+}
+
+.price-tag-origin .price-tag-toggle {
+  margin-bottom: 6px;
+}
+
+.price-tag-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--hover);
+  border-radius: var(--radius-s);
+}
+
+.price-tag-toggle button {
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+
+.price-tag-toggle button.active {
+  color: var(--text);
+  font-weight: 500;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.price-tag-toggle button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.price-tag-suggest .menu-title {
+  white-space: pre-line;
+}
+
+.price-tag-subtitle {
+  font-weight: 400;
+  color: var(--muted);
+}
+
 /* inputs inside the table are outlined fields, so it is clear what can be edited */
 .cell {
   width: 100%;

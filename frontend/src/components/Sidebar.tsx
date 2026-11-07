@@ -26,7 +26,10 @@ const GROUPS: Group[] = [
   },
   {
     title: "Товары",
-    items: [{ route: { page: "catalog" }, label: "Каталог", icon: "catalog" }],
+    items: [
+      { route: { page: "catalog" }, label: "Каталог", icon: "catalog" },
+      { route: { page: "price-tags" }, label: "Ценники", icon: "priceTag" },
+    ],
   },
   {
     title: "Учёт",

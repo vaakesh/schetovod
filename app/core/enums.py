@@ -38,6 +38,20 @@ class ExpenseBasis(StrEnum):
     CARD_PERCENT = "card_percent"
 
 
+class PriceTagUnit(StrEnum):
+    # printed as «ШТ.»
+    PIECE = "piece"
+    # printed as «ВЕС»
+    WEIGHT = "weight"
+
+
+class PriceTagOrigin(StrEnum):
+    # printed as «Производитель»
+    MAKER = "maker"
+    # printed as «Страна»
+    COUNTRY = "country"
+
+
 class LedgerKind(StrEnum):
     INVOICE = "invoice"
     SALE = "sale"

@@ -28,6 +28,8 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.1.1",
     "taskiq[opentelemetry]>=0.11",
     "taskiq-redis>=1.0",
+    "pymupdf>=1.28.2",
+    "fonttools>=4.59.2",
 ]
 
 [dependency-groups]

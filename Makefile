@@ -3,7 +3,7 @@ PROD := docker compose -f compose.yml -f compose.prod.yml
 # telemetry is on in dev only when the local server-observability is running
 OBS_COLLECTOR := docker ps -q --filter network=observability --filter label=com.docker.compose.service=otel-collector --filter status=running
 
-.PHONY: up down user prod-deploy prod-status prod-logs prod-stop prod-user
+.PHONY: up down user price-tags prod-deploy prod-status prod-logs prod-stop prod-user prod-price-tags
 
 up: export OTEL_SDK_DISABLED = $(if $(shell $(OBS_COLLECTOR)),false,true)
 up: export DEPLOYMENT_ENVIRONMENT = development
@@ -17,6 +17,10 @@ down:
 # make user login=ivan, asks for the password
 user:
 	$(DEV) exec app python -m auth.create_user --login "$(login)"
+
+# make price-tags file=~/cenniki/result/general.json, known tags are skipped
+price-tags:
+	$(DEV) exec -T app python -m price_tags.import_tags < $(file)
 
 prod-deploy:
 	bash scripts/deploy-prod.sh
@@ -32,3 +36,6 @@ prod-stop:
 
 prod-user:
 	$(PROD) exec app python -m auth.create_user --login "$(login)"
+
+prod-price-tags:
+	$(PROD) exec -T app python -m price_tags.import_tags < $(file)

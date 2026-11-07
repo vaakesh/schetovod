@@ -11,6 +11,8 @@ from core.enums import (
     InvoiceStatus,
     LedgerKind,
     OrderStatus,
+    PriceTagOrigin,
+    PriceTagUnit,
     ReceiptKind,
 )
 
@@ -99,6 +101,22 @@ receipt_kind_enum = SQLAlchemyEnum(
 expense_basis_enum = SQLAlchemyEnum(
     ExpenseBasis,
     name="expense_basis",
+    native_enum=False,
+    create_constraint=True,
+    validate_strings=True,
+    values_callable=lambda enum_class: [member.value for member in enum_class],
+)
+price_tag_unit_enum = SQLAlchemyEnum(
+    PriceTagUnit,
+    name="price_tag_unit",
+    native_enum=False,
+    create_constraint=True,
+    validate_strings=True,
+    values_callable=lambda enum_class: [member.value for member in enum_class],
+)
+price_tag_origin_enum = SQLAlchemyEnum(
+    PriceTagOrigin,
+    name="price_tag_origin",
     native_enum=False,
     create_constraint=True,
     validate_strings=True,

@@ -1,5 +1,32 @@
 // mirrors backend domain schemas, decimals come as strings
 
+export type PriceTagUnit = "piece" | "weight";
+export type PriceTagOrigin = "maker" | "country";
+
+// everything printed on a shelf tag
+export interface PriceTagFields {
+  width_mm: number;
+  height_mm: number;
+  unit: PriceTagUnit;
+  // the weight or volume in the header, null shows only the unit
+  pack: string | null;
+  name: string;
+  subtitle: string | null;
+  // null leaves the price blank for a price written by hand
+  price: string | null;
+  origin: PriceTagOrigin;
+  origin_name: string;
+}
+
+export interface PriceTag extends PriceTagFields {
+  id: number;
+}
+
+export interface PriceTagPrintRow extends PriceTagFields {
+  // copies of the same tag
+  quantity: number;
+}
+
 export interface SupplierExtraction {
   name: string | null;
   inn: string | null;

@@ -19,6 +19,8 @@ import type {
   OrderList,
   PaymentCreate,
   PostedInvoice,
+  PriceTag,
+  PriceTagPrintRow,
   ProductEdit,
   ProductSummary,
   ProfitReport,
@@ -62,6 +64,13 @@ const FIELD_LABELS: Record<string, string> = {
   amount: "Сумма",
   counted: "Насчитали",
   comment: "Комментарий",
+  width_mm: "Размер",
+  height_mm: "Размер",
+  pack: "Граммовка",
+  subtitle: "Подназвание",
+  price: "Цена",
+  origin: "Производитель / страна",
+  origin_name: "Производитель / страна",
 };
 
 function problem(type: string): string {
@@ -81,7 +90,10 @@ function where(loc: (string | number)[]): string {
     if (part === "body" || part === "totals" || /^[A-Z]/.test(String(part))) {
       continue;
     }
-    if ((part === "lines" || part === "items") && typeof loc[index + 1] === "number") {
+    if (
+      (part === "lines" || part === "items" || part === "rows") &&
+      typeof loc[index + 1] === "number"
+    ) {
       parts.push(`Строка ${(loc[index + 1] as number) + 1}`);
       index++;
       continue;
@@ -157,7 +169,8 @@ export function onSessionLost(listener: () => void): () => void {
   return () => sessionLost.delete(listener);
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+// an expired access token is refreshed once and the request is repeated
+async function authorized(method: string, path: string, body?: unknown): Promise<Response> {
   let response = await send(method, path, body);
   if (response.status === 401 && !NO_REFRESH.includes(path)) {
     if (await refreshSession()) {
@@ -167,11 +180,26 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       sessionLost.forEach((listener) => listener());
     }
   }
+  return response;
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const response = await authorized(method, path, body);
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(errorText(response.status, data));
   }
   return data as T;
+}
+
+// a file built from the body of a POST, a plain link can only GET
+async function requestFile(method: string, path: string, body?: unknown): Promise<Blob> {
+  const response = await authorized(method, path, body);
+  if (!response.ok) {
+    const data: unknown = await response.json().catch(() => null);
+    throw new Error(errorText(response.status, data));
+  }
+  return response.blob();
 }
 
 export function login(body: { login: string; password: string }): Promise<UserSummary> {
@@ -317,6 +345,16 @@ export function searchSuppliers(q: string, limit?: number): Promise<SupplierSumm
 
 export function searchProducts(supplierId: number, q: string): Promise<ProductSummary[]> {
   return request("GET", `/supplier/${supplierId}/products${query({ q: q.trim() })}`);
+}
+
+// tags printed before whose name and subtitle hold every word of the query
+export function searchPriceTags(q: string): Promise<PriceTag[]> {
+  return request("GET", `/price-tags${query({ q: q.trim() })}`);
+}
+
+// the sheets to print, the new tags are remembered for the next search
+export function printPriceTags(rows: PriceTagPrintRow[]): Promise<Blob> {
+  return requestFile("POST", "/price-tags/print.pdf", { rows });
 }
 
 // every supplier with every product, without paging
