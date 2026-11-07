@@ -1545,6 +1545,11 @@ button {
   outline-offset: 1px;
 }
 
+/* fixed is placed by the layout viewport, a tablet keyboard pans the visible part away from it */
+.price-tag-suggest {
+  position: absolute;
+}
+
 .price-tag-suggest .menu-title {
   white-space: pre-line;
 }

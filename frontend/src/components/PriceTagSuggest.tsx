@@ -10,8 +10,31 @@ const SEARCH_DELAY_MS = 250;
 export const MIN_QUERY = 2;
 const WIDTH = 460;
 const ANCHOR_GAP = 6;
-const SCREEN_GAP = 24;
+// a keyboard leaves little room, the list may come close to the edge
+const SCREEN_GAP = 8;
+// below the field while a few tags fit there
+const MIN_HEIGHT = 160;
 const MAX_HEIGHT = 360;
+
+// the part of the page on screen in document coordinates,
+// a tablet keyboard covers part of the window but window.innerHeight stays the same
+function visibleArea(): { top: number; left: number; width: number; height: number } {
+  const viewport = window.visualViewport;
+  if (viewport) {
+    return {
+      top: viewport.pageTop,
+      left: viewport.pageLeft,
+      width: viewport.width,
+      height: viewport.height,
+    };
+  }
+  return {
+    top: window.scrollY,
+    left: window.scrollX,
+    width: window.innerWidth,
+    height: window.innerHeight,
+  };
+}
 
 export interface Suggestions {
   found: PriceTag[] | null;
@@ -61,32 +84,45 @@ interface Props {
 export default function PriceTagSuggest({ anchor, suggestions, active, onActive, onPick }: Props) {
   const [position, setPosition] = useState<React.CSSProperties | null>(null);
 
-  // fixed next to the field, the table scrolls sideways and would clip an absolute list
+  // in the coordinates of the document, in body and outside the table, the table would clip it
   useLayoutEffect(() => {
     function place() {
       const rect = anchor.getBoundingClientRect();
-      const below = window.innerHeight - rect.bottom - ANCHOR_GAP - SCREEN_GAP;
-      const above = rect.top - ANCHOR_GAP - SCREEN_GAP;
+      const view = visibleArea();
+      const top = rect.top + window.scrollY;
+      const bottom = rect.bottom + window.scrollY;
+      const below = view.top + view.height - bottom - ANCHOR_GAP - SCREEN_GAP;
+      const above = top - view.top - ANCHOR_GAP - SCREEN_GAP;
+      const width = Math.min(WIDTH, view.width - 2 * SCREEN_GAP);
       const left = Math.max(
-        SCREEN_GAP,
-        Math.min(rect.left, window.innerWidth - WIDTH - SCREEN_GAP),
+        view.left + SCREEN_GAP,
+        Math.min(rect.left + window.scrollX, view.left + view.width - width - SCREEN_GAP),
       );
       setPosition(
-        below >= 200 || below >= above
-          ? { top: rect.bottom + ANCHOR_GAP, left, maxHeight: Math.min(below, MAX_HEIGHT) }
+        below >= MIN_HEIGHT || below >= above
+          ? { top: bottom + ANCHOR_GAP, left, width, maxHeight: Math.min(below, MAX_HEIGHT) }
           : {
-              bottom: window.innerHeight - rect.top + ANCHOR_GAP,
+              // the list ends right above the field whatever its height
+              top: top - ANCHOR_GAP,
               left,
+              width,
               maxHeight: Math.min(above, MAX_HEIGHT),
+              transform: "translateY(-100%)",
             },
       );
     }
     place();
+    const viewport = window.visualViewport;
     window.addEventListener("scroll", place, true);
     window.addEventListener("resize", place);
+    // a tablet keyboard shrinks and pans only the visual viewport
+    viewport?.addEventListener("resize", place);
+    viewport?.addEventListener("scroll", place);
     return () => {
       window.removeEventListener("scroll", place, true);
       window.removeEventListener("resize", place);
+      viewport?.removeEventListener("resize", place);
+      viewport?.removeEventListener("scroll", place);
     };
   }, [anchor]);
 
@@ -98,7 +134,7 @@ export default function PriceTagSuggest({ anchor, suggestions, active, onActive,
   return createPortal(
     <div
       className="menu product-picker price-tag-suggest"
-      style={{ ...position, width: WIDTH }}
+      style={position}
       // a click on the list must not take the focus from the field
       onMouseDown={(event) => event.preventDefault()}
     >
