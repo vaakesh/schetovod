@@ -32,6 +32,48 @@ class PriceTagRepository:
     async def commit(self) -> None:
         await self.session.commit()
 
+    async def get(
+        self,
+        tag_id: int,
+    ) -> PriceTag | None:
+        return await self.session.get(
+            entity=PriceTag,
+            ident=tag_id,
+        )
+
+    async def find_by_key(
+        self,
+        dedup_key: str,
+    ) -> PriceTag | None:
+        return await self.session.scalar(
+            statement=select(
+                PriceTag,
+            ).where(
+                PriceTag.dedup_key == dedup_key,
+            ),
+        )
+
+    async def all(self) -> list[PriceTag]:
+        result = await self.session.scalars(
+            statement=select(
+                PriceTag,
+            ).order_by(
+                PriceTag.name,
+                PriceTag.id,
+            ),
+        )
+        return list(
+            result.all(),
+        )
+
+    async def delete(
+        self,
+        tag: PriceTag,
+    ) -> None:
+        await self.session.delete(
+            instance=tag,
+        )
+
     async def add_missing(
         self,
         tags: list[dict[str, Any]],

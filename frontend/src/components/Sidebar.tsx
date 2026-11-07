@@ -47,9 +47,12 @@ const GROUPS: Group[] = [
   },
 ];
 
-// a draft and a posted invoice belong to the invoices section
+// a draft and a posted invoice belong to the invoices section, the base of tags to the tags
 function section(route: Route): Route["page"] {
-  return route.page === "draft" || route.page === "posted" ? "invoices" : route.page;
+  if (route.page === "draft" || route.page === "posted") {
+    return "invoices";
+  }
+  return route.page === "price-tag-base" ? "price-tags" : route.page;
 }
 
 interface Props {

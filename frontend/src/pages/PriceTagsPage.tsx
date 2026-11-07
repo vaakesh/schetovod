@@ -5,6 +5,8 @@ import type { Ask } from "../components/ConfirmDialog";
 import Icon from "../components/icons";
 import PageHead from "../components/PageHead";
 import PriceTagSuggest, { MIN_QUERY, usePriceTagSearch } from "../components/PriceTagSuggest";
+import PriceTagTabs from "../components/PriceTagTabs";
+import ToggleField from "../components/ToggleField";
 import { plural } from "../format";
 import { message } from "../message";
 import {
@@ -22,43 +24,18 @@ import {
   type RowField,
   type SizeKey,
 } from "../priceTags";
+import type { Route } from "../router";
 import type { PriceTag, PriceTagOrigin, PriceTagUnit } from "../types";
 
 // a blob url lives as long as the page, the tab has read the file by then
 const PDF_URL_LIFETIME_MS = 60_000;
 
-interface Toggle<T extends string> {
-  value: T;
-  options: Record<T, string>;
-  label: string;
-  onChange: (value: T) => void;
-}
-
-// two options side by side, like the boxes to tick on the paper form
-function ToggleField<T extends string>({ value, options, label, onChange }: Toggle<T>) {
-  return (
-    <div className="price-tag-toggle" role="radiogroup" aria-label={label}>
-      {(Object.keys(options) as T[]).map((option) => (
-        <button
-          key={option}
-          type="button"
-          role="radio"
-          aria-checked={option === value}
-          className={option === value ? "active" : undefined}
-          onClick={() => onChange(option)}
-        >
-          {options[option]}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 interface Props {
   ask: Ask;
+  go: (route: Route) => void;
 }
 
-export default function PriceTagsPage({ ask }: Props) {
+export default function PriceTagsPage({ ask, go }: Props) {
   const [rows, setRows] = useState<FormRow[]>(loadRows);
   // the highlight of missing fields starts with the first try to print
   const [checked, setChecked] = useState(false);
@@ -213,6 +190,7 @@ export default function PriceTagsPage({ ask }: Props) {
         </button>
       </PageHead>
 
+      <PriceTagTabs current="price-tags" go={go} />
       {notice && <p className="page-notice">{notice}</p>}
       {error && <div className="alert price-tags-alert">{error}</div>}
 

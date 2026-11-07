@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Literal, Self
 
@@ -100,6 +101,7 @@ class PriceTagOut(BaseModel):
     price: Decimal | None
     origin: PriceTagOrigin
     origin_name: str
+    created_at: datetime
 
 
 class PrintRow(PriceTagFields):

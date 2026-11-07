@@ -1,11 +1,11 @@
 from collections.abc import Sequence
 from typing import Annotated, Any
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 
 from core.enums import PriceTagOrigin, PriceTagUnit
-from core.http import invalid
+from core.http import conflict, invalid
 from price_tags.models import PriceTag
 from price_tags.pdf import PriceTagError, PrintedTag, price_tags_pdf
 from price_tags.repository import PriceTagRepositoryDep
@@ -147,6 +147,7 @@ def price_tag_out(tag: PriceTag) -> PriceTagOut:
         price=tag.price,
         origin=tag.origin,
         origin_name=tag.origin_name,
+        created_at=tag.created_at,
     )
 
 
@@ -210,6 +211,96 @@ class PriceTagService:
         )
         await self.tags.commit()
         return pdf
+
+    async def all_tags(self) -> list[PriceTagOut]:
+        """the whole base, a few thousand rows at most, the page filters it itself"""
+        return [
+            price_tag_out(
+                tag=tag,
+            )
+            for tag in await self.tags.all()
+        ]
+
+    async def edit(
+        self,
+        tag_id: int,
+        fields: PriceTagFields,
+    ) -> PriceTagOut:
+        tag = await self._get(
+            tag_id=tag_id,
+        )
+        key = price_tag_key(
+            tag=fields,
+        )
+        same = await self.tags.find_by_key(
+            dedup_key=key,
+        )
+        if same is not None and same.id != tag.id:
+            conflict(
+                detail="Точно такой ценник уже есть в базе",
+            )
+        # a tag that does not print is not saved either
+        await self._check_prints(
+            fields=fields,
+        )
+        for column, value in price_tag_values(
+            tag=fields,
+        ).items():
+            setattr(
+                tag,
+                column,
+                value,
+            )
+        await self.tags.commit()
+        return price_tag_out(
+            tag=tag,
+        )
+
+    async def delete(
+        self,
+        tag_id: int,
+    ) -> None:
+        tag = await self._get(
+            tag_id=tag_id,
+        )
+        await self.tags.delete(
+            tag=tag,
+        )
+        await self.tags.commit()
+
+    async def _get(
+        self,
+        tag_id: int,
+    ) -> PriceTag:
+        tag = await self.tags.get(
+            tag_id=tag_id,
+        )
+        if tag is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Ценник не найден, обновите страницу",
+            )
+        return tag
+
+    async def _check_prints(
+        self,
+        fields: PriceTagFields,
+    ) -> None:
+        try:
+            await run_in_threadpool(
+                func=price_tags_pdf,
+                tags=[
+                    printed_tag(
+                        tag=fields,
+                    ),
+                ],
+            )
+        except PriceTagError as error:
+            invalid(
+                detail=str(
+                    error,
+                ),
+            )
 
 
 PriceTagServiceDep = Annotated[

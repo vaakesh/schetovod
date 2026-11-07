@@ -1478,6 +1478,82 @@ button {
   color: var(--muted);
 }
 
+/* the base of tags */
+
+.price-tag-base td {
+  vertical-align: middle;
+}
+
+.price-tag-base-name {
+  min-width: 260px;
+}
+
+.price-tag-base-title {
+  display: block;
+  font-weight: 500;
+  white-space: pre-line;
+}
+
+.price-tag-base-name .price-tag-subtitle {
+  display: block;
+  font-size: 13px;
+}
+
+.price-tag-picked {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.button.price-tag-delete {
+  color: var(--bad);
+}
+
+.button.price-tag-delete:not(:disabled):hover {
+  color: var(--bad);
+  background: var(--bad-soft);
+}
+
+.price-tag-link {
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.price-tag-link:hover {
+  text-decoration: underline;
+}
+
+/* the edit dialog, the delete stays apart from the save */
+
+.price-tag-dialog .modal-actions .price-tag-delete {
+  margin-right: auto;
+}
+
+.price-tag-dialog .price-tag-toggle {
+  align-self: flex-start;
+  margin-bottom: 6px;
+}
+
+.price-tag-textarea {
+  height: auto;
+  min-height: var(--control-h);
+  padding-top: 8px;
+  padding-bottom: 8px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.price-tag-price {
+  width: 120px;
+}
+
+.price-tag-kop {
+  width: 64px;
+}
+
 /* inputs inside the table are outlined fields, so it is clear what can be edited */
 .cell {
   width: 100%;

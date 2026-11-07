@@ -19,6 +19,7 @@ import InvoicesPage from "./pages/InvoicesPage";
 import LedgerPage from "./pages/LedgerPage";
 import OrdersPage from "./pages/OrdersPage";
 import PostedInvoicePage from "./pages/PostedInvoicePage";
+import PriceTagBasePage from "./pages/PriceTagBasePage";
 import PriceTagsPage from "./pages/PriceTagsPage";
 import ProfitPage from "./pages/ProfitPage";
 import ReportPage from "./pages/ReportPage";
@@ -188,7 +189,9 @@ export default function App({ onSignedOut }: Props) {
       case "catalog":
         return <CatalogPage ask={ask} go={go} cart={cart ?? null} onCart={setCart} />;
       case "price-tags":
-        return <PriceTagsPage ask={ask} />;
+        return <PriceTagsPage ask={ask} go={go} />;
+      case "price-tag-base":
+        return <PriceTagBasePage ask={ask} go={go} />;
       case "orders":
         return <OrdersPage ask={ask} go={go} cart={cart} onCart={setCart} />;
       case "ledger":

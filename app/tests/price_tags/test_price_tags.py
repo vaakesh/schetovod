@@ -366,3 +366,133 @@ class TestApi:
         )
 
         assert response.json() == []
+
+
+def fields_payload(**changes: Any) -> dict[str, Any]:
+    """the body of an edit, a form row without the copies"""
+    values = row(
+        **changes,
+    )
+    del values["quantity"]
+    return values
+
+
+class TestManage:
+    @pytest.fixture(
+        autouse=True,
+    )
+    def setup(
+        self,
+        store: FakeStore,
+        client: TestClient,
+    ) -> None:
+        self.store = store
+        self.client = client
+        response = client.post(
+            url="/price-tags/print.pdf",
+            json={
+                "rows": [
+                    row(),
+                    row(
+                        name="Сыр «Аристократ»",
+                        price="1255.00",
+                    ),
+                ],
+            },
+        )
+        assert response.status_code == 200, response.text
+        self.butter, self.cheese = store.price_tags
+
+    def test_the_whole_base_is_listed_by_name(self) -> None:
+        response = self.client.get(
+            url="/price-tags/all",
+        )
+
+        assert response.status_code == 200
+        assert [tag["name"] for tag in response.json()] == [
+            "Масло сливочное традиционное",
+            "Сыр «Аристократ»",
+        ]
+        assert response.json()[0]["created_at"]
+
+    def test_an_edit_changes_the_fields_and_the_key(self) -> None:
+        old_key = self.butter.dedup_key
+
+        response = self.client.put(
+            url=f"/price-tags/{self.butter.id}",
+            json=fields_payload(
+                price="399.00",
+                subtitle="",
+            ),
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["price"] == "399.00"
+        assert self.butter.price == Decimal(
+            value="399.00",
+        )
+        assert self.butter.subtitle is None
+        assert self.butter.dedup_key != old_key
+        # the old variant is free again, a print with it adds a new tag
+        self.client.post(
+            url="/price-tags/print.pdf",
+            json={
+                "rows": [
+                    row(),
+                ],
+            },
+        )
+        assert len(self.store.price_tags) == 3
+
+    def test_an_edit_into_another_tag_is_refused(self) -> None:
+        response = self.client.put(
+            url=f"/price-tags/{self.cheese.id}",
+            json=fields_payload(
+                name="масло  сливочное традиционное",
+            ),
+        )
+
+        assert response.status_code == 409
+        assert self.cheese.name == "Сыр «Аристократ»"
+
+    def test_an_edit_that_does_not_print_is_refused(self) -> None:
+        response = self.client.put(
+            url=f"/price-tags/{self.butter.id}",
+            json=fields_payload(
+                width_mm=40,
+                height_mm=50,
+                subtitle="м.д.ж. 82,5% " * 12,
+            ),
+        )
+
+        assert response.status_code == 422
+        assert self.butter.width_mm == 50
+
+    def test_a_tag_is_deleted(self) -> None:
+        response = self.client.delete(
+            url=f"/price-tags/{self.cheese.id}",
+        )
+
+        assert response.status_code == 204
+        assert self.store.price_tags == [
+            self.butter,
+        ]
+
+    @pytest.mark.parametrize(
+        argnames="method",
+        argvalues=[
+            "PUT",
+            "DELETE",
+        ],
+    )
+    def test_a_missing_tag_is_not_found(
+        self,
+        method: str,
+    ) -> None:
+        response = self.client.request(
+            method=method,
+            url="/price-tags/999",
+            json=fields_payload() if method == "PUT" else None,
+        )
+
+        assert response.status_code == 404

@@ -20,6 +20,7 @@ import type {
   PaymentCreate,
   PostedInvoice,
   PriceTag,
+  PriceTagFields,
   PriceTagPrintRow,
   ProductEdit,
   ProductSummary,
@@ -350,6 +351,19 @@ export function searchProducts(supplierId: number, q: string): Promise<ProductSu
 // tags printed before whose name and subtitle hold every word of the query
 export function searchPriceTags(q: string): Promise<PriceTag[]> {
   return request("GET", `/price-tags${query({ q: q.trim() })}`);
+}
+
+// the whole base, the page searches and sorts it itself
+export function getAllPriceTags(): Promise<PriceTag[]> {
+  return request("GET", "/price-tags/all");
+}
+
+export function editPriceTag(id: number, body: PriceTagFields): Promise<PriceTag> {
+  return request("PUT", `/price-tags/${id}`, body);
+}
+
+export async function deletePriceTag(id: number): Promise<void> {
+  await request("DELETE", `/price-tags/${id}`);
 }
 
 // the sheets to print, the new tags are remembered for the next search

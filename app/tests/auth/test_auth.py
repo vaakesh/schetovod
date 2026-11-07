@@ -639,7 +639,7 @@ ROUTES = [
 
 class TestEveryRouteIsClosed:
     def test_list_of_routes_holds_the_whole_api(self) -> None:
-        assert len(ROUTES) == 58
+        assert len(ROUTES) == 61
 
     @pytest.mark.parametrize(
         argnames=("method", "path"),

@@ -7,6 +7,7 @@ export type Route =
   | { page: "posted"; id: number }
   | { page: "catalog" }
   | { page: "price-tags" }
+  | { page: "price-tag-base" }
   | { page: "orders" }
   | { page: "ledger" }
   | { page: "report" }
@@ -30,6 +31,9 @@ export function parseRoute(hash: string): Route {
   }
   if (hash === "#/price-tags") {
     return { page: "price-tags" };
+  }
+  if (hash === "#/price-tags/base") {
+    return { page: "price-tag-base" };
   }
   if (hash === "#/orders") {
     return { page: "orders" };
@@ -61,6 +65,8 @@ export function routeHash(route: Route): string {
       return "#/catalog";
     case "price-tags":
       return "#/price-tags";
+    case "price-tag-base":
+      return "#/price-tags/base";
     case "orders":
       return "#/orders";
     case "ledger":

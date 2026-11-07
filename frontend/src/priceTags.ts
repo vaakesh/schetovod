@@ -1,5 +1,11 @@
 import { formatMoney } from "./format";
-import type { PriceTag, PriceTagOrigin, PriceTagPrintRow, PriceTagUnit } from "./types";
+import type {
+  PriceTag,
+  PriceTagFields,
+  PriceTagOrigin,
+  PriceTagPrintRow,
+  PriceTagUnit,
+} from "./types";
 
 // the four sizes the shop cuts, width by height in mm
 export const SIZES = [
@@ -120,7 +126,8 @@ export function rowProblems(row: FormRow): Set<RowField> {
   return problems;
 }
 
-export function printRow(row: FormRow): PriceTagPrintRow {
+// the printed fields of a row that passed rowProblems
+export function rowFields(row: FormRow): PriceTagFields {
   const size = SIZES.find((option) => option.key === row.size)!;
   return {
     width_mm: size.width,
@@ -132,8 +139,11 @@ export function printRow(row: FormRow): PriceTagPrintRow {
     price: `${Number(row.rub.trim())}.${(row.kop.trim() || "0").padStart(2, "0")}`,
     origin: row.origin,
     origin_name: row.originName.trim(),
-    quantity: Number(row.quantity),
   };
+}
+
+export function printRow(row: FormRow): PriceTagPrintRow {
+  return { ...rowFields(row), quantity: Number(row.quantity) };
 }
 
 // what tells two similar tags apart in the list of suggestions
@@ -159,6 +169,12 @@ export function loadRows(): FormRow[] {
     // a broken record starts a clean form
   }
   return [emptyRow()];
+}
+
+// tags from the base go to the end of the print form, one copy each
+export function addToForm(tags: PriceTag[]) {
+  const kept = loadRows().filter((row) => !isEmptyRow(row));
+  saveRows([...kept, ...tags.map((tag) => fillRow(emptyRow(), tag))]);
 }
 
 export function saveRows(rows: FormRow[]) {

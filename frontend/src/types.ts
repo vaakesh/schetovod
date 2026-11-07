@@ -20,6 +20,7 @@ export interface PriceTagFields {
 
 export interface PriceTag extends PriceTagFields {
   id: number;
+  created_at: string;
 }
 
 export interface PriceTagPrintRow extends PriceTagFields {
