@@ -56,9 +56,22 @@ class CashNote(BaseModel):
     comment: str | None
 
 
+class ReportMovement(BaseModel):
+    kind: LedgerKind
+    # the signed change in the stock or the till
+    amount: Decimal
+    comment: str | None = None
+
+
 class ReportDay(BaseModel):
     day: OutputDate
     invoices: list[ReportInvoice]
+    # the balances before the first entry of the day
+    opening: Decimal
+    cash_opening: Decimal
+    # active movements in ledger order, invoices combined at the first invoice
+    stock_movements: list[ReportMovement]
+    cash_movements: list[ReportMovement]
     sales_cash: Decimal
     sales_card: Decimal
     # signed, the cash ins, the cash outs and the cash counts of the day

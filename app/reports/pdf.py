@@ -5,7 +5,7 @@ from io import BytesIO
 from pathlib import Path
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
@@ -25,7 +25,7 @@ from reportlab.platypus import (
 
 from core.enums import LedgerKind
 from core.schema_types import format_invoice_date
-from reports.schemas import PeriodReport, PrintedInvoice, ReportDay
+from reports.schemas import PeriodReport, PrintedInvoice, ReportDay, ReportMovement
 
 # fonts-dejavu-core in the image, the built-in PDF fonts have no cyrillic
 FONT_DIR = Path(
@@ -46,10 +46,17 @@ SHADE = colors.HexColor(
 )
 MUTED = "#555555"
 
-CASH_LABELS = {
+WEEKDAYS = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+MOVEMENT_LABELS = {
+    LedgerKind.INVOICE: "накладные",
+    LedgerKind.SALE: "продажа",
+    LedgerKind.WRITE_OFF: "списание",
+    LedgerKind.STOCK_IN: "приход товара",
+    LedgerKind.STOCKTAKE: "переучёт",
+    LedgerKind.REVALUATION: "переоценка",
     LedgerKind.CASH_IN: "внесение",
     LedgerKind.CASH_OUT: "выдача",
-    LedgerKind.CASH_COUNT: "сверка",
+    LedgerKind.CASH_COUNT: "сверка кассы",
 }
 HEADER = (
     "Дата",
@@ -60,16 +67,11 @@ HEADER = (
     "Нал",
     "Безнал",
     "Выручка",
-    "Внес./выд.",
     "Касса",
     "Товар",
 )
-# the column of the cash ins and outs, its notes read from the left
-CASH_MOVES_COLUMN = 8
-# one value a day, the other columns have a row for each invoice or cash note
-DAY_COLUMNS = (0, 5, 6, 7, 9, 10)
 # millimetres, the frame of the landscape page is about 272 wide inside its padding
-WIDTHS = (15, 44, 22, 22, 22, 22, 22, 22, 36, 22, 22)
+WIDTHS = (15, 44, 22, 22, 22, 22, 22, 22, 40, 40)
 DEBT_HEADER = (
     "Фирма",
     "№",
@@ -111,7 +113,7 @@ def report_pdf_filename(report: PeriodReport) -> str:
 
 
 def report_pdf(report: PeriodReport) -> bytes:
-    """one row a day with the invoices of the day under it, then the debts to the suppliers"""
+    """daily invoices and balance movements, then the debts to the suppliers"""
     _register_fonts()
     styles = _Styles()
     date_from = _full_date(
@@ -139,7 +141,9 @@ def report_pdf(report: PeriodReport) -> bytes:
         ),
         Paragraph(
             text=(
-                "Касса и Товар — остатки на конец дня, Приход и Товар — в розничных ценах, "
+                "Касса и Товар — жирным остатки на начало и конец дня, "
+                "между ними изменения со знаком. Сторнированные операции не показаны. "
+                "Приход и Товар — в розничных ценах, "
                 "Закупка — сколько должны поставщику, Оплачено — по накладной на конец периода."
             ),
             style=styles.note,
@@ -220,6 +224,11 @@ class _Styles:
             fontName=FONT,
             fontSize=FONT_SIZE,
             leading=FONT_SIZE + 1.5,
+        )
+        self.movement = ParagraphStyle(
+            name="movement",
+            parent=self.cell,
+            alignment=TA_RIGHT,
         )
         # the printed invoices have fewer columns and room for a larger font
         self.invoice_cell = ParagraphStyle(
@@ -336,13 +345,6 @@ def _days_table(
                 value=sales_cash + sales_card,
             ),
             _money(
-                value=sum(
-                    (day.cash_moves for day in report.days),
-                    start=zero,
-                ),
-                signed=True,
-            ),
-            _money(
                 value=last.cash_after if last else report.cash_opening,
             ),
             _money(
@@ -358,13 +360,13 @@ def _days_table(
     commands: list[tuple] = [
         ("FONT", (0, 0), (-1, -1), FONT, FONT_SIZE),
         ("FONT", (0, 0), (-1, 0), FONT_BOLD, FONT_SIZE),
+        ("FONT", (-2, 1), (-1, 1), FONT_BOLD, FONT_SIZE),
         ("FONT", (0, total), (-1, total), FONT_BOLD, FONT_SIZE),
         ("BACKGROUND", (0, 0), (-1, 0), SHADE),
         ("BACKGROUND", (0, 1), (-1, 1), SHADE),
         ("BACKGROUND", (0, total), (-1, total), SHADE),
-        ("SPAN", (0, 1), (CASH_MOVES_COLUMN, 1)),
+        ("SPAN", (0, 1), (-3, 1)),
         ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-        ("ALIGN", (CASH_MOVES_COLUMN, 0), (CASH_MOVES_COLUMN, -1), "LEFT"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BOX", (0, 0), (-1, -1), 0.6, colors.black),
         ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.black),
@@ -374,18 +376,15 @@ def _days_table(
         ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
         ("LEFTPADDING", (0, 0), (-1, -1), 2),
         ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        ("LEFTPADDING", (CASH_MOVES_COLUMN, 0), (CASH_MOVES_COLUMN, -1), 5),
     ]
     for start, end in day_spans:
-        commands.append(
-            ("LINEABOVE", (0, start), (-1, start), 0.3, GRID),
+        commands.extend(
+            [
+                ("LINEABOVE", (0, start), (-1, start), 0.3, GRID),
+                ("FONT", (-2, start), (-1, start), FONT_BOLD, FONT_SIZE),
+                ("FONT", (-2, end), (-1, end), FONT_BOLD, FONT_SIZE),
+            ],
         )
-        # the day totals stand beside all the invoices of the day
-        if end > start:
-            for column in DAY_COLUMNS:
-                commands.append(
-                    ("SPAN", (column, start), (column, end)),
-                )
     table.setStyle(
         tblstyle=TableStyle(
             cmds=commands,
@@ -398,13 +397,14 @@ def _day_rows(
     day: ReportDay,
     styles: _Styles,
 ) -> list[list[object]]:
-    """the day totals go on the first row, the invoices and the cash notes each on a row of their own,
-    a tall cell spanning the day would stretch every row of it"""
+    """independent movement columns between shared opening and closing rows,
+    no day spans so a long day can continue on the next page"""
+    date_text = _short_date(
+        value=day.day,
+    )
     rows: list[list[object]] = [
         [
-            _short_date(
-                value=day.day,
-            ),
+            f"{date_text}\n{WEEKDAYS[day.day.weekday()]}",
             "",
             "",
             "",
@@ -422,42 +422,56 @@ def _day_rows(
                 blank_zero=True,
             ),
             _money(
-                value=day.cash_moves,
-                signed=True,
-                blank_zero=not day.cash_notes,
+                value=day.cash_opening,
             ),
             _money(
-                value=day.cash_after,
-            ),
-            _money(
-                value=day.balance_after,
+                value=day.opening,
             ),
         ],
     ]
-    # the notes start under the sum of the day
+    # each movement gets its own row between the opening and closing balances
     rows += [
         [""] * len(HEADER)
         for _ in range(
             max(
-                len(day.invoices),
-                len(day.cash_notes) + 1,
+                len(
+                    day.invoices,
+                ),
+                len(
+                    day.cash_movements,
+                )
+                + 2,
+                len(
+                    day.stock_movements,
+                )
+                + 2,
             )
             - 1,
         )
     ]
-    for row, note in zip(
+    rows[-1][-2] = _money(
+        value=day.cash_after,
+    )
+    rows[-1][-1] = _money(
+        value=day.balance_after,
+    )
+    for row, movement in zip(
         rows[1:],
-        day.cash_notes,
+        day.cash_movements,
         strict=False,
     ):
-        text = f"{CASH_LABELS[note.kind]} {_money(value=note.cash, signed=True)}"
-        if note.comment:
-            text = f"{text}: {note.comment}"
-        row[CASH_MOVES_COLUMN] = Paragraph(
-            text=_escape(
-                text=text,
-            ),
-            style=styles.note,
+        row[-2] = _movement_cell(
+            movement=movement,
+            styles=styles,
+        )
+    for row, movement in zip(
+        rows[1:],
+        day.stock_movements,
+        strict=False,
+    ):
+        row[-1] = _movement_cell(
+            movement=movement,
+            styles=styles,
         )
     for row, invoice in zip(
         rows,
@@ -480,6 +494,28 @@ def _day_rows(
             value=invoice.retail_total,
         )
     return rows
+
+
+def _movement_cell(
+    movement: ReportMovement,
+    styles: _Styles,
+) -> Paragraph:
+    amount = _money(
+        value=movement.amount,
+        signed=True,
+    )
+    label = MOVEMENT_LABELS[movement.kind]
+    if movement.comment:
+        label = f"{label} ({movement.comment})"
+    label = _escape(
+        text=label,
+    )
+    return Paragraph(
+        text=(
+            f'{amount}<br/><font size="{FONT_SIZE - 1}" color="{MUTED}">{label}</font>'
+        ),
+        style=styles.movement,
+    )
 
 
 def _debts_table(

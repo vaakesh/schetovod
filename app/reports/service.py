@@ -21,6 +21,7 @@ from reports.schemas import (
     PrintedLine,
     ReportDay,
     ReportInvoice,
+    ReportMovement,
     SupplierDebt,
 )
 
@@ -318,8 +319,47 @@ def _report_day(
     sales_cash = zero
     cash_moves = zero
     cash_notes: list[CashNote] = []
+    stock_movements: list[ReportMovement] = []
+    cash_movements: list[ReportMovement] = []
+    invoice_movement: ReportMovement | None = None
     for row in rows:
         entry = row.entry
+        if entry.reverses_id is None and row.reversed_by_id is None:
+            if entry.kind in (
+                LedgerKind.INVOICE,
+                LedgerKind.SALE,
+                LedgerKind.WRITE_OFF,
+                LedgerKind.STOCK_IN,
+                LedgerKind.STOCKTAKE,
+                LedgerKind.REVALUATION,
+            ):
+                if entry.kind == LedgerKind.INVOICE and invoice_movement is not None:
+                    invoice_movement.amount += entry.amount
+                else:
+                    movement = ReportMovement(
+                        kind=entry.kind,
+                        amount=entry.amount,
+                        comment=None
+                        if entry.kind == LedgerKind.INVOICE
+                        else entry.comment,
+                    )
+                    stock_movements.append(
+                        movement,
+                    )
+                    if entry.kind == LedgerKind.INVOICE:
+                        invoice_movement = movement
+            if entry.kind in (
+                LedgerKind.CASH_IN,
+                LedgerKind.CASH_OUT,
+                LedgerKind.CASH_COUNT,
+            ) or (entry.kind == LedgerKind.SALE and entry.cash != zero):
+                cash_movements.append(
+                    ReportMovement(
+                        kind=entry.kind,
+                        amount=entry.cash,
+                        comment=entry.comment,
+                    ),
+                )
         if entry.kind == LedgerKind.INVOICE:
             # a reversed invoice and its reversal cancel each other out
             if (
@@ -364,10 +404,15 @@ def _report_day(
                         comment=entry.comment,
                     ),
                 )
+    first = rows[0]
     last = rows[-1]
     return ReportDay(
         day=day,
         invoices=invoices,
+        opening=first.balance_after - first.entry.amount,
+        cash_opening=first.cash_after - first.entry.cash,
+        stock_movements=stock_movements,
+        cash_movements=cash_movements,
         sales_cash=sales_cash,
         sales_card=sales - sales_cash,
         cash_moves=cash_moves,
