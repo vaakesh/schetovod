@@ -134,11 +134,23 @@ export function rowFields(row: FormRow): PriceTagFields {
     height_mm: size.height,
     unit: row.unit,
     pack: row.pack.trim() || null,
-    name: row.name.trim(),
-    subtitle: row.subtitle.trim() || null,
+    name: row.name.replace(/\r\n?/g, "\n"),
+    subtitle: row.subtitle.trim() ? row.subtitle.replace(/\r\n?/g, "\n") : null,
     price: `${Number(row.rub.trim())}.${(row.kop.trim() || "0").padStart(2, "0")}`,
     origin: row.origin,
     origin_name: row.originName.trim(),
+  };
+}
+
+export function previewFields(row: FormRow): PriceTagFields | null {
+  if (!row.size) {
+    return null;
+  }
+  const fields = rowFields(row);
+  const problems = rowProblems(row);
+  return {
+    ...fields,
+    price: problems.has("rub") || problems.has("kop") ? null : fields.price,
   };
 }
 

@@ -22,6 +22,7 @@ import type {
   PriceTag,
   PriceTagFields,
   PriceTagPrintRow,
+  PriceTagPreview,
   ProductEdit,
   ProductSummary,
   ProfitReport,
@@ -369,6 +370,10 @@ export async function deletePriceTag(id: number): Promise<void> {
 // the sheets to print, the new tags are remembered for the next search
 export function printPriceTags(rows: PriceTagPrintRow[]): Promise<Blob> {
   return requestFile("POST", "/price-tags/print.pdf", { rows });
+}
+
+export function previewPriceTag(body: PriceTagFields): Promise<PriceTagPreview> {
+  return request("POST", "/price-tags/preview", body);
 }
 
 // every supplier with every product, without paging

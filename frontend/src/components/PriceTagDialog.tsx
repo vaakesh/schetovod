@@ -16,6 +16,8 @@ import {
 } from "../priceTags";
 import type { PriceTag, PriceTagOrigin, PriceTagUnit } from "../types";
 import Modal from "./Modal";
+import PriceTagPreview, { usePriceTagPreview } from "./PriceTagPreview";
+import PriceTagTextInput from "./PriceTagTextInput";
 import ToggleField from "./ToggleField";
 
 interface Props {
@@ -32,6 +34,7 @@ export default function PriceTagDialog({ tag, onClose, onSaved, onDelete }: Prop
   const [busy, setBusy] = useState(false);
 
   const problems = rowProblems(row);
+  const preview = usePriceTagPreview(row);
 
   function update(change: Partial<FormRow>) {
     setRow((current) => ({ ...current, ...change }));
@@ -105,23 +108,25 @@ export default function PriceTagDialog({ tag, onClose, onSaved, onDelete }: Prop
             </div>
             <label className="field">
               <span className="field-label">Название</span>
-              <textarea
-                className={`input price-tag-textarea${invalid("name")}`}
-                rows={2}
+              <PriceTagTextInput
+                layout={preview.layout?.name}
+                className={invalid("name")}
                 value={row.name}
                 onChange={(event) => update({ name: event.target.value })}
               />
             </label>
             <label className="field">
               <span className="field-label">Подназвание</span>
-              <textarea
-                className="input price-tag-textarea"
-                rows={2}
+              <PriceTagTextInput
+                layout={preview.layout?.subtitle}
+                subtitle
                 placeholder="Жирность, вкус, сорт"
                 value={row.subtitle}
                 onChange={(event) => update({ subtitle: event.target.value })}
               />
             </label>
+            <p className="price-tags-help">Enter — новая строка. Предпросмотр учитывает размер ценника.</p>
+            <PriceTagPreview row={row} preview={preview} />
             <div className="field-row">
               <label className="field">
                 <span className="field-label">Цена, руб.</span>

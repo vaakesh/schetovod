@@ -1,14 +1,53 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Response, status
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse
 
-from core.http import PageLimit
-from price_tags.schemas import PriceTagFields, PriceTagOut, PrintRequest
-from price_tags.service import PriceTagServiceDep
+from core.http import PageLimit, invalid
+from price_tags.pdf import FONT_DIR, PriceTagError, TagPreview, price_tag_preview
+from price_tags.schemas import PreviewRequest, PriceTagFields, PriceTagOut, PrintRequest
+from price_tags.service import PriceTagServiceDep, printed_tag
 
 router = APIRouter()
 
 PDF_MEDIA_TYPE = "application/pdf"
+
+
+@router.get(
+    path="/price-tags/fonts/{weight}.ttf",
+    response_class=FileResponse,
+)
+async def price_tag_font(
+    weight: Literal["Medium", "ExtraBold"],
+) -> FileResponse:
+    return FileResponse(
+        path=FONT_DIR / f"Inter-{weight}.ttf",
+        media_type="font/ttf",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+@router.post(
+    path="/price-tags/preview",
+    response_model=TagPreview,
+)
+async def preview_price_tag(
+    payload: PreviewRequest,
+) -> TagPreview:
+    try:
+        return await run_in_threadpool(
+            func=price_tag_preview,
+            tag=printed_tag(
+                tag=payload,
+            ),
+        )
+    except PriceTagError as error:
+        invalid(
+            detail=str(
+                error,
+            ),
+        )
 
 
 @router.get(

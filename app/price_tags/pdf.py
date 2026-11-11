@@ -92,6 +92,40 @@ Placement = tuple[PrintedTag, float, float]
 Box = tuple[float, float, float, float]
 
 
+@dataclass(
+    frozen=True,
+)
+class TextLayout:
+    width: float
+    height: float
+    font_size: float
+    leading: float
+
+
+@dataclass(
+    frozen=True,
+)
+class TitleLayout:
+    name: TextLayout
+    subtitle: TextLayout
+
+
+@dataclass(
+    frozen=True,
+)
+class DrawnTag:
+    rect: pymupdf.Rect
+    title: TitleLayout
+
+
+@dataclass(
+    frozen=True,
+)
+class TagPreview:
+    svg: str
+    title: TitleLayout
+
+
 class Fonts:
     """the real Inter 4.0 faces and metrics, never a system substitute"""
 
@@ -562,7 +596,7 @@ def draw_title(
     tag: PrintedTag,
     fonts: Fonts,
     k: float,
-) -> None:
+) -> TitleLayout:
     name_block = None
     sub_block = None
     try:
@@ -606,6 +640,24 @@ def draw_title(
                 x=box.x0,
                 y=top + name_block.used_height + gap,
             )
+        return TitleLayout(
+            name=TextLayout(
+                width=name_width,
+                height=name_block.used_height,
+                font_size=24 * k * name_block.scale,
+                leading=1.08,
+            ),
+            subtitle=TextLayout(
+                width=box.width,
+                height=sub_height,
+                font_size=min(
+                    tag.width_mm * 0.17,
+                    8.5 * k,
+                )
+                * (sub_block.scale if sub_block else 1),
+                leading=1.15,
+            ),
+        )
     finally:
         if name_block:
             name_block.close()
@@ -719,7 +771,7 @@ def draw_tag(
     y: float,
     tag: PrintedTag,
     fonts: Fonts,
-) -> pymupdf.Rect:
+) -> DrawnTag:
     wmm = tag.width_mm
     hmm = tag.height_mm
     rect = pymupdf.Rect(
@@ -887,14 +939,46 @@ def draw_tag(
         raise PriceTagError(
             f"Слишком маленький ценник: «{tag.name}»",
         )
-    draw_title(
+    title = draw_title(
         page=page,
         box=title_box,
         tag=tag,
         fonts=fonts,
         k=k,
     )
-    return rect
+    return DrawnTag(
+        rect=rect,
+        title=title,
+    )
+
+
+def price_tag_preview(
+    tag: PrintedTag,
+) -> TagPreview:
+    """the same drawing as the PDF, without laying out or saving a print job"""
+    with RENDER_LOCK:
+        fonts = get_fonts()
+        fonts.check_text(
+            tags=[tag],
+        )
+        with pymupdf.open() as document:
+            page = document.new_page(
+                width=tag.width_mm * MM,
+                height=tag.height_mm * MM,
+            )
+            drawing = draw_tag(
+                page=page,
+                x=0,
+                y=0,
+                tag=tag,
+                fonts=fonts,
+            )
+            return TagPreview(
+                svg=page.get_svg_image(
+                    text_as_path=True,
+                ),
+                title=drawing.title,
+            )
 
 
 def price_tags_pdf(
@@ -940,7 +1024,7 @@ def price_tags_pdf(
                         y=y,
                         tag=tag,
                         fonts=fonts,
-                    )
+                    ).rect
                     for tag, x, y in placements
                 ]
                 # the frames go last, a shared cutting line stays 0.9 pt thick

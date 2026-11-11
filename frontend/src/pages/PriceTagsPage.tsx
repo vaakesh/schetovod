@@ -6,6 +6,7 @@ import Icon from "../components/icons";
 import PageHead from "../components/PageHead";
 import PriceTagSuggest, { MIN_QUERY, usePriceTagSearch } from "../components/PriceTagSuggest";
 import PriceTagTabs from "../components/PriceTagTabs";
+import PriceTagTitleCells from "../components/PriceTagTitleCells";
 import ToggleField from "../components/ToggleField";
 import { plural } from "../format";
 import { message } from "../message";
@@ -111,19 +112,26 @@ export default function PriceTagsPage({ ask, go }: Props) {
   }
 
   function onNameKey(event: React.KeyboardEvent, key: number) {
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
+    if (event.key === "Enter" && !event.ctrlKey && !event.metaKey) {
+      setDismissed(true);
+      return;
+    }
     if (!showList) {
       return;
     }
     const count = listed.length;
     if (event.key === "Escape") {
       setDismissed(true);
-    } else if (event.key === "ArrowDown" && count > 0) {
+    } else if (event.key === "ArrowDown" && event.altKey && count > 0) {
       event.preventDefault();
       setActive((index) => (index + 1) % count);
-    } else if (event.key === "ArrowUp" && count > 0) {
+    } else if (event.key === "ArrowUp" && event.altKey && count > 0) {
       event.preventDefault();
       setActive((index) => (index - 1 + count) % count);
-    } else if (event.key === "Enter" && listed[active]) {
+    } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && listed[active]) {
       event.preventDefault();
       pick(key, listed[active]);
     }
@@ -191,6 +199,10 @@ export default function PriceTagsPage({ ask, go }: Props) {
       </PageHead>
 
       <PriceTagTabs current="price-tags" go={go} />
+      <p id="price-tags-text-help" className="price-tags-help">
+        Enter — новая строка. Справа — вид ценника при печати, с учётом размера и уменьшения шрифта.
+        Подсказку можно выбрать мышью или Ctrl+Enter, переключить — Alt+↑ / ↓.
+      </p>
       {notice && <p className="page-notice">{notice}</p>}
       {error && <div className="alert price-tags-alert">{error}</div>}
 
@@ -205,6 +217,7 @@ export default function PriceTagsPage({ ask, go }: Props) {
                 <th>Граммовка</th>
                 <th>Название</th>
                 <th>Подназвание</th>
+                <th>На ценнике</th>
                 <th className="num">Цена, руб.</th>
                 <th className="num">коп.</th>
                 <th>Производитель / страна</th>
@@ -250,35 +263,22 @@ export default function PriceTagsPage({ ask, go }: Props) {
                       onChange={(event) => update(row.key, { pack: event.target.value })}
                     />
                   </td>
-                  <td className="price-tag-name">
-                    <textarea
-                      className={`cell cell-name${invalid(row.key, "name") ? " cell-required" : ""}`}
-                      aria-label="Название"
-                      rows={1}
-                      placeholder="Товар и марка"
-                      value={row.name}
-                      onFocus={(event) => {
-                        setFocus({ key: row.key, anchor: event.currentTarget });
+                  <PriceTagTitleCells
+                    row={row}
+                    invalid={invalid(row.key, "name")}
+                    onFocus={(event) => {
+                      setFocus({ key: row.key, anchor: event.currentTarget });
+                      setDismissed(false);
+                    }}
+                    onBlur={() => setFocus(null)}
+                    onKeyDown={(event) => onNameKey(event, row.key)}
+                    onChange={(change) => {
+                      update(row.key, change);
+                      if (change.name !== undefined) {
                         setDismissed(false);
-                      }}
-                      onBlur={() => setFocus(null)}
-                      onKeyDown={(event) => onNameKey(event, row.key)}
-                      onChange={(event) => {
-                        update(row.key, { name: event.target.value });
-                        setDismissed(false);
-                      }}
-                    />
-                  </td>
-                  <td className="price-tag-subtitle-cell">
-                    <textarea
-                      className="cell cell-name price-tag-sub"
-                      aria-label="Подназвание"
-                      rows={1}
-                      placeholder="Жирность, вкус, сорт"
-                      value={row.subtitle}
-                      onChange={(event) => update(row.key, { subtitle: event.target.value })}
-                    />
-                  </td>
+                      }
+                    }}
+                  />
                   <td className="num">
                     <input
                       className={`cell cell-num price-tag-rub${invalid(row.key, "rub") ? " cell-required" : ""}`}
@@ -343,7 +343,7 @@ export default function PriceTagsPage({ ask, go }: Props) {
               ))}
               <tr className="row-add">
                 <td />
-                <td colSpan={10}>
+                <td colSpan={11}>
                   <button type="button" className="add-line" onClick={addRow}>
                     <Icon name="plus" size={14} /> Добавить строку
                   </button>

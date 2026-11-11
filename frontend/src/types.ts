@@ -28,6 +28,21 @@ export interface PriceTagPrintRow extends PriceTagFields {
   quantity: number;
 }
 
+export interface PriceTagTextLayout {
+  width: number;
+  height: number;
+  font_size: number;
+  leading: number;
+}
+
+export interface PriceTagPreview {
+  svg: string;
+  title: {
+    name: PriceTagTextLayout;
+    subtitle: PriceTagTextLayout;
+  };
+}
+
 export interface SupplierExtraction {
   name: string | null;
   inn: string | null;

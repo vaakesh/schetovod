@@ -1,12 +1,15 @@
 import json
 from decimal import Decimal
 from typing import Any
+from unittest.mock import Mock
+from xml.etree import ElementTree
 
 import pymupdf
 import pytest
 from fastapi.testclient import TestClient
 
 from core.enums import PriceTagOrigin, PriceTagUnit
+from price_tags import service as tag_service
 from price_tags.import_tags import read_tags
 from price_tags.pdf import PriceTagError, PrintedTag, layout, price_tags_pdf
 from price_tags.schemas import GeneralTag, PriceTagFields
@@ -217,6 +220,165 @@ class TestPdf:
             )
 
 
+class TestPreviewApi:
+    @pytest.mark.parametrize(
+        argnames=("width", "height", "font_size"),
+        argvalues=[
+            (40, 50, 16.97056),
+            (50, 80, 24),
+            (60, 70, 24.59268),
+            (70, 100, 31.74902),
+        ],
+    )
+    def test_renders_each_size_without_printing_or_saving(
+        self,
+        client: TestClient,
+        store: FakeStore,
+        monkeypatch: pytest.MonkeyPatch,
+        width: int,
+        height: int,
+        font_size: float,
+    ) -> None:
+        print_pdf = Mock(
+            side_effect=AssertionError(
+                "a preview must not create a print job",
+            ),
+        )
+        monkeypatch.setattr(
+            target=tag_service,
+            name="price_tags_pdf",
+            value=print_pdf,
+        )
+        payload = row(
+            width_mm=width,
+            height_mm=height,
+            name="Молоко",
+            subtitle=None,
+        )
+        del payload["quantity"]
+
+        response = client.post(
+            url="/price-tags/preview",
+            json=payload,
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert set(
+            body,
+        ) == {"svg", "title"}
+        assert set(
+            body["title"],
+        ) == {"name", "subtitle"}
+        assert set(
+            body["title"]["name"],
+        ) == {"width", "height", "font_size", "leading"}
+        assert set(
+            body["title"]["subtitle"],
+        ) == {"width", "height", "font_size", "leading"}
+        assert body["title"]["name"]["font_size"] == pytest.approx(
+            expected=font_size,
+            abs=0.001,
+        )
+        assert body["title"]["name"]["leading"] == 1.08
+        assert body["title"]["subtitle"]["leading"] == 1.15
+        svg = ElementTree.fromstring(
+            text=body["svg"],
+        )
+        assert svg.tag == "{http://www.w3.org/2000/svg}svg"
+        assert svg.findall(
+            path=".//{http://www.w3.org/2000/svg}path",
+        )
+        assert not svg.findall(
+            path=".//{http://www.w3.org/2000/svg}text",
+        )
+        assert store.price_tags == []
+        assert store.commits == 0
+        print_pdf.assert_not_called()
+
+    def test_shrinks_the_name_when_manual_lines_need_more_room(
+        self,
+        client: TestClient,
+    ) -> None:
+        payload = row(
+            width_mm=40,
+            height_mm=50,
+            name="Масло\nсливочное\nтрадиционное",
+            subtitle=None,
+        )
+        del payload["quantity"]
+
+        response = client.post(
+            url="/price-tags/preview",
+            json=payload,
+        )
+
+        assert response.status_code == 200
+        assert 5 <= response.json()["title"]["name"]["font_size"] < 16.9
+
+    def test_accepts_unfinished_fields(
+        self,
+        client: TestClient,
+        store: FakeStore,
+    ) -> None:
+        payload = row(
+            name="",
+            subtitle="",
+            origin_name="",
+            price=None,
+            pack=None,
+        )
+        del payload["quantity"]
+
+        response = client.post(
+            url="/price-tags/preview",
+            json=payload,
+        )
+
+        assert response.status_code == 200
+        assert "svg" in response.json()
+        assert store.price_tags == []
+        assert store.commits == 0
+
+    def test_reports_text_that_cannot_fit(
+        self,
+        client: TestClient,
+        store: FakeStore,
+    ) -> None:
+        payload = row(
+            width_mm=40,
+            height_mm=50,
+            subtitle="м.д.ж. 82,5% " * 12,
+        )
+        del payload["quantity"]
+
+        response = client.post(
+            url="/price-tags/preview",
+            json=payload,
+        )
+
+        assert response.status_code == 422
+        assert response.json() == {
+            "detail": f"Текст не помещается на ценник: «{payload['subtitle']}»",
+        }
+        assert store.price_tags == []
+        assert store.commits == 0
+
+    def test_requires_authorization(
+        self,
+        anonymous_client: TestClient,
+    ) -> None:
+        payload = row()
+        del payload["quantity"]
+
+        response = anonymous_client.post(
+            url="/price-tags/preview",
+            json=payload,
+        )
+
+        assert response.status_code == 401
+
+
 class TestApi:
     @pytest.fixture(
         autouse=True,
@@ -288,6 +450,25 @@ class TestApi:
 
         assert again.status_code == 200
         assert len(self.store.price_tags) == 2
+
+    def test_manual_line_breaks_are_printed_and_saved(self) -> None:
+        response = self.print_rows(
+            row(
+                name="Масло\nсливочное",
+                subtitle="традиционное\n82,5%",
+            ),
+        )
+
+        assert response.status_code == 200
+        with pymupdf.open(
+            stream=response.content,
+            filetype="pdf",
+        ) as document:
+            text = document[0].get_text()
+        assert "Масло\nсливочное\n" in text
+        assert "традиционное\n82,5%\n" in text
+        assert self.store.price_tags[0].name == "Масло\nсливочное"
+        assert self.store.price_tags[0].subtitle == "традиционное\n82,5%"
 
     @pytest.mark.parametrize(
         argnames="change",

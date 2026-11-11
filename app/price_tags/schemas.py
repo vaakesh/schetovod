@@ -104,6 +104,23 @@ class PriceTagOut(BaseModel):
     created_at: datetime
 
 
+class PreviewRequest(PriceTagFields):
+    """unfinished fields are allowed while the user types"""
+
+    name: Annotated[
+        str,
+        Field(
+            max_length=MAX_TEXT,
+        ),
+    ]
+    origin_name: Annotated[
+        str,
+        Field(
+            max_length=MAX_TEXT,
+        ),
+    ]
+
+
 class PrintRow(PriceTagFields):
     # copies of the same tag
     quantity: Annotated[

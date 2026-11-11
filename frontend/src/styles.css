@@ -1455,6 +1455,113 @@ button {
 
 /* the price tag form, the columns follow the paper form */
 
+@font-face {
+  font-family: "PriceTag Inter";
+  src: url("/api/price-tags/fonts/Medium.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "PriceTag Inter";
+  src: url("/api/price-tags/fonts/ExtraBold.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+}
+
+.price-tags-help {
+  margin: 0 0 16px;
+  max-width: 85ch;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.price-tags .price-tag-live-text,
+.price-tag-dialog .price-tag-live-text {
+  display: block;
+  box-sizing: content-box;
+  width: 180px;
+  max-width: calc(100% - 18px);
+  min-height: 2.4em;
+  padding: 8px;
+  margin: 0 auto;
+  overflow: hidden;
+  resize: none;
+  font-family: "PriceTag Inter", sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  font-feature-settings: normal;
+  font-kerning: none;
+  font-variant-ligatures: none;
+  line-height: 1.08;
+  text-align: center;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.price-tags .price-tag-live-subtitle,
+.price-tag-dialog .price-tag-live-subtitle {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.price-tag-live-text::placeholder {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.price-tag-preview-cell {
+  min-width: 170px;
+}
+
+.price-tag-preview-paper {
+  position: relative;
+  max-width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+  color: #000;
+  background: #fff;
+  border: 1px solid #000;
+}
+
+.price-tag-preview-paper img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.price-tag-preview[aria-busy="true"] img {
+  opacity: 0.35;
+}
+
+.price-tag-preview-status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.price-tag-preview-error,
+.price-tag-preview-hint {
+  max-width: 32ch;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.price-tag-preview-error {
+  color: var(--bad);
+}
+
 .price-tags-alert {
   margin: 0 0 16px;
   white-space: pre-line;
@@ -1464,7 +1571,7 @@ button {
   vertical-align: middle;
 }
 
-/* eleven columns, narrower gaps keep them on a laptop screen */
+/* compact gaps leave space for the live preview */
 .price-tags th,
 .price-tags td {
   padding-right: 6px;
@@ -1488,17 +1595,13 @@ button {
 }
 
 .price-tags td.price-tag-name {
-  min-width: 200px;
-  width: 32%;
+  min-width: 170px;
+  width: 20%;
 }
 
 .price-tags td.price-tag-subtitle-cell {
   min-width: 150px;
-  width: 22%;
-}
-
-.price-tag-sub {
-  font-weight: 400;
+  width: 16%;
 }
 
 .price-tag-rub {
@@ -1616,15 +1719,6 @@ button {
 .price-tag-dialog .price-tag-toggle {
   align-self: flex-start;
   margin-bottom: 6px;
-}
-
-.price-tag-textarea {
-  height: auto;
-  min-height: var(--control-h);
-  padding-top: 8px;
-  padding-bottom: 8px;
-  resize: vertical;
-  line-height: 1.4;
 }
 
 .price-tag-price {
