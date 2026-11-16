@@ -3,6 +3,8 @@ import type { InvoiceDraft } from "../types";
 interface Props {
   draft: InvoiceDraft;
   dirty: boolean;
+  saving: boolean;
+  saved: boolean;
   busy: boolean;
   error: string | null;
   onSave: () => void;
@@ -12,15 +14,24 @@ interface Props {
   onAddProducts: () => void;
 }
 
-function hint(draft: InvoiceDraft, dirty: boolean): string {
+function hint(
+  draft: InvoiceDraft,
+  dirty: boolean,
+  saving: boolean,
+  saved: boolean,
+  error: string | null,
+): string {
+  if (saving) {
+    return "Сохраняем…";
+  }
   if (dirty) {
-    return "Есть несохранённые правки";
+    return error ? "Правки не сохранены" : "Сохранится автоматически";
   }
   const blocking = draft.issues.filter((issue) => issue.blocking).length;
   if (blocking > 0) {
-    return `Осталось исправить: ${blocking}`;
+    return `${saved ? "Сохранено · " : ""}Осталось исправить: ${blocking}`;
   }
-  return "Всё сходится";
+  return `${saved ? "Сохранено · " : ""}Всё сходится`;
 }
 
 function tone(draft: InvoiceDraft, dirty: boolean): string {
@@ -35,6 +46,8 @@ const PRODUCTS_HINT = "Добавить новые товары в катало�
 export default function ActionBar({
   draft,
   dirty,
+  saving,
+  saved,
   busy,
   error,
   onSave,
@@ -47,25 +60,42 @@ export default function ActionBar({
     // above the table, a bar at the bottom would hide behind the on-screen keyboard
     <div className="draft-bar">
       <div className="draft-bar-row">
-        <span className={tone(draft, dirty)}>{hint(draft, dirty)}</span>
+        <span className={tone(draft, dirty)} role="status">
+          {hint(draft, dirty, saving, saved, error)}
+        </span>
         {dirty ? (
           <>
-            <button type="button" className="button button-ghost" disabled={busy} onClick={onReset}>
+            <button
+              type="button"
+              className="button button-ghost"
+              disabled={busy || saving}
+              onClick={onReset}
+            >
               Отменить
             </button>
-            <button type="button" className="button button-primary" disabled={busy} onClick={onSave}>
-              Сохранить
+            <button
+              type="button"
+              className="button button-primary"
+              disabled={busy || saving}
+              onClick={onSave}
+            >
+              {error ? "Повторить сохранение" : "Сохранить сейчас"}
             </button>
           </>
         ) : (
           <>
-            <button type="button" className="button button-ghost" disabled={busy} onClick={onDecline}>
+            <button
+              type="button"
+              className="button button-ghost"
+              disabled={busy || saving}
+              onClick={onDecline}
+            >
               Отклонить
             </button>
             <button
               type="button"
               className="button button-ghost"
-              disabled={busy || !draft.products_ready}
+              disabled={busy || saving || !draft.products_ready}
               title={PRODUCTS_HINT}
               onClick={onAddProducts}
             >
@@ -74,7 +104,7 @@ export default function ActionBar({
             <button
               type="button"
               className="button button-primary"
-              disabled={busy || !draft.ready}
+              disabled={busy || saving || !draft.ready}
               onClick={onConfirm}
             >
               Провести

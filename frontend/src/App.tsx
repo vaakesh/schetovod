@@ -193,6 +193,7 @@ export default function App({ onSignedOut }: Props) {
             key={route.id}
             id={route.id}
             initial={uploaded}
+            onLoaded={() => setUploaded(null)}
             ask={ask}
             setGuard={setGuard}
             onHome={() => void go({ page: "invoices" })}

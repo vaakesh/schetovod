@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { addInvoiceProducts, declineInvoice, getDraft, saveForm } from "../api";
 import ActionBar from "../components/ActionBar";
@@ -8,15 +8,20 @@ import InvoiceConfirmDialog from "../components/InvoiceConfirmDialog";
 import InvoiceHeader from "../components/InvoiceHeader";
 import IssuesList from "../components/IssuesList";
 import LinesTable from "../components/LinesTable";
+import { DraftAutosave } from "../draftAutosave";
 import type { UpdateForm } from "../form";
 import { message } from "../message";
 import { replaceRoute } from "../router";
-import type { AddedProducts, ConfirmedInvoice, DraftForm, InvoiceDraft, SupplierSummary } from "../types";
+import type { AddedProducts, ConfirmedInvoice, InvoiceDraft, SupplierSummary } from "../types";
+
+const emptySnapshot = () => null;
+const emptySubscribe = () => () => {};
 
 interface Props {
   id: number;
   // the draft just uploaded, so it is not requested again
   initial: InvoiceDraft | null;
+  onLoaded: () => void;
   ask: Ask;
   // asked before leaving the page while there are unsaved edits
   setGuard: (guard: (() => Promise<boolean>) | null) => void;
@@ -44,14 +49,20 @@ function mergeSuppliers(known: SupplierSummary[], draft: InvoiceDraft): Supplier
 export default function DraftPage({
   id,
   initial,
+  onLoaded,
   ask,
   setGuard,
   onHome,
   onDeclined,
   onProductsAdded,
 }: Props) {
-  const [draft, setDraft] = useState<InvoiceDraft | null>(null);
-  const [form, setForm] = useState<DraftForm | null>(null);
+  const [editor, setEditor] = useState<DraftAutosave | null>(null);
+  const state = useSyncExternalStore(
+    editor?.subscribe ?? emptySubscribe,
+    editor?.getSnapshot ?? emptySnapshot,
+  );
+  const draft = state?.draft ?? null;
+  const form = state?.form ?? null;
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
   const [confirmed, setConfirmed] = useState<ConfirmedInvoice | null>(null);
   // the dialog asking the day the goods came
@@ -60,42 +71,82 @@ export default function DraftPage({
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const dirty = draft !== null && JSON.stringify(form) !== JSON.stringify(draft.form);
-
-  function show(next: InvoiceDraft, fresh: boolean) {
-    setDraft(next);
-    setForm(next.form);
-    setSuppliers((known) => mergeSuppliers(fresh ? [] : known, next));
-    setActionError(null);
-  }
+  const dirty = editor?.dirty ?? false;
+  const saving = state?.saving ?? false;
+  const pending = dirty || saving;
 
   useEffect(() => {
-    if (initial?.id === id) {
-      show(initial, true);
-      return;
+    let active = true;
+    let loadedEditor: DraftAutosave | null = null;
+    function loaded(next: InvoiceDraft) {
+      if (!active) {
+        return;
+      }
+      loadedEditor = new DraftAutosave({
+        draft: next,
+        send: (form) => saveForm(next.id, form),
+      });
+      setEditor(loadedEditor);
+      setBusy(false);
+      onLoaded();
     }
-    setBusy(true);
-    getDraft(id)
-      .then((loaded) => show(loaded, true))
-      .catch((error) => setLoadError(message(error)))
-      .finally(() => setBusy(false));
+    if (initial?.id === id) {
+      loaded(initial);
+    } else {
+      setBusy(true);
+      getDraft(id)
+        .then(loaded)
+        .catch((error) => active && setLoadError(message(error)));
+    }
+    return () => {
+      active = false;
+      loadedEditor?.stop();
+    };
     // the page is keyed by the draft id, the initial draft only matters on mount
   }, []);
 
   useEffect(() => {
-    if (!dirty) {
+    if (draft) {
+      setSuppliers((known) => mergeSuppliers(known, draft));
+    }
+  }, [draft]);
+
+  useEffect(() => {
+    if (!pending || !editor) {
       setGuard(null);
       return;
     }
-    setGuard(() =>
-      ask({
-        title: "Уйти со страницы?",
-        text: "Несохранённые правки пропадут. Сохранённый черновик останется в списке накладных.",
+    setGuard(async () => {
+      if (await editor.flush()) {
+        return true;
+      }
+      return ask({
+        title: "Не удалось сохранить правки",
+        text: "Останьтесь на странице и повторите сохранение. Если уйти, последние правки пропадут.",
         action: "Уйти",
-      }),
-    );
+      });
+    });
     return () => setGuard(null);
-  }, [dirty, ask, setGuard]);
+  }, [pending, editor, ask, setGuard]);
+
+  useEffect(() => {
+    if (!pending) {
+      return;
+    }
+    function onLeave(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+    window.addEventListener("beforeunload", onLeave);
+    return () => window.removeEventListener("beforeunload", onLeave);
+  }, [pending]);
+
+  useEffect(() => {
+    function onOnline() {
+      void editor?.flush();
+    }
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [editor]);
 
   async function run(action: () => Promise<void>) {
     setActionError(null);
@@ -108,13 +159,6 @@ export default function DraftPage({
       setBusy(false);
     }
   }
-
-  const save = () =>
-    run(async () => {
-      if (draft && form) {
-        show(await saveForm(draft.id, form), false);
-      }
-    });
 
   const confirm = (result: ConfirmedInvoice) => {
     setConfirming(false);
@@ -159,7 +203,10 @@ export default function DraftPage({
     });
   };
 
-  const update: UpdateForm = (change) => setForm((current) => (current ? change(current) : current));
+  const update: UpdateForm = (change) => {
+    setActionError(null);
+    editor?.update(change);
+  };
 
   if (confirmed) {
     return (
@@ -208,10 +255,12 @@ export default function DraftPage({
       <ActionBar
         draft={draft}
         dirty={dirty}
+        saving={saving}
+        saved={state?.saved ?? false}
         busy={busy}
-        error={actionError}
-        onSave={save}
-        onReset={() => setForm(draft.form)}
+        error={state?.error ?? actionError}
+        onSave={() => void editor?.flush()}
+        onReset={() => editor?.reset()}
         onConfirm={() => setConfirming(true)}
         onDecline={decline}
         onAddProducts={addProducts}

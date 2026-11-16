@@ -73,6 +73,7 @@ jobs:
         with:
           node-version: 22.21.0
       - run: npm ci
+      - run: npm test
       - run: npm run build
 
   deploy:
