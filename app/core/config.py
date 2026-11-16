@@ -35,14 +35,14 @@ class Settings(BaseSettings):
     openai_api_token: SecretStr = SecretStr(
         secret_value="",
     )
-    openai_model: str = "gpt-6-luna"
+    openai_model: str = "gpt-6.1-sol"
     openai_reasoning_effort: Literal[
         "low",
         "medium",
         "high",
         "xhigh",
         "max",
-    ] = "high"
+    ] = "medium"
     openai_image_crops: bool = True
     # a long reasoning over several pages takes minutes
     openai_timeout: float = 600
