@@ -240,15 +240,9 @@ class ReportService:
                         quantity=item.quantity,
                     ),
                 )
-                # by the name to find a product quickly, line_no keeps the number on the paper
                 for item in sorted(
                     invoice.items,
-                    key=lambda item: (
-                        _alphabetical(
-                            text=item.name,
-                        ),
-                        item.line_no,
-                    ),
+                    key=lambda item: item.line_no,
                 )
             ]
             printed.append(
@@ -284,14 +278,6 @@ ReportServiceDep = Annotated[
         dependency=ReportService,
     ),
 ]
-
-
-def _alphabetical(text: str) -> list[int]:
-    """a sort key in the russian alphabet, ё comes right after е and not after я,
-    the code points are doubled to leave room for it"""
-    return [
-        ord("е") * 2 + 1 if char == "ё" else ord(char) * 2 for char in text.casefold()
-    ]
 
 
 def _printed_supplier_name(

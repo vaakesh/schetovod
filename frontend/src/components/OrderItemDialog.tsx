@@ -31,6 +31,9 @@ function step(value: number, delta: number): string {
 
 export default function OrderItemDialog({ target, onClose, onSaved }: Props) {
   const inputId = useId();
+  const [focusQuantity] = useState(
+    () => !window.matchMedia("(any-pointer: coarse)").matches,
+  );
   const inCart = target.quantity !== null;
   const [text, setText] = useState(() => trimDecimal(target.quantity) ?? "1");
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +109,12 @@ export default function OrderItemDialog({ target, onClose, onSaved }: Props) {
                   id={inputId}
                   className="input input-money order-qty-input"
                   inputMode="decimal"
-                  autoFocus
+                  ref={(input) => {
+                    // showModal reads the native attribute before choosing its initial focus
+                    if (input) {
+                      input.autofocus = focusQuantity;
+                    }
+                  }}
                   required
                   value={text}
                   onFocus={(event) => event.target.select()}
@@ -116,6 +124,11 @@ export default function OrderItemDialog({ target, onClose, onSaved }: Props) {
                   type="button"
                   className="order-step"
                   aria-label="Больше на 1"
+                  ref={(button) => {
+                    if (button) {
+                      button.autofocus = !focusQuantity;
+                    }
+                  }}
                   onClick={() => setText(step(current, 1))}
                 >
                   +

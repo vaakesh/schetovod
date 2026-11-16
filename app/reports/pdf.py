@@ -13,9 +13,13 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
+    BaseDocTemplate,
     Flowable,
+    Frame,
     KeepTogether,
+    NextPageTemplate,
     PageBreak,
+    PageTemplate,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -47,6 +51,15 @@ SHADE = colors.HexColor(
 MUTED = "#555555"
 
 WEEKDAYS = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+INVOICE_WEEKDAYS = (
+    "ПОНЕДЕЛЬНИК",
+    "ВТОРНИК",
+    "СРЕДА",
+    "ЧЕТВЕРГ",
+    "ПЯТНИЦА",
+    "СУББОТА",
+    "ВОСКРЕСЕНЬЕ",
+)
 MOVEMENT_LABELS = {
     LedgerKind.INVOICE: "накладные",
     LedgerKind.SALE: "продажа",
@@ -631,11 +644,54 @@ def invoices_pdf(invoices: list[PrintedInvoice]) -> bytes:
     """
     _register_fonts()
     styles = _Styles()
+    buffer = BytesIO()
+    document = BaseDocTemplate(
+        filename=buffer,
+        pagesize=A4,
+        leftMargin=MARGIN,
+        rightMargin=MARGIN,
+        topMargin=24 * mm,
+        bottomMargin=12 * mm,
+        title="Накладные",
+    )
+    frame = Frame(
+        x1=MARGIN,
+        y1=12 * mm,
+        width=document.width,
+        height=document.height,
+        id="invoices",
+    )
+    document.addPageTemplates(
+        pageTemplates=[
+            PageTemplate(
+                id=invoice_date.isoformat(),
+                frames=[frame],
+                onPage=partial(
+                    _invoice_page,
+                    invoice_date=invoice_date,
+                ),
+            )
+            for invoice_date in dict.fromkeys(
+                (invoice.invoice_date for invoice in invoices),
+            )
+        ]
+        or [
+            PageTemplate(
+                id="empty",
+                frames=[frame],
+            ),
+        ],
+    )
     story: list[Flowable] = []
     for index, invoice in enumerate(
         invoices,
     ):
         if index and invoice.invoice_date != invoices[index - 1].invoice_date:
+            story.append(
+                NextPageTemplate(
+                    pt=invoice.invoice_date.isoformat(),
+                ),
+            )
             story.append(
                 PageBreak(),
             )
@@ -679,26 +735,33 @@ def invoices_pdf(invoices: list[PrintedInvoice]) -> bytes:
                 ],
             ),
         )
-    buffer = BytesIO()
-    document = SimpleDocTemplate(
-        filename=buffer,
-        pagesize=A4,
-        leftMargin=MARGIN,
-        rightMargin=MARGIN,
-        topMargin=MARGIN,
-        bottomMargin=12 * mm,
-        title="Накладные",
-    )
-    page_number = partial(
-        _page_number,
-        page_width=A4[0],
-    )
     document.build(
         flowables=story,
-        onFirstPage=page_number,
-        onLaterPages=page_number,
     )
     return buffer.getvalue()
+
+
+def _invoice_page(
+    canvas: Canvas,
+    document: BaseDocTemplate,
+    invoice_date: date,
+) -> None:
+    _page_number(
+        canvas=canvas,
+        _document=document,
+        page_width=A4[0],
+    )
+    canvas.saveState()
+    canvas.setFont(
+        psfontname=FONT_BOLD,
+        size=18,
+    )
+    canvas.drawString(
+        x=MARGIN,
+        y=A4[1] - MARGIN - 18,
+        text=INVOICE_WEEKDAYS[invoice_date.weekday()],
+    )
+    canvas.restoreState()
 
 
 def _invoice_table(
@@ -790,7 +853,7 @@ def _invoice_table(
 
 def _page_number(
     canvas: Canvas,
-    _document: SimpleDocTemplate,
+    _document: BaseDocTemplate,
     page_width: float,
 ) -> None:
     canvas.saveState()

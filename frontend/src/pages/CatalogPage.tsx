@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 import { getCatalog, markPriceTag } from "../api";
 import type { Ask } from "../components/ConfirmDialog";
@@ -349,31 +349,34 @@ function ProductRows({
             {COLUMNS.filter((column) => suppliers || column.field !== "supplier").map((column) => {
               const active = sort.field === column.field;
               return (
-                <th
-                  key={column.field}
-                  className={
-                    column.num
-                      ? "num"
-                      : column.field === "has_price_tag"
-                        ? "catalog-tag-head"
-                        : undefined
-                  }
-                  aria-sort={active ? (sort.desc ? "descending" : "ascending") : undefined}
-                >
-                  <button
-                    type="button"
-                    className={active ? "sort-button active" : "sort-button"}
-                    onClick={() => onSort(column.field)}
+                <Fragment key={column.field}>
+                  {column.field === "has_price_tag" && (
+                    <th className="catalog-order-head">Заказ</th>
+                  )}
+                  <th
+                    className={
+                      column.num
+                        ? "num"
+                        : column.field === "has_price_tag"
+                          ? "catalog-tag-head"
+                          : undefined
+                    }
+                    aria-sort={active ? (sort.desc ? "descending" : "ascending") : undefined}
                   >
-                    {column.label}
-                    <span className="sort-arrow" aria-hidden="true">
-                      {active ? (sort.desc ? "↓" : "↑") : ""}
-                    </span>
-                  </button>
-                </th>
+                    <button
+                      type="button"
+                      className={active ? "sort-button active" : "sort-button"}
+                      onClick={() => onSort(column.field)}
+                    >
+                      {column.label}
+                      <span className="sort-arrow" aria-hidden="true">
+                        {active ? (sort.desc ? "↓" : "↑") : ""}
+                      </span>
+                    </button>
+                  </th>
+                </Fragment>
               );
             })}
-            <th className="catalog-order-head">Заказ</th>
           </tr>
         </thead>
         <tbody>
@@ -413,6 +416,7 @@ function ProductRows({
                   ? formatText(null)
                   : `${formatMoney(product.retail_price)} ₽`}
               </td>
+              <OrderCell product={product} line={ordered.get(product.id)} onOrder={onOrder} />
               {/* the checkbox asks first, a click or a key on it does not open the edit */}
               <td
                 className="catalog-tag"
@@ -428,7 +432,6 @@ function ProductRows({
                   onChange={() => onTag(product)}
                 />
               </td>
-              <OrderCell product={product} line={ordered.get(product.id)} onOrder={onOrder} />
             </tr>
           ))}
         </tbody>

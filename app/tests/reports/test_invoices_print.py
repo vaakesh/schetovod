@@ -3,8 +3,12 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+import pymupdf
+import pytest
+
 from reports.pdf import invoices_pdf
 from reports.schemas import PrintedInvoice, PrintedLine
+from tests.fakes import invoice_payload
 from tests.helpers import InvoiceApi
 
 
@@ -60,6 +64,89 @@ def pages(
 
 
 class TestPagesOfTheDates:
+    @pytest.mark.parametrize(
+        argnames=("day", "weekday"),
+        argvalues=[
+            (12, "ПОНЕДЕЛЬНИК"),
+            (13, "ВТОРНИК"),
+            (14, "СРЕДА"),
+            (15, "ЧЕТВЕРГ"),
+            (16, "ПЯТНИЦА"),
+            (17, "СУББОТА"),
+            (18, "ВОСКРЕСЕНЬЕ"),
+        ],
+    )
+    def test_page_starts_with_a_large_bold_weekday(
+        self,
+        day: int,
+        weekday: str,
+    ) -> None:
+        with pymupdf.open(
+            stream=invoices_pdf(
+                invoices=[
+                    printed(
+                        day=day,
+                    ),
+                    printed(
+                        day=day,
+                    ),
+                ],
+            ),
+            filetype="pdf",
+        ) as pdf:
+            page = pdf[0]
+            spans = [
+                span
+                for block in page.get_text(
+                    option="dict",
+                )["blocks"]
+                if block["type"] == 0
+                for line in block["lines"]
+                for span in line["spans"]
+                if span["text"] == weekday
+            ]
+            [heading] = spans
+            [first_line, *_] = page.get_text(
+                sort=True,
+            ).splitlines()
+
+        assert first_line == weekday
+        assert heading["size"] == 18
+        assert "Bold" in heading["font"]
+
+    def test_weekday_repeats_on_continuations_and_changes_with_the_date(self) -> None:
+        with pymupdf.open(
+            stream=invoices_pdf(
+                invoices=[
+                    printed(
+                        day=29,
+                        lines=100,
+                    ),
+                    printed(
+                        day=30,
+                    ),
+                ],
+            ),
+            filetype="pdf",
+        ) as pdf:
+            headings = [
+                page.get_text(
+                    sort=True,
+                ).splitlines()[0]
+                for page in pdf
+            ]
+
+        assert (
+            len(
+                headings,
+            )
+            > 2
+        )
+        assert set(
+            headings[:-1],
+        ) == {"ЧЕТВЕРГ"}
+        assert headings[-1] == "ПЯТНИЦА"
+
     def test_invoices_of_one_date_share_a_page(self) -> None:
         assert (
             pages(
@@ -152,6 +239,36 @@ class TestInvoicesPrint(InvoiceApi):
         )
         assert response.content.startswith(
             b"%PDF",
+        )
+
+    def test_lines_follow_numeric_position_order_instead_of_names(self) -> None:
+        self.known_supplier()
+        payload = invoice_payload()
+        payload["items"][0]["line_no"] = "10"
+        payload["items"][1]["line_no"] = "2"
+        draft = self.upload(
+            payload=payload,
+        )
+        confirmed = self.confirm(
+            draft=draft,
+        )
+        assert confirmed.status_code == 200, confirmed.text
+
+        response = self.client.get(
+            url="/invoices/print.pdf",
+            params={"ids": [draft["id"]]},
+        )
+
+        assert response.status_code == 200, response.text
+        with pymupdf.open(
+            stream=response.content,
+            filetype="pdf",
+        ) as pdf:
+            text = pdf[0].get_text()
+        assert text.index(
+            "Соль",
+        ) < text.index(
+            "Сахар-песок 1 кг",
         )
 
     def test_draft_is_not_printed(self) -> None:
