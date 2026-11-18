@@ -17,6 +17,7 @@ import type { BatchKind, LedgerEntry, ManualKind } from "../types";
 interface Props {
   go: (route: Route) => void;
   ask: Ask;
+  shiftImportEnabled: boolean;
 }
 
 const PAGE = 50;
@@ -29,7 +30,7 @@ function isBatch(kind: string): kind is BatchKind {
   return BATCH_KINDS.includes(kind);
 }
 
-export default function LedgerPage({ go, ask }: Props) {
+export default function LedgerPage({ go, ask, shiftImportEnabled }: Props) {
   const [entries, setEntries] = useState<LedgerEntry[] | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
   const [cashBalance, setCashBalance] = useState<string | null>(null);
@@ -119,9 +120,11 @@ export default function LedgerPage({ go, ask }: Props) {
   return (
     <main className="page">
       <PageHead title="Журнал">
-        <button type="button" className="button button-soft" onClick={() => open("shifts")}>
-          Загрузить из кассы
-        </button>
+        {shiftImportEnabled && (
+          <button type="button" className="button button-soft" onClick={() => open("shifts")}>
+            Загрузить из кассы
+          </button>
+        )}
       </PageHead>
 
       {/* each balance with the operations that change it */}
@@ -176,7 +179,7 @@ export default function LedgerPage({ go, ask }: Props) {
           }}
         />
       )}
-      {dialog === "shifts" && (
+      {shiftImportEnabled && dialog === "shifts" && (
         <ShiftImportDialog
           onClose={() => setDialog(null)}
           onImported={(entryIds) => {

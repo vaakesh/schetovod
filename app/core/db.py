@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from functools import cache
 from typing import Annotated
 
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from sqlalchemy.orm import DeclarativeBase
 
 from core.config import settings
+from core.store import Store, StoreDep
 
 DATABASE_CONNECTION_MESSAGE = (
     "Не удалось подключиться к базе данных. "
@@ -40,22 +42,21 @@ class Base(DeclarativeBase):
 
 
 @cache
-def get_engine() -> AsyncEngine:
-    # one engine with a connection pool per process
+def get_gastronom_engine() -> AsyncEngine:
     return create_async_engine(
         url=settings.database_url,
     )
 
 
-async def get_session(
-    engine: Annotated[
-        AsyncEngine,
-        Depends(
-            dependency=get_engine,
-        ),
-    ],
-) -> AsyncGenerator[AsyncSession]:
-    # a new session per request, closed after the response
+@cache
+def get_meat_engine() -> AsyncEngine:
+    return create_async_engine(
+        url=settings.meat_database_url,
+    )
+
+
+@asynccontextmanager
+async def open_session(engine: AsyncEngine) -> AsyncGenerator[AsyncSession]:
     async with AsyncSession(
         bind=engine,
         expire_on_commit=False,
@@ -67,6 +68,42 @@ async def get_session(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=DATABASE_CONNECTION_MESSAGE,
             ) from error
+        yield session
+
+
+async def get_auth_session(
+    engine: Annotated[
+        AsyncEngine,
+        Depends(
+            dependency=get_gastronom_engine,
+        ),
+    ],
+) -> AsyncGenerator[AsyncSession]:
+    async with open_session(
+        engine=engine,
+    ) as session:
+        yield session
+
+
+AuthSessionDep = Annotated[
+    AsyncSession,
+    Depends(
+        dependency=get_auth_session,
+    ),
+]
+
+
+async def get_session(
+    store: StoreDep,
+    auth_session: AuthSessionDep,
+) -> AsyncGenerator[AsyncSession]:
+    if store is Store.GASTRONOM:
+        yield auth_session
+        return
+
+    async with open_session(
+        engine=get_meat_engine(),
+    ) as session:
         yield session
 
 

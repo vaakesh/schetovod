@@ -2,6 +2,7 @@ x-environment: &environment
   POSTGRES_USER: ${POSTGRES_USER:?Set it in .env}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set it in .env}
   POSTGRES_DB: ${POSTGRES_DB:?Set it in .env}
+  POSTGRES_MEAT_DB: ${POSTGRES_MEAT_DB:-schetovod_meat}
   POSTGRES_HOST: postgres
   POSTGRES_PORT: 5432
   REDIS_URL: redis://redis:6379/0
@@ -25,13 +26,20 @@ x-backend: &backend
   environment: *environment
 
 services:
-  # runs once and exits, the app starts only after it succeeds
-  migrate:
+  bootstrap:
     <<: *backend
-    command: ["alembic", "upgrade", "head"]
+    command: ["python", "-m", "migrations.create_meat_database"]
     depends_on:
       postgres:
         condition: service_healthy
+
+  # runs once and exits, the app starts only after it succeeds
+  migrate:
+    <<: *backend
+    command: ["sh", "-ec", "alembic upgrade head && alembic -x store=meat upgrade head"]
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
 
   app:
     <<: *backend
@@ -106,10 +114,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?Set it in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set it in .env}
       POSTGRES_DB: ${POSTGRES_DB:?Set it in .env}
+      POSTGRES_MEAT_DB: ${POSTGRES_MEAT_DB:-schetovod_meat}
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 3s
       timeout: 3s
       retries: 20

@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -5,8 +7,10 @@ import pytest
 from pydantic import SecretStr
 
 from core.config import settings
+from recognition import storage
 from tests.fakes import invoice_payload
 from tests.helpers import InvoiceApi
+from tests.recognition.helpers import FINAL_JSON, fake_api, image_bytes, model_response
 
 
 class TestRecognizeImage(InvoiceApi):
@@ -81,6 +85,54 @@ class TestRecognizeImage(InvoiceApi):
         ]
         draft = response.json()
         assert self.store.invoices[draft["id"]].extracted == invoice_payload()
+
+    def test_archives_recognition_separately_for_each_store(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(
+            target=storage,
+            name="INVOICES_DIR",
+            value=tmp_path,
+        )
+        fake_api(
+            monkeypatch=monkeypatch,
+            responses=[model_response(), model_response()],
+        )
+        gastronom_image = image_bytes()
+        meat_image = image_bytes(
+            orientation=3,
+        )
+
+        gastronom = self.client.post(
+            url="/invoice/image",
+            files=[("files", ("gastronom.png", gastronom_image, "image/png"))],
+        )
+        meat = self.client.post(
+            url="/stores/meat/invoice/image",
+            files=[("files", ("meat.png", meat_image, "image/png"))],
+        )
+
+        assert gastronom.status_code == 200, gastronom.text
+        assert meat.status_code == 200, meat.text
+        gastronom_archive = tmp_path / "invoice_1"
+        meat_archive = tmp_path / "meat" / "invoice_1"
+        output = json.loads(
+            s=FINAL_JSON,
+        )
+        for archive, image in (
+            (gastronom_archive, gastronom_image),
+            (meat_archive, meat_image),
+        ):
+            assert (archive / "image_1.png").read_bytes() == image
+            assert (
+                json.loads(
+                    s=(archive / "output.json").read_text(
+                        encoding="utf-8",
+                    ),
+                )
+                == output
+            )
+            assert (archive / "trace.json").is_file()
 
     def test_rejects_a_file_that_is_not_an_image(self) -> None:
         response, extract = self.post_images(

@@ -1,5 +1,4 @@
 from collections.abc import Iterator
-from contextlib import aclosing
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,7 +9,7 @@ from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from core import db
-from core.db import get_engine, get_session
+from core.db import get_gastronom_engine, open_session
 
 
 @pytest.fixture
@@ -37,7 +36,7 @@ def session(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 @pytest.fixture
 def database_client(test_app: FastAPI, engine: AsyncMock) -> Iterator[TestClient]:
-    test_app.dependency_overrides[get_engine] = lambda: engine
+    test_app.dependency_overrides[get_gastronom_engine] = lambda: engine
     with TestClient(
         app=test_app,
     ) as client:
@@ -84,21 +83,15 @@ class TestDatabaseConnection:
         session.__aexit__.assert_awaited_once()
 
 
-class TestGetSession:
+class TestOpenSession:
     async def test_yields_session_when_connection_succeeds(
         self,
         engine: AsyncMock,
         session: AsyncMock,
     ) -> None:
-        async with aclosing(
-            thing=get_session(
-                engine=engine,
-            ),
-        ) as dependency:
-            result = await anext(
-                dependency,
-            )
-
+        async with open_session(
+            engine=engine,
+        ) as result:
             assert result is session
             session.connection.assert_awaited_once()
 
@@ -117,20 +110,13 @@ class TestGetSession:
             ),
         )
 
-        async with aclosing(
-            thing=get_session(
+        with pytest.raises(
+            expected_exception=IntegrityError,
+        ) as raised:
+            async with open_session(
                 engine=engine,
-            ),
-        ) as dependency:
-            await anext(
-                dependency,
-            )
-            with pytest.raises(
-                expected_exception=IntegrityError,
-            ) as raised:
-                await dependency.athrow(
-                    error,
-                )
+            ):
+                raise error
 
         assert raised.value is error
         session.__aexit__.assert_awaited_once()

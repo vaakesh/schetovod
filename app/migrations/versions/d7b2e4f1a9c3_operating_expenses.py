@@ -8,7 +8,7 @@ from datetime import date
 from decimal import Decimal
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 
 revision: str = "d7b2e4f1a9c3"
 down_revision: str | Sequence[str] | None = "c4e7a1d9f2b6"
@@ -78,6 +78,15 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("operating_expenses_pkey")),
     )
+    arguments = context.get_x_argument(
+        as_dictionary=True,
+    )
+    store = arguments.get(
+        "store",
+    )
+    if store == "meat":
+        return
+
     op.bulk_insert(
         table=table,
         rows=[

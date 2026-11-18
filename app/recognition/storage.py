@@ -5,19 +5,21 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from core.config import REPO_ROOT
+from core.store import Store
 from recognition.images import IMAGE_TYPES, UploadedImage
 
 INVOICES_DIR = REPO_ROOT / "invoices"
 
 
-def save_images(images: list[UploadedImage]) -> Path:
+def save_images(images: list[UploadedImage], store: Store) -> Path:
+    invoices_dir = INVOICES_DIR / store if store is Store.MEAT else INVOICES_DIR
     try:
-        INVOICES_DIR.mkdir(
+        invoices_dir.mkdir(
             parents=True,
             exist_ok=True,
         )
         last_number = 0
-        for entry in INVOICES_DIR.iterdir():
+        for entry in invoices_dir.iterdir():
             if not entry.name.startswith(
                 "invoice_",
             ):
@@ -32,7 +34,7 @@ def save_images(images: list[UploadedImage]) -> Path:
                         suffix,
                     ),
                 )
-        directory = INVOICES_DIR / f"invoice_{last_number + 1}"
+        directory = invoices_dir / f"invoice_{last_number + 1}"
         try:
             directory.mkdir(
                 exist_ok=False,

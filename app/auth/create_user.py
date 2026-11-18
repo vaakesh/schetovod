@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth.repository import AuthRepository
 from auth.service import AuthService
-from core.db import get_engine
+from core.db import get_gastronom_engine
 
 MIN_PASSWORD_LENGTH = 8
 
@@ -33,7 +33,7 @@ async def save_user(
     login: str,
     password: str,
 ) -> bool:
-    engine = get_engine()
+    engine = get_gastronom_engine()
     async with AsyncSession(
         bind=engine,
         expire_on_commit=False,

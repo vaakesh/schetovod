@@ -1,4 +1,5 @@
-import { routeHash, type Route } from "../router";
+import { isPlainLinkClick, routeAvailable, routeHash, storeSwitchRoute, type Route } from "../router";
+import { STORE_NAMES, storePath, type Store } from "../stores";
 import { useTheme } from "../theme";
 import type { Order } from "../types";
 import Icon, { type IconName } from "./icons";
@@ -56,6 +57,7 @@ function section(route: Route): Route["page"] {
 }
 
 interface Props {
+  store: Store;
   route: Route;
   cart: Order | null | undefined;
   hidden: boolean;
@@ -67,9 +69,21 @@ interface Props {
   signOut: () => void;
 }
 
-export default function Sidebar({ route, cart, hidden, toggle, uploading, working, go, signOut }: Props) {
+export default function Sidebar({
+  store,
+  route,
+  cart,
+  hidden,
+  toggle,
+  uploading,
+  working,
+  go,
+  signOut,
+}: Props) {
   const [theme, toggleTheme] = useTheme();
   const current = section(route);
+  const otherStore = store === "gastronom" ? "meat" : "gastronom";
+  const otherStoreHref = `${storePath(otherStore)}${routeHash(storeSwitchRoute(otherStore, route))}`;
   const themeLabel = theme === "dark" ? "Светлая тема" : "Тёмная тема";
   const toggleLabel = hidden ? "Показать меню" : "Скрыть меню";
 
@@ -95,7 +109,7 @@ export default function Sidebar({ route, cart, hidden, toggle, uploading, workin
           className="sidebar-toggle"
           aria-label={toggleLabel}
           title={toggleLabel}
-          aria-controls="sidebar-sections"
+          aria-controls="sidebar-stores sidebar-sections"
           aria-expanded={!hidden}
           onClick={toggle}
         >
@@ -103,37 +117,53 @@ export default function Sidebar({ route, cart, hidden, toggle, uploading, workin
         </button>
       </div>
 
+      <nav id="sidebar-stores" className="store-nav" aria-label="Магазины" hidden={hidden}>
+        <span className="store-current">{STORE_NAMES[store]}</span>
+        <a className="nav-item store-link" href={otherStoreHref}>
+          <span>{STORE_NAMES[otherStore]}</span>
+          <Icon name="chevronRight" size={14} />
+        </a>
+      </nav>
+
       <nav id="sidebar-sections" className="nav" aria-label="Разделы" hidden={hidden}>
         <SlidingThumb selector=".nav-item.active" className="nav-thumb" />
-        {GROUPS.map((group) => (
-          <section key={group.title} className="nav-group" aria-label={group.title}>
-            <h2 className="nav-title">{group.title}</h2>
-            {group.items.map((item) => {
-              const active = item.route.page === current;
-              const count = item.route.page === "orders" && cart ? cart.lines.length : null;
-              return (
-                <a
-                  key={item.route.page}
-                  href={routeHash(item.route)}
-                  className={active ? "nav-item active" : "nav-item"}
-                  aria-current={active ? "page" : undefined}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    go(item.route);
-                  }}
-                >
-                  <Icon name={item.icon} />
-                  <span className="nav-label">{item.label}</span>
-                  {count !== null && (
-                    <span className="nav-badge" aria-label={`в заказе ${count}`}>
-                      {count}
-                    </span>
-                  )}
-                </a>
-              );
-            })}
-          </section>
-        ))}
+        {GROUPS.map(({ title, items }) => {
+          const available = items.filter((item) => routeAvailable(store, item.route.page));
+          if (available.length === 0) {
+            return null;
+          }
+          return (
+            <section key={title} className="nav-group" aria-label={title}>
+              <h2 className="nav-title">{title}</h2>
+              {available.map((item) => {
+                const active = item.route.page === current;
+                const count = item.route.page === "orders" && cart ? cart.lines.length : null;
+                return (
+                  <a
+                    key={item.route.page}
+                    href={routeHash(item.route)}
+                    className={active ? "nav-item active" : "nav-item"}
+                    aria-current={active ? "page" : undefined}
+                    onClick={(event) => {
+                      if (isPlainLinkClick(event)) {
+                        event.preventDefault();
+                        go(item.route);
+                      }
+                    }}
+                  >
+                    <Icon name={item.icon} />
+                    <span className="nav-label">{item.label}</span>
+                    {count !== null && (
+                      <span className="nav-badge" aria-label={`в заказе ${count}`}>
+                        {count}
+                      </span>
+                    )}
+                  </a>
+                );
+              })}
+            </section>
+          );
+        })}
       </nav>
 
       <div className="nav-bottom" hidden={hidden}>

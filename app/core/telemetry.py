@@ -32,7 +32,7 @@ from opentelemetry.util.types import Attributes
 from prometheus_client import start_http_server
 
 from core.config import settings
-from core.db import get_engine
+from core.db import get_gastronom_engine, get_meat_engine
 
 # the port inside the container: nginx proxies only 8000, so it never faces the internet
 METRICS_PORT = 9000
@@ -125,7 +125,7 @@ def setup_tracing(
     # the package allows sqlalchemy below 2.1 and silently does nothing on a newer one,
     # the events it listens to work on 2.1
     SQLAlchemyInstrumentor().instrument(
-        engine=get_engine().sync_engine,
+        engines=[get_gastronom_engine().sync_engine, get_meat_engine().sync_engine],
         tracer_provider=provider,
         skip_dep_check=True,
     )

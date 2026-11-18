@@ -10,6 +10,7 @@ import { formatDateTime, formatMoney, plural } from "../format";
 import { message } from "../message";
 import { ORIGIN_LABELS, SIZES, UNIT_LABELS, addToForm, sizeLabel, type SizeKey } from "../priceTags";
 import type { Route } from "../router";
+import type { Store } from "../stores";
 import type { PriceTag } from "../types";
 
 type SortField = "name" | "price" | "created_at";
@@ -52,11 +53,12 @@ function compare(a: PriceTag, b: PriceTag, sort: Sort): number {
 }
 
 interface Props {
+  store: Store;
   ask: Ask;
   go: (route: Route) => void;
 }
 
-export default function PriceTagBasePage({ ask, go }: Props) {
+export default function PriceTagBasePage({ store, ask, go }: Props) {
   const [tags, setTags] = useState<PriceTag[] | null>(null);
   const [search, setSearch] = useState("");
   const [size, setSize] = useState<SizeKey | "all">("all");
@@ -132,7 +134,7 @@ export default function PriceTagBasePage({ ask, go }: Props) {
   }
 
   function toPrint(chosen: PriceTag[]) {
-    addToForm(chosen);
+    addToForm(store, chosen);
     setNotice(
       `В форму печати ${plural(chosen.length, "добавлен", "добавлено", "добавлено")} ` +
         `${chosen.length} ${plural(chosen.length, "ценник", "ценника", "ценников")}`,

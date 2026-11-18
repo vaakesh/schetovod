@@ -639,7 +639,7 @@ ROUTES = [
 
 class TestEveryRouteIsClosed:
     def test_list_of_routes_holds_the_whole_api(self) -> None:
-        assert len(ROUTES) == 63
+        assert len(ROUTES) == 121
 
     @pytest.mark.parametrize(
         argnames=("method", "path"),
@@ -658,7 +658,10 @@ class TestEveryRouteIsClosed:
             url=re.sub(
                 pattern=r"\{\w+\}",
                 repl="1",
-                string=path,
+                string=path.replace(
+                    "{store}",
+                    "meat",
+                ),
             ),
         )
 

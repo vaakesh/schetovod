@@ -6,13 +6,13 @@ from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import contains_eager
 
 from auth.models import User, UserSession
-from core.db import SessionDep
+from core.db import AuthSessionDep
 
 
 class AuthRepository:
     def __init__(
         self,
-        session: SessionDep,
+        session: AuthSessionDep,
     ) -> None:
         self.session = session
 

@@ -3,11 +3,12 @@ import { useEffect, useState } from "react";
 import App from "./App";
 import { getMe, onSessionLost } from "./api";
 import LoginPage from "./pages/LoginPage";
+import type { Store } from "./stores";
 
 // lost: the session ended during the work, the app stays in memory behind the form
 type Status = "checking" | "signed-out" | "signed-in" | "lost";
 
-export default function AuthGate() {
+export default function AuthGate({ store }: { store: Store }) {
   const [status, setStatus] = useState<Status>("checking");
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function AuthGate() {
       {status === "lost" && <LoginPage lost onSignedIn={() => setStatus("signed-in")} />}
       {/* unmounting would lose the unsaved draft and the photos of a batch */}
       <div className={status === "lost" ? "app-hidden" : "app-visible"}>
-        <App onSignedOut={() => setStatus("signed-out")} />
+        <App store={store} onSignedOut={() => setStatus("signed-out")} />
       </div>
     </>
   );

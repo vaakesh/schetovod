@@ -13,6 +13,7 @@ from pydantic import JsonValue, ValidationError
 
 from core.config import settings
 from core.metrics import recognition_duration, recognition_tokens
+from core.store import Store
 from recognition.client import client, prompt, recognition_failed
 from recognition.images import (
     MAX_CROP_ROUNDS,
@@ -298,13 +299,17 @@ async def inspect_images(images: list[UploadedImage], directory: Path) -> Respon
     )
 
 
-async def extract_invoice(images: list[UploadedImage]) -> dict[str, JsonValue]:
+async def extract_invoice(
+    images: list[UploadedImage],
+    store: Store,
+) -> dict[str, JsonValue]:
     """recognize one invoice and measure how long it took and how it ended"""
     started_at = perf_counter()
     outcome = "failed"
     try:
         extracted = await recognize_invoice(
             images=images,
+            store=store,
         )
         outcome = "completed"
         return extracted
@@ -315,11 +320,15 @@ async def extract_invoice(images: list[UploadedImage]) -> dict[str, JsonValue]:
         )
 
 
-async def recognize_invoice(images: list[UploadedImage]) -> dict[str, JsonValue]:
+async def recognize_invoice(
+    images: list[UploadedImage],
+    store: Store,
+) -> dict[str, JsonValue]:
     """inspect all pages with optional crop calls, then return one invoice"""
     directory = await run_in_threadpool(
         func=save_images,
         images=images,
+        store=store,
     )
     try:
         async with timeout(

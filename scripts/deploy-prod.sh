@@ -16,20 +16,28 @@ compose() {
 }
 
 backup_database() {
-    local version file
+    local store="$1" database_env="$2" label="$3" file
 
-    mkdir -p backups
-    # the schema in the dump belongs to the version deployed before this one
-    version="$(cat backups/deployed-version 2>/dev/null || printf 'unknown')"
-    file="backups/$(date +%Y%m%d-%H%M%S)-$version.dump"
+    mkdir -p "backups/$store"
+    file="backups/$store/$label.dump"
 
     # a dump cut off halfway must not look like a finished one
-    compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom' > "$file.tmp"
+    compose exec -T postgres sh -ec '
+        case "$1" in
+            POSTGRES_DB) export PGDATABASE="$POSTGRES_DB" ;;
+            POSTGRES_MEAT_DB) export PGDATABASE="$POSTGRES_MEAT_DB" ;;
+            *) exit 1 ;;
+        esac
+        test -n "$PGDATABASE"
+        pg_dump -U "$POSTGRES_USER" --format=custom
+    ' sh "$database_env" > "$file.tmp"
     compose exec -T postgres pg_restore --list < "$file.tmp" > /dev/null
     mv -- "$file.tmp" "$file"
     printf 'Бэкап базы: %s (%s)\n' "$file" "$(du -h -- "$file" | cut -f1)"
+}
 
-    ls -1t backups/*.dump | tail -n +$((BACKUPS_TO_KEEP + 1)) | xargs -r rm --
+prune_database_backups() {
+    ls -1t -- "$@" | tail -n +$((BACKUPS_TO_KEEP + 1)) | xargs -r -d '\n' rm --
 }
 
 telemetry_arrived() {
@@ -76,10 +84,19 @@ chmod -R a+rX grafana
 compose build app frontend
 compose stop frontend scheduler worker app
 compose up -d --wait --wait-timeout 120 postgres redis
-# the app is stopped, nothing is written after the dump
-backup_database
+compose run --rm -T --no-deps bootstrap
+# the app and worker are stopped, nothing is written after the dumps
+previous_version="$(cat backups/deployed-version 2>/dev/null || printf 'unknown')"
+backup_label="$(date +%Y%m%d-%H%M%S)-$previous_version"
+backup_database gastronom POSTGRES_DB "$backup_label"
+backup_database meat POSTGRES_MEAT_DB "$backup_label"
+shopt -s nullglob
+# the unprefixed dumps from earlier releases belong to the first shop
+prune_database_backups backups/[0-9]*.dump backups/gastronom/*.dump
+prune_database_backups backups/meat/*.dump
+shopt -u nullglob
 # run by hand: the dump must come first and a failure must stop the deploy here
-compose run --rm -T migrate
+compose run --rm -T --no-deps migrate
 compose up -d --no-deps --wait --wait-timeout 180 app
 compose up -d --no-deps --no-build --wait --wait-timeout 120 frontend worker scheduler
 compose exec -T frontend wget -q -O - http://127.0.0.1/api/health

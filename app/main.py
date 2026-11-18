@@ -9,6 +9,7 @@ from aqsi.router import router as aqsi_router
 from auth.dependencies import get_current_user
 from auth.router import router as auth_router
 from core.health import router as health_router
+from core.store import Store, get_store
 from core.telemetry import is_health_check, setup_telemetry, shutdown_telemetry
 from invoices.router import router as invoices_router
 from ledger.router import router as ledger_router
@@ -54,8 +55,7 @@ app.include_router(
     router=health_router,
 )
 
-# a router added here is closed without a word in its own code
-protected = APIRouter(
+store_routers = APIRouter(
     dependencies=[
         Depends(
             dependency=get_current_user,
@@ -63,39 +63,65 @@ protected = APIRouter(
     ],
 )
 
-protected.include_router(
+store_routers.include_router(
     router=invoices_router,
 )
-protected.include_router(
+store_routers.include_router(
     router=suppliers_router,
 )
-protected.include_router(
+store_routers.include_router(
     router=products_router,
 )
-protected.include_router(
+store_routers.include_router(
     router=ledger_router,
 )
-protected.include_router(
+store_routers.include_router(
     router=reports_router,
 )
-protected.include_router(
-    router=orders_router,
-)
-protected.include_router(
-    router=aqsi_router,
-)
-protected.include_router(
-    router=traffic_router,
-)
-protected.include_router(
-    router=profit_router,
-)
-protected.include_router(
+store_routers.include_router(
     router=price_tags_router,
 )
 
+gastronom_routers = APIRouter(
+    dependencies=[
+        Depends(
+            dependency=get_current_user,
+        ),
+    ],
+)
+
+gastronom_routers.include_router(
+    router=orders_router,
+)
+gastronom_routers.include_router(
+    router=aqsi_router,
+)
+gastronom_routers.include_router(
+    router=traffic_router,
+)
+gastronom_routers.include_router(
+    router=profit_router,
+)
+
+# the old paths use the gastronom database
 app.include_router(
-    router=protected,
+    router=store_routers,
+)
+app.include_router(
+    router=gastronom_routers,
+)
+app.include_router(
+    router=store_routers,
+    prefix="/stores/{store}",
+    dependencies=[
+        Depends(
+            dependency=get_store,
+        ),
+    ],
+)
+app.include_router(
+    router=gastronom_routers,
+    prefix=f"/stores/{Store.GASTRONOM}",
 )
 # login and refresh are open, the auth router closes the other routes itself
 app.include_router(

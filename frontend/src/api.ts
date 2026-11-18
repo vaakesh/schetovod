@@ -36,6 +36,7 @@ import type {
   TrafficReport,
   UserSummary,
 } from "./types";
+import { apiPath, resolveStore } from "./stores";
 
 interface ValidationError {
   loc: (string | number)[];
@@ -129,11 +130,19 @@ function errorText(status: number, body: unknown): string {
   return `Сервер ответил ошибкой ${status}`;
 }
 
+function currentApiPath(path: string): string {
+  const store = resolveStore(window.location.pathname);
+  if (store === null) {
+    throw new Error("Адрес магазина не найден");
+  }
+  return apiPath(store, path);
+}
+
 async function send(method: string, path: string, body?: unknown): Promise<Response> {
   // the browser sets the multipart content type with its boundary itself
   const form = body instanceof FormData;
   try {
-    return await fetch(`/api${path}`, {
+    return await fetch(currentApiPath(path), {
       method,
       headers: body === undefined || form ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : form ? body : JSON.stringify(body),
@@ -317,7 +326,7 @@ export function getReport(dateFrom: string, dateTo: string): Promise<LedgerRepor
 
 // the browser downloads the file by the url and takes the name from the response
 export function reportPdfUrl(dateFrom: string, dateTo: string): string {
-  return `/api/ledger/report.pdf${query({ date_from: dateFrom, date_to: dateTo })}`;
+  return currentApiPath(`/ledger/report.pdf${query({ date_from: dateFrom, date_to: dateTo })}`);
 }
 
 // the confirmed invoices without the retail prices, the browser opens the file to print
@@ -326,7 +335,7 @@ export function invoicesPrintUrl(ids: number[]): string {
   for (const id of ids) {
     search.append("ids", String(id));
   }
-  return `/api/invoices/print.pdf?${search.toString()}`;
+  return currentApiPath(`/invoices/print.pdf?${search.toString()}`);
 }
 
 export function addPayment(invoiceId: number, body: PaymentCreate): Promise<PostedInvoice> {

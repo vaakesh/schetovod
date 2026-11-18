@@ -6,7 +6,7 @@ from taskiq import TaskiqEvents, TaskiqState
 from aqsi.client import aqsi_client
 from core.broker import broker
 from core.config import now, settings
-from core.db import get_engine
+from core.db import get_gastronom_engine
 from core.metrics import receipts_last_success, receipts_loaded
 from traffic.repository import ReceiptRepository
 from traffic.service import TrafficService
@@ -30,7 +30,7 @@ EVERY_TEN_MINUTES = "*/10 * * * *"
 )
 async def import_receipts() -> None:
     async with AsyncSession(
-        bind=get_engine(),
+        bind=get_gastronom_engine(),
         expire_on_commit=False,
     ) as session:
         service = TrafficService(

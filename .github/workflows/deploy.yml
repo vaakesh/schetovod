@@ -29,6 +29,7 @@ jobs:
       POSTGRES_USER: ci
       POSTGRES_PASSWORD: ci
       POSTGRES_DB: ci
+      POSTGRES_MEAT_DB: ci_meat
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
       JWT_SECRET: not-a-secret-only-for-the-tests-in-ci
@@ -57,7 +58,22 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run ty check
       - run: uv run pytest
+      - name: Provision the second database twice
+        run: |
+          uv run python -m migrations.create_meat_database
+          uv run python -m migrations.create_meat_database
       - run: uv run alembic upgrade head
+      - run: uv run alembic -x store=meat upgrade head
+      - name: Check migration data in each database
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          psql_query() {
+            docker exec "$POSTGRES_CONTAINER" psql -X -U "$POSTGRES_USER" \
+              -d "$1" -qAt -v ON_ERROR_STOP=1 -c "$2"
+          }
+          test "$(psql_query "$POSTGRES_DB" 'SELECT count(*) FROM operating_expenses')" = 6
+          test "$(psql_query "$POSTGRES_MEAT_DB" 'SELECT count(*) FROM operating_expenses')" = 0
 
   frontend:
     runs-on: ubuntu-24.04

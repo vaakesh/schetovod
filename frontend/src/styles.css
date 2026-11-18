@@ -335,6 +335,22 @@ button {
   gap: 2px;
 }
 
+.store-nav {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.store-current {
+  padding: 0 12px;
+  font-weight: 600;
+}
+
+.nav-item.store-link {
+  justify-content: space-between;
+}
+
 .nav-title {
   margin: 0;
   padding: 0 12px 6px;
@@ -4258,6 +4274,17 @@ a.button {
     border-top: 1px solid var(--line-strong);
   }
 
+  .store-current {
+    padding: 0 2px;
+    font-size: 11px;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  .nav-item.store-link {
+    justify-content: center;
+  }
+
   .nav-item {
     position: relative;
     flex-direction: column;
@@ -4423,6 +4450,13 @@ a.button {
 
   .nav-item {
     width: 72px;
+  }
+
+  .store-nav {
+    flex: none;
+    width: 72px;
+    padding-bottom: 0;
+    border-bottom: none;
   }
 
   .nav-bottom {

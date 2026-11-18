@@ -15,6 +15,17 @@ from core.db import DATABASE_CONNECTION_ERRORS, DATABASE_CONNECTION_MESSAGE, Bas
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+arguments = context.get_x_argument(
+    as_dictionary=True,
+)
+store = arguments.get(
+    "store",
+)
+if store not in {None, "meat"}:
+    raise CommandError(
+        "Неизвестный магазин для запуска миграций",
+    )
+database_url = settings.meat_database_url if store == "meat" else settings.database_url
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -43,7 +54,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = settings.database_url.render_as_string(
+    url = database_url.render_as_string(
         hide_password=False,
     )
     context.configure(
@@ -72,7 +83,7 @@ async def run_async_migrations() -> None:
 
     # database url comes from .env, not from alembic.ini
     connectable = create_async_engine(
-        url=settings.database_url,
+        url=database_url,
         poolclass=pool.NullPool,
     )
 

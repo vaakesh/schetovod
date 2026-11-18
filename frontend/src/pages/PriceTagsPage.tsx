@@ -26,18 +26,20 @@ import {
   type SizeKey,
 } from "../priceTags";
 import type { Route } from "../router";
+import type { Store } from "../stores";
 import type { PriceTag, PriceTagOrigin, PriceTagUnit } from "../types";
 
 // a blob url lives as long as the page, the tab has read the file by then
 const PDF_URL_LIFETIME_MS = 60_000;
 
 interface Props {
+  store: Store;
   ask: Ask;
   go: (route: Route) => void;
 }
 
-export default function PriceTagsPage({ ask, go }: Props) {
-  const [rows, setRows] = useState<FormRow[]>(loadRows);
+export default function PriceTagsPage({ store, ask, go }: Props) {
+  const [rows, setRows] = useState<FormRow[]>(() => loadRows(store));
   // the highlight of missing fields starts with the first try to print
   const [checked, setChecked] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -59,7 +61,7 @@ export default function PriceTagsPage({ ask, go }: Props) {
     focusedRow.name.trim().length >= MIN_QUERY &&
     (suggestions.found !== null || suggestions.error !== null);
 
-  useEffect(() => saveRows(rows), [rows]);
+  useEffect(() => saveRows(store, rows), [store, rows]);
 
   useEffect(() => setActive(0), [suggestions.found]);
 

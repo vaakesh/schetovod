@@ -339,7 +339,7 @@ function ProductRows({
   onSort: (field: SortField) => void;
   onEdit: (product: CatalogProduct) => void;
   onTag: (product: CatalogProduct) => void;
-  onOrder: (product: CatalogProduct) => void;
+  onOrder?: (product: CatalogProduct) => void;
 }) {
   return (
     <div className="table-wrap">
@@ -350,7 +350,7 @@ function ProductRows({
               const active = sort.field === column.field;
               return (
                 <Fragment key={column.field}>
-                  {column.field === "has_price_tag" && (
+                  {onOrder && column.field === "has_price_tag" && (
                     <th className="catalog-order-head">Заказ</th>
                   )}
                   <th
@@ -416,7 +416,9 @@ function ProductRows({
                   ? formatText(null)
                   : `${formatMoney(product.retail_price)} ₽`}
               </td>
-              <OrderCell product={product} line={ordered.get(product.id)} onOrder={onOrder} />
+              {onOrder && (
+                <OrderCell product={product} line={ordered.get(product.id)} onOrder={onOrder} />
+              )}
               {/* the checkbox asks first, a click or a key on it does not open the edit */}
               <td
                 className="catalog-tag"
@@ -446,9 +448,10 @@ interface Props {
   // the order being filled, null when it is empty
   cart: Order | null;
   onCart: (cart: Order | null) => void;
+  ordersEnabled: boolean;
 }
 
-export default function CatalogPage({ ask, go, cart, onCart }: Props) {
+export default function CatalogPage({ ask, go, cart, onCart, ordersEnabled }: Props) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -727,7 +730,7 @@ export default function CatalogPage({ ask, go, cart, onCart }: Props) {
                 onSort={changeSort}
                 onEdit={setEditing}
                 onTag={(product) => void tag(product)}
-                onOrder={order}
+                onOrder={ordersEnabled ? order : undefined}
               />
             ) : (
               <p className="list-empty">{empty}</p>
@@ -800,7 +803,7 @@ export default function CatalogPage({ ask, go, cart, onCart }: Props) {
                         onSort={changeSort}
                         onEdit={setEditing}
                         onTag={(product) => void tag(product)}
-                        onOrder={order}
+                        onOrder={ordersEnabled ? order : undefined}
                       />
                     ) : (
                       <p className="list-empty">Товаров пока нет</p>
@@ -815,7 +818,7 @@ export default function CatalogPage({ ask, go, cart, onCart }: Props) {
           </section>
         ))}
 
-      {cart && (
+      {ordersEnabled && cart && (
         <div className="cart-bar" role="status">
           <span className="cart-bar-text">
             В заказе{" "}
@@ -836,7 +839,7 @@ export default function CatalogPage({ ask, go, cart, onCart }: Props) {
         </div>
       )}
 
-      {ordering && (
+      {ordersEnabled && ordering && (
         <OrderItemDialog
           key={ordering.productId}
           target={ordering}

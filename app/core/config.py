@@ -1,9 +1,9 @@
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 from zoneinfo import ZoneInfo
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -22,11 +22,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
     postgres_user: str
     postgres_password: str
     postgres_db: str
+    postgres_meat_db: str = "schetovod_meat"
     postgres_host: str
     postgres_port: int
     # the shop's day, ledger dates and the future date check follow it
@@ -66,6 +68,29 @@ class Settings(BaseSettings):
     otel_sdk_disabled: bool = False
     otel_exporter_otlp_traces_endpoint: str = ""
 
+    @model_validator(
+        mode="after",
+    )
+    def validate_databases(self) -> Self:
+        databases = {
+            "POSTGRES_DB": self.postgres_db,
+            "POSTGRES_MEAT_DB": self.postgres_meat_db,
+        }
+        for variable, database in databases.items():
+            if not database or "\0" in database or len(database.encode()) > 63:
+                raise ValueError(
+                    f"Некорректное имя {variable}",
+                )
+        if self.postgres_meat_db in {"postgres", "template0", "template1"}:
+            raise ValueError(
+                "POSTGRES_MEAT_DB не может указывать на служебную базу PostgreSQL",
+            )
+        if self.postgres_db == self.postgres_meat_db:
+            raise ValueError(
+                "POSTGRES_DB и POSTGRES_MEAT_DB должны указывать на разные базы данных",
+            )
+        return self
+
     @property
     def database_url(self) -> URL:
         # URL.create escapes special characters in the password
@@ -76,6 +101,12 @@ class Settings(BaseSettings):
             host=self.postgres_host,
             port=self.postgres_port,
             database=self.postgres_db,
+        )
+
+    @property
+    def meat_database_url(self) -> URL:
+        return self.database_url.set(
+            database=self.postgres_meat_db,
         )
 
 

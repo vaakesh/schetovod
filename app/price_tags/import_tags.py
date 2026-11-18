@@ -5,7 +5,7 @@ import sys
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.db import get_engine
+from core.db import get_gastronom_engine
 from price_tags.repository import PriceTagRepository
 from price_tags.schemas import GeneralTag, PriceTagFields
 from price_tags.service import general_tag_fields, unique_values
@@ -51,7 +51,7 @@ def read_tags(text: str) -> list[PriceTagFields]:
 async def save_tags(
     tags: list[PriceTagFields],
 ) -> int:
-    engine = get_engine()
+    engine = get_gastronom_engine()
     async with AsyncSession(
         bind=engine,
         expire_on_commit=False,

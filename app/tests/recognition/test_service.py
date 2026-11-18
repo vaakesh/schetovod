@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from PIL import Image
 
 from core.config import settings
+from core.store import Store
 from recognition import service as vision
 from recognition.images import UploadedImage
 from recognition.service import extract_invoice, inspect_images
@@ -237,6 +238,7 @@ class TestExtractInvoice:
         ) as error:
             await extract_invoice(
                 images=[],
+                store=Store.GASTRONOM,
             )
 
         assert error.value.status_code == 502

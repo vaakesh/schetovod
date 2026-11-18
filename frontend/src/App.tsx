@@ -25,7 +25,8 @@ import ProfitPage from "./pages/ProfitPage";
 import ReportPage from "./pages/ReportPage";
 import TrafficPage from "./pages/TrafficPage";
 import UploadPage from "./pages/UploadPage";
-import { routeHash, sameRoute, useRoute, useRouteMotion, type Route } from "./router";
+import { routeAvailable, routeHash, sameRoute, useRoute, useRouteMotion, type Route } from "./router";
+import type { Store } from "./stores";
 import type { InvoiceDraft, Order } from "./types";
 
 type Guard = () => Promise<boolean>;
@@ -50,11 +51,13 @@ function batchStatus({ running, done, failed, total }: BatchUpload): string {
 }
 
 interface Props {
+  store: Store;
   onSignedOut: () => void;
 }
 
-export default function App({ onSignedOut }: Props) {
-  const route = useRoute();
+export default function App({ store, onSignedOut }: Props) {
+  const route = useRoute(store);
+  const ordersEnabled = routeAvailable(store, "orders");
   const motion = useRouteMotion(route);
   const [ask, confirmDialog] = useConfirm();
   const [sidebarHidden, setSidebarHidden] = useState(savedSidebarHidden);
@@ -68,6 +71,9 @@ export default function App({ onSignedOut }: Props) {
   const [cart, setCart] = useState<Order | null | undefined>(undefined);
   // kept here so that the queue goes on while other pages are open
   const batch = useBatchUpload();
+  const recognizing = uploading !== null || batch.running;
+  const hasLocalUploads =
+    recognizing || batch.slots.some((slot) => slot.status !== "done" && slot.files.length > 0);
   // the results of a batch are announced until the upload page is opened
   const [batchUnseen, setBatchUnseen] = useState(false);
 
@@ -81,7 +87,7 @@ export default function App({ onSignedOut }: Props) {
 
   // the photos live only in this tab
   useEffect(() => {
-    if (!batch.running) {
+    if (!hasLocalUploads) {
       return;
     }
     function onLeave(event: BeforeUnloadEvent) {
@@ -89,10 +95,13 @@ export default function App({ onSignedOut }: Props) {
     }
     window.addEventListener("beforeunload", onLeave);
     return () => window.removeEventListener("beforeunload", onLeave);
-  }, [batch.running]);
+  }, [hasLocalUploads]);
 
   // read again on every page, another tab may have changed it
   useEffect(() => {
+    if (!ordersEnabled) {
+      return;
+    }
     let current = true;
     getDraftOrder()
       .then((next) => current && setCart(next))
@@ -101,7 +110,7 @@ export default function App({ onSignedOut }: Props) {
     return () => {
       current = false;
     };
-  }, [route.page]);
+  }, [ordersEnabled, route.page]);
 
   const setGuard = useCallback((next: Guard | null) => {
     guard.current = next;
@@ -116,7 +125,7 @@ export default function App({ onSignedOut }: Props) {
   }
 
   async function go(next: Route, nextNotice: string | null = null) {
-    if (sameRoute(next, route) || !(await leave())) {
+    if (!routeAvailable(store, next.page) || sameRoute(next, route) || !(await leave())) {
       return;
     }
     setNotice(nextNotice);
@@ -209,15 +218,23 @@ export default function App({ onSignedOut }: Props) {
       case "posted":
         return <PostedInvoicePage key={route.id} id={route.id} ask={ask} go={go} />;
       case "catalog":
-        return <CatalogPage ask={ask} go={go} cart={cart ?? null} onCart={setCart} />;
+        return (
+          <CatalogPage
+            ask={ask}
+            go={go}
+            cart={cart ?? null}
+            onCart={setCart}
+            ordersEnabled={ordersEnabled}
+          />
+        );
       case "price-tags":
-        return <PriceTagsPage ask={ask} go={go} />;
+        return <PriceTagsPage store={store} ask={ask} go={go} />;
       case "price-tag-base":
-        return <PriceTagBasePage ask={ask} go={go} />;
+        return <PriceTagBasePage store={store} ask={ask} go={go} />;
       case "orders":
         return <OrdersPage ask={ask} go={go} cart={cart} onCart={setCart} />;
       case "ledger":
-        return <LedgerPage go={go} ask={ask} />;
+        return <LedgerPage go={go} ask={ask} shiftImportEnabled={store === "gastronom"} />;
       case "report":
         return <ReportPage go={go} />;
       case "traffic":
@@ -243,12 +260,13 @@ export default function App({ onSignedOut }: Props) {
   return (
     <div className={sidebarHidden ? "shell shell-sidebar-hidden" : "shell"}>
       <Sidebar
+        store={store}
         route={route}
         cart={cart}
         hidden={sidebarHidden}
         toggle={toggleSidebar}
         uploading={uploading !== null}
-        working={uploading !== null || batch.running}
+        working={recognizing}
         go={(next) => void go(next)}
         signOut={() => void signOut()}
       />

@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from core.config import settings
 from core.enums import InvoiceSort, InvoiceStatus
 from core.http import PageLimit, PageOffset
+from core.store import StoreDep
 from invoices.drafts import InvoiceDraftServiceDep
 from invoices.extraction import InvoiceExtraction
 from invoices.payments import InvoicePaymentServiceDep
@@ -103,6 +104,7 @@ async def recognize_invoice(
         File(),
     ],
     service: InvoiceDraftServiceDep,
+    store: StoreDep,
 ) -> InvoiceDraft:
     if not settings.openai_api_token.get_secret_value():
         raise HTTPException(
@@ -113,6 +115,7 @@ async def recognize_invoice(
         images=await read_images(
             files=files,
         ),
+        store=store,
     )
     # the model output passes the same checks as an uploaded JSON
     try:

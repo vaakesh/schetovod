@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
+
+import type { Store } from "./stores";
 
 export type Route =
   | { page: "invoices" }
@@ -86,15 +88,53 @@ export function sameRoute(a: Route, b: Route): boolean {
   return routeHash(a) === routeHash(b);
 }
 
+export function routeAvailable(store: Store, page: Route["page"]): boolean {
+  return store === "gastronom" || (page !== "orders" && page !== "traffic" && page !== "profit");
+}
+
+const invoicesFallback: Route = { page: "invoices" };
+
+export function storeSwitchRoute(store: Store, route: Route): Route {
+  if (route.page === "draft" || route.page === "posted" || !routeAvailable(store, route.page)) {
+    return invoicesFallback;
+  }
+  return route;
+}
+
+export function isPlainLinkClick(event: MouseEvent<HTMLAnchorElement>): boolean {
+  return (
+    !event.defaultPrevented &&
+    event.button === 0 &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey
+  );
+}
+
 // the route follows the address, back and forward included
-export function useRoute(): Route {
-  const [route, setRoute] = useState(() => parseRoute(window.location.hash));
+export function useRoute(store: Store): Route {
+  const [route, setRoute] = useState(() => availableRoute(store));
+
   useEffect(() => {
-    const onChange = () => setRoute(parseRoute(window.location.hash));
+    const onChange = () => {
+      const next = availableRoute(store);
+      if (next === invoicesFallback) {
+        replaceRoute(invoicesFallback);
+      }
+      setRoute((previous) => (sameRoute(previous, next) ? previous : next));
+    };
+    onChange();
     window.addEventListener("hashchange", onChange);
     return () => window.removeEventListener("hashchange", onChange);
-  }, []);
+  }, [store]);
+
   return route;
+}
+
+function availableRoute(store: Store): Route {
+  const route = parseRoute(window.location.hash);
+  return routeAvailable(store, route.page) ? route : invoicesFallback;
 }
 
 export type RouteMotion = "forward" | "back" | "section";

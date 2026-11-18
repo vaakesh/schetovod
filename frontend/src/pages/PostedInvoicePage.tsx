@@ -6,7 +6,7 @@ import PageHead from "../components/PageHead";
 import PaymentsBlock from "../components/PaymentsBlock";
 import { formatDate, formatMoney, formatNumber, formatText } from "../format";
 import { message } from "../message";
-import type { Route } from "../router";
+import { isPlainLinkClick, type Route } from "../router";
 import type { PostedInvoice } from "../types";
 
 interface Props {
@@ -135,8 +135,10 @@ export default function PostedInvoicePage({ id, ask, go }: Props) {
           className="button button-soft"
           href="#/ledger"
           onClick={(event) => {
-            event.preventDefault();
-            go({ page: "ledger" });
+            if (isPlainLinkClick(event)) {
+              event.preventDefault();
+              go({ page: "ledger" });
+            }
           }}
         >
           Запись журнала №{invoice.ledger_entry_id}

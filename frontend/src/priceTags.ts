@@ -1,4 +1,5 @@
 import { formatMoney } from "./format";
+import type { Store } from "./stores";
 import type {
   PriceTag,
   PriceTagFields,
@@ -168,12 +169,15 @@ export function tagDetails(tag: PriceTag): string {
   ].join(" · ");
 }
 
-const STORAGE_KEY = "price-tags-form";
+function storageKey(store: Store): string {
+  // keep the existing draft in the original store
+  return store === "gastronom" ? "price-tags-form" : `price-tags-form:${store}`;
+}
 
 // the form outlives a switch to another page and a reload
-export function loadRows(): FormRow[] {
+export function loadRows(store: Store): FormRow[] {
   try {
-    const saved: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null");
+    const saved: unknown = JSON.parse(window.localStorage.getItem(storageKey(store)) ?? "null");
     if (Array.isArray(saved) && saved.length > 0) {
       return (saved as Omit<FormRow, "key">[]).map((row) => ({ ...emptyRow(), ...row, key: nextKey() }));
     }
@@ -184,19 +188,20 @@ export function loadRows(): FormRow[] {
 }
 
 // tags from the base go to the end of the print form, one copy each
-export function addToForm(tags: PriceTag[]) {
-  const kept = loadRows().filter((row) => !isEmptyRow(row));
-  saveRows([...kept, ...tags.map((tag) => fillRow(emptyRow(), tag))]);
+export function addToForm(store: Store, tags: PriceTag[]) {
+  const kept = loadRows(store).filter((row) => !isEmptyRow(row));
+  saveRows(store, [...kept, ...tags.map((tag) => fillRow(emptyRow(), tag))]);
 }
 
-export function saveRows(rows: FormRow[]) {
+export function saveRows(store: Store, rows: FormRow[]) {
   const kept = rows.filter((row) => !isEmptyRow(row));
+  const key = storageKey(store);
   if (kept.length === 0) {
-    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(key);
     return;
   }
   window.localStorage.setItem(
-    STORAGE_KEY,
+    key,
     JSON.stringify(kept.map(({ key: _key, ...row }) => row)),
   );
 }

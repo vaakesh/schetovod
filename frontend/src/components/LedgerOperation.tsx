@@ -4,7 +4,7 @@ import { getRevaluationLines } from "../api";
 import { formatMoney, formatNumber, formatSigned } from "../format";
 import { KIND_LABELS } from "../ledger";
 import { message } from "../message";
-import type { Route } from "../router";
+import { isPlainLinkClick, type Route } from "../router";
 import type { LedgerEntry, RevaluationLineOut } from "../types";
 
 interface Props {
@@ -64,8 +64,10 @@ export default function LedgerOperation({ entry, go }: Props) {
           className="op-link"
           href={`#/posted/${invoiceId}`}
           onClick={(event) => {
-            event.preventDefault();
-            go({ page: "posted", id: invoiceId });
+            if (isPlainLinkClick(event)) {
+              event.preventDefault();
+              go({ page: "posted", id: invoiceId });
+            }
           }}
         >
           Накладная №{entry.invoice_number}
