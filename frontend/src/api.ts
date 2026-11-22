@@ -26,6 +26,10 @@ import type {
   ProductEdit,
   ProductSummary,
   ProfitReport,
+  PurchaseReport,
+  PurchasePeriod,
+  PurchaseSort,
+  PurchaseHistory,
   RevaluationCreate,
   RevaluationLineOut,
   ReversedInvoice,
@@ -388,6 +392,18 @@ export function previewPriceTag(body: PriceTagFields): Promise<PriceTagPreview> 
 // every supplier with every product, without paging
 export function getCatalog(): Promise<Catalog> {
   return request("GET", "/catalog");
+}
+
+export function getPurchaseReport(period: PurchasePeriod, sort: PurchaseSort): Promise<PurchaseReport> {
+  return request("GET", `/purchases${query({ period, sort })}`);
+}
+
+export function getPurchaseOverview(period: PurchasePeriod, supplierId: number | null): Promise<{ spend: string; invoices: number }> {
+  return request("GET", `/purchases/overview${query({ period, supplier_id: supplierId })}`);
+}
+
+export function getPurchaseHistory(id: number, period: PurchasePeriod): Promise<PurchaseHistory> {
+  return request("GET", `/purchases/${id}${query({ period })}`);
 }
 
 // the price the user saw goes along, a tag for an older price is rejected

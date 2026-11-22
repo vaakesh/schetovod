@@ -65,8 +65,9 @@ export default function LoadHeatmap({ cells }: Props) {
                   style={{ background: shade(cell.receipts, max) }}
                   tabIndex={0}
                   aria-label={`${WEEKDAYS[weekday]}, ${hourRange(cell.hour)}: ${formatCount(cell.receipts)}`}
-                  onPointerEnter={(event) => point(event.currentTarget, cell)}
-                  onPointerLeave={() => setHovered(null)}
+                  onClick={(event) => point(event.currentTarget, cell)}
+                  onPointerEnter={(event) => { if (event.pointerType === "mouse") point(event.currentTarget, cell); }}
+                  onPointerLeave={(event) => { if (event.pointerType === "mouse") setHovered(null); }}
                   onFocus={(event) => point(event.currentTarget, cell)}
                   onBlur={() => setHovered(null)}
                 />

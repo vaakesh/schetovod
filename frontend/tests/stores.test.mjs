@@ -27,7 +27,7 @@ test("store data and downloads use the URL of the current store and auth stays s
 });
 
 test("orders and analytics are unavailable from direct links in the meat store", () => {
-  for (const hash of ["#/orders", "#/traffic", "#/profit"]) {
+  for (const hash of ["#/orders", "#/traffic", "#/profit", "#/purchases"]) {
     const { page } = parseRoute(hash);
     assert.equal(routeAvailable("gastronom", page), true);
     assert.equal(routeAvailable("meat", page), false);
@@ -42,7 +42,7 @@ test("the store switch preserves shared sections and leaves store-specific pages
     assert.equal(routeHash(storeSwitchRoute("meat", parseRoute(hash))), hash);
     assert.equal(routeHash(storeSwitchRoute("gastronom", parseRoute(hash))), hash);
   }
-  for (const hash of ["#/invoice/1", "#/posted/1", "#/orders", "#/traffic", "#/profit"]) {
+  for (const hash of ["#/invoice/1", "#/posted/1", "#/orders", "#/traffic", "#/profit", "#/purchases"]) {
     assert.equal(routeHash(storeSwitchRoute("meat", parseRoute(hash))), "#/");
   }
   for (const hash of ["#/invoice/1", "#/posted/1"]) {

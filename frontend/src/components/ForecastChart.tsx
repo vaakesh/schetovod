@@ -1,4 +1,4 @@
-import type { PointerEvent } from "react";
+import type { MouseEvent } from "react";
 
 import { hourRange } from "../traffic";
 import type { ForecastValue } from "../types";
@@ -44,7 +44,7 @@ export default function ForecastChart({ hours, label, legend, format, formatTick
   const shown = active === null ? undefined : hours[active];
   const shownFact = shown?.fact ?? null;
 
-  function follow(event: PointerEvent<SVGSVGElement>) {
+  function follow(event: MouseEvent<SVGSVGElement>) {
     const left = event.currentTarget.getBoundingClientRect().left;
     const index = Math.floor((event.clientX - left - MARGIN.left) / slot);
     setActive(Math.min(Math.max(index, 0), hours.length - 1));
@@ -59,8 +59,9 @@ export default function ForecastChart({ hours, label, legend, format, formatTick
           role="img"
           aria-label={label}
           tabIndex={0}
-          onPointerMove={follow}
-          onPointerLeave={() => setActive(null)}
+          onClick={follow}
+          onPointerMove={(event) => { if (event.pointerType === "mouse") follow(event); }}
+          onPointerLeave={(event) => { if (event.pointerType === "mouse") setActive(null); }}
           onBlur={() => setActive(null)}
           onKeyDown={onKeyDown}
         >

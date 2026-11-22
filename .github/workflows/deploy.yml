@@ -25,7 +25,7 @@ jobs:
       run:
         working-directory: app
     env:
-      # the settings need them at import, only the migrations reach the database
+      # database settings for backend checks
       POSTGRES_USER: ci
       POSTGRES_PASSWORD: ci
       POSTGRES_DB: ci
@@ -33,7 +33,7 @@ jobs:
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
       JWT_SECRET: not-a-secret-only-for-the-tests-in-ci
-    # the tests run on fakes, a broken migration would show up only on the stopped production
+    # the purchase queries and migrations run against PostgreSQL
     services:
       postgres:
         image: postgres:18.4

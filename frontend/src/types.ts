@@ -167,6 +167,52 @@ export interface SupplierEdit {
   inn: string | null;
 }
 
+export type PurchasePeriod = "30d" | "60d" | "90d" | "all";
+export type PurchaseSort = "frequency" | "spend" | "last_delivery";
+
+export interface PurchaseProduct {
+  product_id: number;
+  name: string;
+  supplier_id: number;
+  supplier_name: string;
+  deliveries: number;
+  lifetime_deliveries: number;
+  spend: string;
+  last_on: string;
+  days_since: number;
+  usual_interval_days: string | null;
+  overdue: boolean;
+  price_trend: {
+    change_pct: string | null;
+    status: "rapid_growth" | "rising" | "stable" | "falling" | "insufficient";
+  };
+}
+
+export interface PurchaseReport {
+  as_of: string;
+  period: PurchasePeriod;
+  items: PurchaseProduct[];
+}
+
+export interface PurchaseLine {
+  occurred_on: string;
+  invoice_id: number;
+  invoice_number: string | null;
+  line_no: number;
+  unit: string | null;
+  quantity: string;
+  cost_price: string;
+  cost_price_total: string;
+  retail_price: string;
+}
+
+export interface PurchaseHistory {
+  as_of: string;
+  period: PurchasePeriod;
+  product: PurchaseProduct;
+  lines: PurchaseLine[];
+}
+
 export interface ProductSummary {
   id: number;
   name: string;

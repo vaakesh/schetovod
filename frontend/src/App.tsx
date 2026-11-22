@@ -22,6 +22,7 @@ import PostedInvoicePage from "./pages/PostedInvoicePage";
 import PriceTagBasePage from "./pages/PriceTagBasePage";
 import PriceTagsPage from "./pages/PriceTagsPage";
 import ProfitPage from "./pages/ProfitPage";
+import PurchasesPage from "./pages/PurchasesPage";
 import ReportPage from "./pages/ReportPage";
 import TrafficPage from "./pages/TrafficPage";
 import UploadPage from "./pages/UploadPage";
@@ -241,6 +242,8 @@ export default function App({ store, onSignedOut }: Props) {
         return <TrafficPage />;
       case "profit":
         return <ProfitPage ask={ask} />;
+      case "purchases":
+        return <PurchasesPage />;
       case "upload":
         return <UploadPage batch={batch} go={go} />;
       case "invoices":

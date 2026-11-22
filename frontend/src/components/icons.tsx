@@ -60,6 +60,10 @@ const PATHS = {
     </>
   ),
   profit: <path d="M9 20V4h5a4.5 4.5 0 0 1 0 9H6.5M6.5 16.5H14" />,
+  purchases: <path d="M4 20v-5m5 5V9m5 11V6m5 14V3" />,
+  search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></>,
+  sort: <path d="M4 6h14M4 11h10M4 16h6m9-6v11m-3-3 3 3 3-3" />,
+  supplier: <><path d="M3 6h11v11H3zM14 10h4l3 4v3h-7" /><circle cx="7" cy="18" r="2" /><circle cx="17.5" cy="18" r="2" /></>,
   upload: <path d="M12 16V5M7 10l5-5 5 5M5 19h14" />,
   photo: (
     <>

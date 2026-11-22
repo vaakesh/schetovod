@@ -17,6 +17,7 @@ from orders.router import router as orders_router
 from price_tags.router import router as price_tags_router
 from products.router import router as products_router
 from profit.router import router as profit_router
+from purchases.router import router as purchases_router
 from recognition.client import close_client
 from reports.router import router as reports_router
 from suppliers.router import router as suppliers_router
@@ -101,6 +102,9 @@ gastronom_routers.include_router(
 )
 gastronom_routers.include_router(
     router=profit_router,
+)
+gastronom_routers.include_router(
+    router=purchases_router,
 )
 
 # the old paths use the gastronom database

@@ -1,4 +1,4 @@
-import type { PointerEvent } from "react";
+import type { MouseEvent } from "react";
 
 import { formatDate } from "../format";
 import { dayNumber, formatCount, formatRubles } from "../traffic";
@@ -43,7 +43,7 @@ export default function TrendChart({ days }: Props) {
   const trend = days.filter((day) => day.trend !== null);
   const shown = active === null ? undefined : days[active];
 
-  function follow(event: PointerEvent<SVGSVGElement>) {
+  function follow(event: MouseEvent<SVGSVGElement>) {
     const left = event.currentTarget.getBoundingClientRect().left;
     const pointer = event.clientX - left;
     let nearest = 0;
@@ -64,8 +64,9 @@ export default function TrendChart({ days }: Props) {
           role="img"
           aria-label="Покупатели по дням и среднее за 7 дней"
           tabIndex={0}
-          onPointerMove={follow}
-          onPointerLeave={() => setActive(null)}
+          onClick={follow}
+          onPointerMove={(event) => { if (event.pointerType === "mouse") follow(event); }}
+          onPointerLeave={(event) => { if (event.pointerType === "mouse") setActive(null); }}
           onBlur={() => setActive(null)}
           onKeyDown={onKeyDown}
         >

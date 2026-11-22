@@ -46,7 +46,7 @@ export default function PriceTagTextInput({ layout, subtitle = false, className 
         layout
           ? {
               width: `${layout.width}pt`,
-              fontSize: `${layout.font_size}pt`,
+              fontSize: `max(${layout.font_size}pt, var(--field-min-font-size, 0px))`,
               lineHeight: layout.leading,
             }
           : undefined

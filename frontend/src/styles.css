@@ -1520,7 +1520,7 @@ button {
 
 .price-tags .price-tag-live-subtitle,
 .price-tag-dialog .price-tag-live-subtitle {
-  font-size: 12px;
+  font-size: max(12px, var(--field-min-font-size, 0px));
   font-weight: 500;
   line-height: 1.15;
 }
@@ -1791,6 +1791,20 @@ button {
 
 .cell-short {
   width: 52px;
+}
+
+/* iOS Safari zooms the viewport when a small text field receives focus */
+@media screen and (any-pointer: coarse) {
+  :root {
+    --field-min-font-size: 16px;
+  }
+
+  :root :where(
+    input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"], [type="color"], [type="button"], [type="submit"], [type="reset"]),
+    select, textarea, [contenteditable="true"], [contenteditable=""], [contenteditable="plaintext-only"]
+  ) {
+    font-size: max(1em, var(--field-min-font-size));
+  }
 }
 
 .cell-unit {

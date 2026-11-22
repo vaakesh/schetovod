@@ -14,7 +14,8 @@ export type Route =
   | { page: "ledger" }
   | { page: "report" }
   | { page: "traffic" }
-  | { page: "profit" };
+  | { page: "profit" }
+  | { page: "purchases" };
 
 export function parseRoute(hash: string): Route {
   const draft = hash.match(/^#\/invoice\/(\d+)$/);
@@ -52,6 +53,9 @@ export function parseRoute(hash: string): Route {
   if (hash === "#/profit") {
     return { page: "profit" };
   }
+  if (hash === "#/purchases") {
+    return { page: "purchases" };
+  }
   return { page: "invoices" };
 }
 
@@ -79,6 +83,8 @@ export function routeHash(route: Route): string {
       return "#/traffic";
     case "profit":
       return "#/profit";
+    case "purchases":
+      return "#/purchases";
     case "invoices":
       return "#/";
   }
@@ -89,7 +95,7 @@ export function sameRoute(a: Route, b: Route): boolean {
 }
 
 export function routeAvailable(store: Store, page: Route["page"]): boolean {
-  return store === "gastronom" || (page !== "orders" && page !== "traffic" && page !== "profit");
+  return store === "gastronom" || !["orders", "traffic", "profit", "purchases"].includes(page);
 }
 
 const invoicesFallback: Route = { page: "invoices" };

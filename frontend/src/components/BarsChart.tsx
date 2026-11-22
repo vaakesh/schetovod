@@ -74,8 +74,9 @@ export default function BarsChart({ bars, label }: Props) {
                   height={baseline - MARGIN.top}
                   tabIndex={0}
                   aria-label={`${bar.title}: ${bar.shown}`}
-                  onPointerEnter={() => setActive(index)}
-                  onPointerLeave={() => setActive(null)}
+                  onClick={() => setActive(index)}
+                  onPointerEnter={(event) => { if (event.pointerType === "mouse") setActive(index); }}
+                  onPointerLeave={(event) => { if (event.pointerType === "mouse") setActive(null); }}
                   onFocus={() => setActive(index)}
                   onBlur={() => setActive(null)}
                 />
