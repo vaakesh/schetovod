@@ -45,6 +45,11 @@ class PriceTagUnit(StrEnum):
     WEIGHT = "weight"
 
 
+class StocktakeUnit(StrEnum):
+    PIECE = "шт"
+    KG = "кг"
+
+
 class PriceTagOrigin(StrEnum):
     # printed as «Производитель»
     MAKER = "maker"

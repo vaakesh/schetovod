@@ -36,6 +36,7 @@ const GROUPS: Group[] = [
     title: "Учёт",
     items: [
       { route: { page: "ledger" }, label: "Журнал", icon: "ledger" },
+      { route: { page: "stocktakes" }, label: "Переучёты", icon: "stocktake" },
       { route: { page: "report" }, label: "Отчёт", icon: "report" },
     ],
   },
@@ -51,6 +52,7 @@ const GROUPS: Group[] = [
 
 // a draft and a posted invoice belong to the invoices section, the base of tags to the tags
 function section(route: Route): Route["page"] {
+  if (route.page === "stocktake") return "stocktakes";
   if (route.page === "draft" || route.page === "posted") {
     return "invoices";
   }

@@ -14,6 +14,7 @@ from core.enums import (
     PriceTagOrigin,
     PriceTagUnit,
     ReceiptKind,
+    StocktakeUnit,
 )
 
 # column templates for Mapped[...], the mapped_column on a field is merged on top of them
@@ -117,6 +118,14 @@ price_tag_unit_enum = SQLAlchemyEnum(
 price_tag_origin_enum = SQLAlchemyEnum(
     PriceTagOrigin,
     name="price_tag_origin",
+    native_enum=False,
+    create_constraint=True,
+    validate_strings=True,
+    values_callable=lambda enum_class: [member.value for member in enum_class],
+)
+stocktake_unit_enum = SQLAlchemyEnum(
+    StocktakeUnit,
+    name="stocktake_unit",
     native_enum=False,
     create_constraint=True,
     validate_strings=True,

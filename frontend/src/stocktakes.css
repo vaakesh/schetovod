@@ -1,0 +1,452 @@
+.count-page {
+  max-width: 1240px;
+}
+
+.count-overview,
+.count-summary,
+.count-feedback,
+.count-form-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.count-overview,
+.count-summary {
+  justify-content: space-between;
+}
+
+.count-overview {
+  padding: 24px;
+  gap: 16px 24px;
+}
+
+.count-form {
+  padding: 20px;
+}
+
+.count-summary {
+  margin: 24px 0 10px;
+}
+
+.count-total {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+.count-total > span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.count-summary strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.count-summary h2 span {
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.count-list-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.count-search {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  max-width: 440px;
+}
+.count-search > .icon {
+  position: absolute;
+  color: var(--muted);
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.count-search .input {
+  padding-inline: 38px;
+  background: var(--field);
+}
+.count-search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+.count-search-clear {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.count-search-clear:hover {
+  color: var(--text);
+}
+.count-sort .purchase-menu-trigger {
+  gap: 9px;
+  padding-inline: 12px;
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-weight: 600;
+}
+.count-sort .purchase-menu-trigger svg {
+  color: inherit;
+}
+.count-sort .purchase-menu-trigger:hover,
+.count-sort .purchase-menu-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.count-sort .purchase-menu-trigger:focus-visible,
+.count-search-clear:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.count-list:has(.purchase-options) {
+  overflow: visible;
+}
+.count-list-tools .purchase-options {
+  width: 312px;
+  max-width: calc(100vw - 52px);
+  padding: 6px 10px;
+}
+.count-sort .menu-item.selected {
+  color: var(--accent);
+  font-weight: 600;
+}
+.count-search-empty p {
+  margin: 0 0 12px;
+}
+
+.count-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px 20px;
+  padding: 16px 24px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.count-history-row + .count-history-row {
+  border-top: 1px solid var(--line);
+}
+.count-history-row:hover {
+  background: var(--row-hover);
+}
+.count-history-row small {
+  margin-top: 2px;
+}
+.count-history-row small,
+.count-options small {
+  display: block;
+  color: var(--muted);
+}
+.sheet.count-form {
+  overflow: visible;
+}
+.count-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 12px;
+}
+.count-amount-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.count-amount-toggle input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.count-fields {
+  display: grid;
+  grid-template-columns: minmax(160px, 2.6fr) minmax(68px, 0.6fr) repeat(2, minmax(90px, 1fr)) auto;
+  align-items: end;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.count-fields .field {
+  min-width: 0;
+}
+.count-calculated:not(:empty) {
+  display: block;
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.count-name {
+  position: relative;
+}
+.count-options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  width: max(100%, min(340px, 100% + 72px));
+  max-height: min(300px, 40dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.count-options button,
+.count-edit,
+.count-link {
+  font: inherit;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.count-options button {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  overflow-wrap: anywhere;
+}
+
+.count-options button[aria-selected="true"],
+.count-options button:hover {
+  background: var(--accent-wash);
+}
+.count-option-action,
+.count-link,
+.count-edit {
+  color: var(--accent);
+}
+.count-edit {
+  padding: 4px 0;
+  font-weight: 600;
+}
+.count-edit:hover {
+  text-decoration: underline;
+}
+.count-feedback,
+.count-form-actions {
+  margin: 12px 0;
+}
+.count-form-actions {
+  margin-bottom: 0;
+}
+.count-form-actions .button {
+  min-height: 30px;
+}
+.count-table {
+  width: 100%;
+  table-layout: fixed;
+}
+.count-table thead th:first-child {
+  width: 45%;
+}
+.count-table tbody th {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.count-table tbody th,
+.count-table tbody td {
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+}
+.count-table th.count-row-action,
+.count-table td.count-row-action {
+  width: 52px;
+  padding: 0 4px;
+}
+.count-row-action .row-delete {
+  width: 44px;
+  height: 44px;
+}
+.count-table .num {
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.count-mobile {
+  display: none;
+}
+.count-table .count-highlight {
+  background: var(--accent-soft);
+}
+.count-table tr:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .count-table tbody tr {
+    transition: background-color 0.18s ease-out;
+  }
+}
+
+@media (max-width: 760px) {
+  .count-fields {
+    grid-template-columns: 0.75fr 1fr 1fr;
+  }
+  .count-name,
+  .count-fields > .button {
+    grid-column: 1 / -1;
+  }
+  .count-fields-amount {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .count-fields-amount > .button {
+    grid-column: auto;
+  }
+  .count-options {
+    width: 100%;
+  }
+  .count-overview {
+    padding: 20px;
+  }
+  .count-history-row {
+    padding-inline: 20px;
+  }
+  .count-form {
+    padding: 16px;
+  }
+  .count-page .input,
+  .count-page .button,
+  .count-amount-toggle,
+  .count-options button,
+  .count-edit {
+    min-height: 44px;
+  }
+  .count-page .input {
+    font-size: 16px;
+    padding: 0 8px;
+  }
+  .count-search .input {
+    padding-inline: 38px 44px;
+  }
+  .count-search-clear {
+    width: 44px;
+  }
+  .count-sort .menu-item {
+    min-height: 44px;
+  }
+  .count-page .field-label {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 600px) {
+  .count-total {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .count-list-tools {
+    gap: 8px;
+    padding: 10px;
+  }
+  .count-search {
+    max-width: none;
+  }
+  .count-sort .purchase-menu-trigger {
+    justify-content: center;
+    gap: 4px;
+    padding-inline: 11px;
+  }
+  .count-sort .purchase-menu-trigger span {
+    display: none;
+  }
+  .count-table,
+  .count-table tbody {
+    display: block;
+  }
+  .count-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .count-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0 6px;
+    align-items: start;
+    padding: 6px 14px 12px;
+  }
+  .count-table tr + tr {
+    border-top: 1px solid var(--line);
+  }
+  .count-table tbody td,
+  .count-table tbody th {
+    padding: 0;
+    border: 0;
+    white-space: normal;
+  }
+  .count-table th[scope="row"] {
+    grid-column: 1 / -1;
+    margin: 4px 0;
+  }
+  .count-table tr:has(.count-row-action) > th[scope="row"] {
+    grid-row: 1;
+    padding-right: 50px;
+  }
+  .count-table td.count-row-action {
+    grid-column: -2 / -1;
+    grid-row: 1;
+    justify-self: end;
+    align-self: center;
+    width: auto;
+    padding: 0;
+  }
+  .count-table .num {
+    text-align: left;
+  }
+  .count-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .count-mobile {
+    display: inline;
+  }
+  .count-history-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .count-history-row > span:first-child {
+    grid-column: 1 / -1;
+  }
+  .count-overview .button {
+    width: 100%;
+  }
+}

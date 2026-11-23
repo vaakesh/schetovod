@@ -5,6 +5,7 @@ from orders import models as orders_models
 from price_tags import models as price_tags_models
 from products import models as products_models
 from profit import models as profit_models
+from stocktakes import models as stocktakes_models
 from suppliers import models as suppliers_models
 from traffic import models as traffic_models
 
@@ -16,6 +17,7 @@ __all__ = [
     "price_tags_models",
     "products_models",
     "profit_models",
+    "stocktakes_models",
     "suppliers_models",
     "traffic_models",
 ]

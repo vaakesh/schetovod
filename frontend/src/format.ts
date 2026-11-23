@@ -10,7 +10,8 @@ const number = new Intl.NumberFormat("ru-RU", {
 });
 
 export function formatMoney(value: string | number | null): string {
-  return value === null ? EMPTY : money.format(Number(value));
+  // Intl keeps every kopeck when a large decimal total is passed as a string
+  return value === null ? EMPTY : money.format(value as number | `${number}`);
 }
 
 // a ledger amount always shows its direction, a real minus sign instead of a hyphen
@@ -22,6 +23,25 @@ export function formatSigned(value: string | number): string {
 
 export function formatNumber(value: string | number | null): string {
   return value === null ? EMPTY : number.format(Number(value));
+}
+
+function toKopecks(value: string | null): bigint | null {
+  const match = /^(\d{1,12})(?:[.,](\d{1,2}))?$/.exec(value ?? "");
+  return match ? BigInt(match[1]! + (match[2] ?? "").padEnd(2, "0")) : null;
+}
+
+export function formatQuantityFromAmount(amount: string, price: string | null): string | null {
+  const total = toKopecks(amount);
+  const perUnit = toKopecks(price);
+  if (total === null || perUnit === null || perUnit === 0n) return null;
+
+  const scaled = total * 1000n;
+  const rounded = (scaled + perUnit / 2n) / perUnit;
+  if (total > 0n && rounded === 0n) return "< 0,001";
+  const whole = number.format(rounded / 1000n);
+  const fraction = String(rounded % 1000n).padStart(3, "0").replace(/0+$/, "");
+  const value = fraction ? `${whole},${fraction}` : whole;
+  return scaled % perUnit === 0n ? value : `≈ ${value}`;
 }
 
 export function formatText(value: string | number | null): string {

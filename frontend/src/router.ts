@@ -12,12 +12,17 @@ export type Route =
   | { page: "price-tag-base" }
   | { page: "orders" }
   | { page: "ledger" }
+  | { page: "stocktakes" }
+  | { page: "stocktake"; id: number }
   | { page: "report" }
   | { page: "traffic" }
   | { page: "profit" }
   | { page: "purchases" };
 
 export function parseRoute(hash: string): Route {
+  if (hash === "#/stocktakes") return { page: "stocktakes" };
+  const stocktake = hash.match(/^#\/stocktakes\/(\d+)$/);
+  if (stocktake) return { page: "stocktake", id: Number(stocktake[1]) };
   const draft = hash.match(/^#\/invoice\/(\d+)$/);
   if (draft) {
     return { page: "draft", id: Number(draft[1]) };
@@ -61,6 +66,10 @@ export function parseRoute(hash: string): Route {
 
 export function routeHash(route: Route): string {
   switch (route.page) {
+    case "stocktakes":
+      return "#/stocktakes";
+    case "stocktake":
+      return `#/stocktakes/${route.id}`;
     case "draft":
       return `#/invoice/${route.id}`;
     case "posted":
@@ -95,7 +104,7 @@ export function sameRoute(a: Route, b: Route): boolean {
 }
 
 export function routeAvailable(store: Store, page: Route["page"]): boolean {
-  return store === "gastronom" || !["orders", "traffic", "profit", "purchases"].includes(page);
+  return store === "gastronom" || !["orders", "traffic", "profit", "purchases", "stocktakes", "stocktake"].includes(page);
 }
 
 const invoicesFallback: Route = { page: "invoices" };
@@ -147,7 +156,7 @@ export type RouteMotion = "forward" | "back" | "section";
 
 // an invoice opens over its list
 function depth(route: Route): number {
-  return route.page === "draft" || route.page === "posted" ? 1 : 0;
+  return route.page === "draft" || route.page === "posted" || route.page === "stocktake" ? 1 : 0;
 }
 
 // how the page enters: deeper from the right, back to the list from the left

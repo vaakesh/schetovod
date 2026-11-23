@@ -29,6 +29,7 @@ const PATHS = {
       <path d="M9 12h6M9 16h6" />
     </>
   ),
+  stocktake: <path d="M9 5H6a1 1 0 0 0-1 1v14h14V6a1 1 0 0 0-1-1h-3M9 3h6v4H9zM8 11l1.5 1.5L12 10m1 2h3m-8 4h8" />,
   catalog: (
     <>
       <path d="m12 3 8.5 4.5v9L12 21l-8.5-4.5v-9z" />

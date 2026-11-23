@@ -55,6 +55,7 @@ const FIELD_LABELS: Record<string, string> = {
   name: "Название",
   inn: "ИНН",
   quantity: "Кол-во",
+  entered_amount: "Общая сумма",
   unit: "Ед.",
   vat_percent: "НДС",
   cost_price_total: "Сумма к оплате",
@@ -198,11 +199,27 @@ async function authorized(method: string, path: string, body?: unknown): Promise
   return response;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+export class ApiError extends Error {
+  constructor(readonly status: number, readonly detail: unknown, text: string) {
+    super(text);
+  }
+}
+
+export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const response = await authorized(method, path, body);
-  const data: unknown = await response.json().catch(() => null);
+  if (response.status === 204) return undefined as T;
+  const data: unknown = await response.json().catch(() => {
+    if (response.ok) throw new Error("Не удалось прочитать ответ сервера");
+    return null;
+  });
   if (!response.ok) {
-    throw new Error(errorText(response.status, data));
+    const detail = (data as { detail?: unknown } | null)?.detail;
+    const text = (detail as { message?: unknown } | null)?.message;
+    throw new ApiError(
+      response.status,
+      detail,
+      typeof text === "string" ? text : errorText(response.status, data),
+    );
   }
   return data as T;
 }

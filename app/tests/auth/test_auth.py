@@ -643,7 +643,7 @@ class TestEveryRouteIsClosed:
             len(
                 ROUTES,
             )
-            == 127
+            == 143
         )
 
     @pytest.mark.parametrize(

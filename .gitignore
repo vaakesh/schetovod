@@ -36,6 +36,7 @@ htmlcov/
 
 /invoices/
 /backups/
+/stocktakes/
 .deploy.lock
 sources/
 skills-lock.json

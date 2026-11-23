@@ -3,11 +3,12 @@ import { useState } from "react";
 import { login } from "../api";
 import Icon from "../components/icons";
 import { message } from "../message";
+import type { UserSummary } from "../types";
 
 interface Props {
   // the session ended during the work, the form says that nothing is lost
   lost: boolean;
-  onSignedIn: () => void;
+  onSignedIn: (user: UserSummary) => void;
 }
 
 export default function LoginPage({ lost, onSignedIn }: Props) {
@@ -25,8 +26,7 @@ export default function LoginPage({ lost, onSignedIn }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await login({ login: name, password });
-      onSignedIn();
+      onSignedIn(await login({ login: name, password }));
     } catch (reason) {
       setError(message(reason));
       setBusy(false);

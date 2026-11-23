@@ -24,6 +24,8 @@ import PriceTagsPage from "./pages/PriceTagsPage";
 import ProfitPage from "./pages/ProfitPage";
 import PurchasesPage from "./pages/PurchasesPage";
 import ReportPage from "./pages/ReportPage";
+import StocktakesPage from "./pages/StocktakesPage";
+import StocktakePage from "./pages/StocktakePage";
 import TrafficPage from "./pages/TrafficPage";
 import UploadPage from "./pages/UploadPage";
 import { routeAvailable, routeHash, sameRoute, useRoute, useRouteMotion, type Route } from "./router";
@@ -52,11 +54,12 @@ function batchStatus({ running, done, failed, total }: BatchUpload): string {
 }
 
 interface Props {
+  userId: number;
   store: Store;
   onSignedOut: () => void;
 }
 
-export default function App({ store, onSignedOut }: Props) {
+export default function App({ store, userId, onSignedOut }: Props) {
   const route = useRoute(store);
   const ordersEnabled = routeAvailable(store, "orders");
   const motion = useRouteMotion(route);
@@ -197,6 +200,10 @@ export default function App({ store, onSignedOut }: Props) {
 
   function page() {
     switch (route.page) {
+      case "stocktakes":
+        return <StocktakesPage go={go} />;
+      case "stocktake":
+        return <StocktakePage id={route.id} userId={userId} go={go} ask={ask} />;
       case "draft":
         return (
           <DraftPage

@@ -163,6 +163,10 @@ class TestStoreRoutes:
             ("GET", "/traffic/report"),
             ("GET", "/traffic/forecast"),
             ("POST", "/ledger/import-shifts"),
+            ("GET", "/stocktakes"),
+            ("POST", "/stocktakes/open"),
+            ("GET", "/stocktakes/1"),
+            ("POST", "/stocktakes/1/lines"),
         ],
     )
     def test_gastronom_only_routes_return_404_in_meat(

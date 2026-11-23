@@ -27,7 +27,7 @@ test("store data and downloads use the URL of the current store and auth stays s
 });
 
 test("orders and analytics are unavailable from direct links in the meat store", () => {
-  for (const hash of ["#/orders", "#/traffic", "#/profit", "#/purchases"]) {
+  for (const hash of ["#/orders", "#/traffic", "#/profit", "#/purchases", "#/stocktakes", "#/stocktakes/12"]) {
     const { page } = parseRoute(hash);
     assert.equal(routeAvailable("gastronom", page), true);
     assert.equal(routeAvailable("meat", page), false);
