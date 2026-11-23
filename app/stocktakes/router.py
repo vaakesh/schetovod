@@ -1,7 +1,9 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
+from fastapi.concurrency import run_in_threadpool
 
+from reports.pdf import stocktake_pdf
 from stocktakes.queries import QueriesDep
 from stocktakes.schemas import (
     Acknowledgement,
@@ -9,6 +11,7 @@ from stocktakes.schemas import (
     DeleteLine,
     Document,
     EditLine,
+    PrintOrder,
     RequestId,
     Suggestion,
     Summary,
@@ -65,6 +68,30 @@ async def suggestions(
     return await queries.suggestions(
         document_id=document_id,
         query=q,
+    )
+
+
+@router.post(
+    path="/{document_id}/print.pdf",
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
+async def print_document(
+    document_id: int, payload: PrintOrder, queries: QueriesDep
+) -> Response:
+    doc = await queries.print_document(
+        document_id=document_id,
+        order=payload,
+    )
+    return Response(
+        content=await run_in_threadpool(
+            func=stocktake_pdf,
+            doc=doc,
+        ),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="stocktake-{doc.id}.pdf"',
+        },
     )
 
 

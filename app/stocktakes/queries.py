@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import distinct_on
 
 from core.db import SessionDep
 from stocktakes.models import Stocktake, StocktakeLine
-from stocktakes.schemas import Document, Line, Suggestion, Summary, name_key
+from stocktakes.schemas import Document, Line, PrintOrder, Suggestion, Summary, name_key
 
 
 def line_amount():
@@ -131,6 +131,32 @@ class StocktakeQueries:
             ),
             lines=lines,
         )
+
+    async def print_document(self, document_id: int, order: PrintOrder) -> Document:
+        doc = await self.document(
+            document_id=document_id,
+            since=None,
+        )
+        # release the shared lock before rendering a large document
+        await self.session.rollback()
+        if doc is None or doc.version != order.version:
+            raise HTTPException(
+                status_code=409,
+                detail="Переучёт изменился. Обновите страницу и скачайте PDF ещё раз.",
+            )
+        by_id = {line.id: line for line in doc.lines}
+        ordered_count = len(
+            order.line_ids,
+        )
+        if ordered_count != doc.line_count or by_id.keys() != set(
+            order.line_ids,
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Для PDF нужны все позиции переучёта без повторов",
+            )
+        doc.lines = [by_id[line_id] for line_id in order.line_ids]
+        return doc
 
     async def suggestions(self, document_id: int, query: str) -> list[Suggestion]:
         key = name_key(

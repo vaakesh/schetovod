@@ -569,8 +569,7 @@ export default function StocktakePage({ id, userId, go, ask }: Props) {
             </form>
           )}
           <StocktakeLines
-            lines={doc.lines}
-            total={doc.total}
+            doc={doc}
             query={lineQuery}
             onQueryChange={setLineQuery}
             editable={editable}

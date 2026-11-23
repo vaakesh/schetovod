@@ -402,6 +402,10 @@ export function printPriceTags(rows: PriceTagPrintRow[]): Promise<Blob> {
   return requestFile("POST", "/price-tags/print.pdf", { rows });
 }
 
+export function stocktakePdf(id: number, version: number, lineIds: number[]): Promise<Blob> {
+  return requestFile("POST", `/stocktakes/${id}/print.pdf`, { version, line_ids: lineIds });
+}
+
 export function previewPriceTag(body: PriceTagFields): Promise<PriceTagPreview> {
   return request("POST", "/price-tags/preview", body);
 }

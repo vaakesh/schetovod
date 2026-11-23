@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from uuid import UUID
 
+import pymupdf
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -111,6 +112,77 @@ class TestOpen:
             )
             == 2
         )
+
+
+class TestPrintDocument:
+    async def test_download_contains_every_line_in_requested_order(
+        self, api: AsyncClient
+    ) -> None:
+        doc = await start(
+            api=api,
+        )
+        path = f"{ROOT}/{doc}"
+        for number, name in ((2, "Хлеб"), (3, "Яблоко"), (4, "Мёд <лесной> & липовый")):
+            added = await api.post(
+                url=f"{path}/lines",
+                json=line(
+                    number=number,
+                    name=name,
+                ),
+            )
+            assert added.status_code == 200
+
+        response = await api.post(
+            url=f"{path}/print.pdf",
+            json={"version": 4, "line_ids": [2, 1, 3]},
+        )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/pdf"
+        assert (
+            response.headers["content-disposition"]
+            == 'attachment; filename="stocktake-1.pdf"'
+        )
+        with pymupdf.open(
+            stream=response.content,
+            filetype="pdf",
+        ) as pdf:
+            text = pdf[0].get_text()
+        names = {"Хлеб", "Яблоко", "Мёд <лесной> & липовый"}
+        assert [row for row in text.splitlines() if row in names] == [
+            "Яблоко",
+            "Хлеб",
+            "Мёд <лесной> & липовый",
+        ]
+        assert "Переучёт №1" in text
+        assert "10 шт" in text
+        assert "Итого по переучёту · позиций: 3" in text
+        assert "465,00" in text
+
+    @pytest.mark.parametrize(
+        argnames=("version", "ids", "status"),
+        argvalues=[(1, [1], 409), (2, [], 422), (2, [1, 1], 422), (2, [2], 422)],
+    )
+    async def test_rejects_stale_or_invalid_line_order(
+        self, api: AsyncClient, version: int, ids: list[int], status: int
+    ) -> None:
+        doc = await start(
+            api=api,
+        )
+        added = await api.post(
+            url=f"{ROOT}/{doc}/lines",
+            json=line(
+                number=2,
+            ),
+        )
+        assert added.status_code == 200
+
+        response = await api.post(
+            url=f"{ROOT}/{doc}/print.pdf",
+            json={"version": version, "line_ids": ids},
+        )
+
+        assert response.status_code == status
 
 
 class TestLines:

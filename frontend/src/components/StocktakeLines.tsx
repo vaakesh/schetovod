@@ -1,7 +1,9 @@
 import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { stocktakePdf } from "../api";
 import { formatMoney } from "../format";
-import { nameKey, stocktakeQuantity, type CountLine } from "../stocktakes";
+import { message } from "../message";
+import { nameKey, stocktakeQuantity, type CountDocument, type CountLine } from "../stocktakes";
 import Icon from "./icons";
 import PurchaseMenu from "./PurchaseMenu";
 
@@ -53,8 +55,7 @@ function compareLines(a: CountLine, b: CountLine, order: SortOrder): number {
 }
 
 interface Props {
-  lines: CountLine[];
-  total: string;
+  doc: CountDocument;
   query: string;
   onQueryChange: (value: string) => void;
   editable: boolean;
@@ -65,8 +66,11 @@ interface Props {
   feedback: ReactNode;
 }
 
-function StocktakeLines({ lines, total, query, onQueryChange, editable, busy, highlight, edit, remove, feedback }: Props) {
+function StocktakeLines({ doc, query, onQueryChange, editable, busy, highlight, edit, remove, feedback }: Props) {
+  const { lines, total } = doc;
   const [order, setOrder] = useState(savedOrder);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const searchInput = useRef<HTMLInputElement>(null);
   const search = nameKey(query);
   const sorted = useMemo(
@@ -81,6 +85,24 @@ function StocktakeLines({ lines, total, query, onQueryChange, editable, busy, hi
       return terms.every((term) => text.includes(term));
     });
   }, [sorted, search]);
+
+  async function downloadPdf() {
+    setExporting(true);
+    setExportError("");
+    try {
+      const pdf = await stocktakePdf(doc.id, doc.version, sorted.map((line) => line.id));
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(pdf);
+      link.href = url;
+      link.download = `Переучёт №${doc.id}.pdf`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (reason) {
+      setExportError(message(reason));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function clearSearch() {
     onQueryChange("");
@@ -102,8 +124,15 @@ function StocktakeLines({ lines, total, query, onQueryChange, editable, busy, hi
         <h2 className="section-title" id="stocktake-positions" tabIndex={-1}>Позиции{" "}
           <span role="status">{search ? `${visible.length} из ${lines.length}` : lines.length}</span>
         </h2>
-        <div className="count-total"><span>Итого по переучёту</span><strong>{formatMoney(total)} ₽</strong></div>
+        <div className="count-summary-actions">
+          <div className="count-total"><span>Итого по переучёту</span><strong>{formatMoney(total)} ₽</strong></div>
+          <button type="button" className="button button-soft" disabled={exporting || busy}
+            aria-busy={exporting} onClick={() => void downloadPdf()}>
+            {exporting ? "Готовим PDF…" : "Скачать PDF"}
+          </button>
+        </div>
       </div>
+      {exportError && <p className="alert" role="alert">{exportError}</p>}
       {feedback}
       <div className="sheet count-list">
         {lines.length > 0 && (

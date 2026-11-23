@@ -1,8 +1,9 @@
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from functools import partial
 from io import BytesIO
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
@@ -17,6 +18,7 @@ from reportlab.platypus import (
     Flowable,
     Frame,
     KeepTogether,
+    LongTable,
     NextPageTemplate,
     PageBreak,
     PageTemplate,
@@ -27,9 +29,11 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from core.config import settings
 from core.enums import LedgerKind
 from core.schema_types import format_invoice_date
 from reports.schemas import PeriodReport, PrintedInvoice, ReportDay, ReportMovement
+from stocktakes.schemas import Document, Line
 
 # fonts-dejavu-core in the image, the built-in PDF fonts have no cyrillic
 FONT_DIR = Path(
@@ -851,6 +855,144 @@ def _invoice_table(
     return table
 
 
+def _stocktake_balance(line: Line) -> str:
+    quantity = line.quantity
+    prefix = ""
+    if quantity is None:
+        if not line.price:
+            return "По сумме"
+        exact = line.amount / line.price
+        quantity = exact.quantize(
+            exp=Decimal(
+                value="0.001",
+            ),
+            rounding=ROUND_HALF_UP,
+        )
+        if exact > 0 and quantity == 0:
+            return f"< 0,001 {line.unit}"
+        if exact != quantity:
+            prefix = "≈ "
+    value = _quantity(
+        value=quantity,
+    )
+    return f"{prefix}{value} {line.unit}"
+
+
+def stocktake_pdf(doc: Document) -> bytes:
+    _register_fonts()
+    styles = _Styles()
+    amount_style = ParagraphStyle(
+        name="stocktake_amount",
+        parent=styles.invoice_cell,
+        alignment=TA_RIGHT,
+    )
+    rows: list[list[object]] = [["Товар", "Цена, ₽", "Остаток", "Сумма, ₽"]]
+    for line in doc.lines:
+        rows.append(
+            [
+                Paragraph(
+                    text=_escape(
+                        text=line.name,
+                    ),
+                    style=styles.invoice_cell,
+                ),
+                _money(
+                    value=line.price,
+                )
+                if line.price is not None
+                else "—",
+                _stocktake_balance(
+                    line=line,
+                ),
+                Paragraph(
+                    text=_money(
+                        value=line.amount,
+                        separator=" ",
+                    ),
+                    style=amount_style,
+                ),
+            ],
+        )
+    rows.append(
+        [
+            f"Итого по переучёту · позиций: {doc.line_count}",
+            "",
+            "",
+            Paragraph(
+                text=_money(
+                    value=doc.total,
+                    separator=" ",
+                ),
+                style=ParagraphStyle(
+                    name="stocktake_total",
+                    parent=amount_style,
+                    fontName=FONT_BOLD,
+                ),
+            ),
+        ],
+    )
+    table = LongTable(
+        data=rows,
+        colWidths=[width * mm for width in (60, 36, 46, 43)],
+        repeatRows=1,
+        style=TableStyle(
+            cmds=[
+                ("FONT", (0, 0), (-1, -1), FONT, INVOICE_FONT_SIZE),
+                ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+                ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
+                ("BACKGROUND", (0, 0), (-1, 0), HEAD_SHADE),
+                ("BACKGROUND", (0, -1), (-1, -1), HEAD_SHADE),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, STRIPE]),
+                ("SPAN", (0, -1), (-2, -1)),
+                ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 0.3, GRID),
+            ],
+        ),
+    )
+    title = f"Переучёт №{doc.id}"
+    moment = (doc.completed_at or doc.started_at).astimezone(
+        tz=ZoneInfo(
+            key=settings.timezone,
+        ),
+    )
+    status = "Завершён" if doc.completed_at else "Начат"
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        filename=buffer,
+        pagesize=A4,
+        leftMargin=MARGIN,
+        rightMargin=MARGIN,
+        topMargin=MARGIN,
+        bottomMargin=12 * mm,
+        title=title,
+    )
+    page_number = partial(
+        _page_number,
+        page_width=A4[0],
+    )
+    document.build(
+        flowables=[
+            Paragraph(
+                text=title,
+                style=styles.title,
+            ),
+            Paragraph(
+                text=f"{status} {moment:%d.%m.%Y %H:%M}",
+                style=styles.invoice_title,
+            ),
+            Spacer(
+                width=0,
+                height=3 * mm,
+            ),
+            table,
+        ],
+        onFirstPage=page_number,
+        onLaterPages=page_number,
+    )
+    return buffer.getvalue()
+
+
 def _page_number(
     canvas: Canvas,
     _document: BaseDocTemplate,
@@ -890,11 +1032,12 @@ def _money(
     value: Decimal,
     signed: bool = False,
     blank_zero: bool = False,
+    separator: str = " ",
 ) -> str:
     """12 400,50 with a no-break space between the thousands, the minus is a real minus"""
     if blank_zero and not value:
         return ""
-    digits = f"{abs(value):,.2f}".replace(",", " ").replace(".", ",")
+    digits = f"{abs(value):,.2f}".replace(",", separator).replace(".", ",")
     if value < 0:
         return f"−{digits}"
     if signed and value > 0:

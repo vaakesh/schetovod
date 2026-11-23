@@ -51,6 +51,10 @@ class DeleteLine(RequestId, Version):
     pass
 
 
+class PrintOrder(Version):
+    line_ids: list[int]
+
+
 StocktakeMoney = Annotated[
     Money,
     BeforeValidator(

@@ -4,6 +4,7 @@
 
 .count-overview,
 .count-summary,
+.count-summary-actions,
 .count-feedback,
 .count-form-actions {
   display: flex;
