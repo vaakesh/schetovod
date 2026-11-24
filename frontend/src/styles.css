@@ -3159,6 +3159,41 @@ a.button {
   width: min(720px, calc(100% - 32px));
 }
 
+.product-aliases {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.product-aliases h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.product-alias-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.product-alias-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.product-alias-list li + li {
+  border-top: 1px solid var(--line);
+}
+
+.product-alias-list .button {
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
 .field-row {
   display: flex;
   flex-wrap: wrap;

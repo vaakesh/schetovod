@@ -41,6 +41,23 @@ class FakeProducts:
         )
         return alias
 
+    async def get_alias(
+        self,
+        alias_id: int,
+    ) -> ProductAlias | None:
+        return next(
+            (alias for alias in self.store.aliases if alias.id == alias_id),
+            None,
+        )
+
+    async def delete_alias(
+        self,
+        alias: ProductAlias,
+    ) -> None:
+        self.store.aliases.remove(
+            alias,
+        )
+
     async def find_by_aliases(
         self,
         supplier_id: int,

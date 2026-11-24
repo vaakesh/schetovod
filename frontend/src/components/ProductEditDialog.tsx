@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { editProduct, getBalance } from "../api";
+import { deleteProductAlias, editProduct, getBalance } from "../api";
 import { formatNumber, formatSigned } from "../format";
 import {
   fromInputDate,
@@ -12,19 +12,23 @@ import {
   toText,
 } from "../form";
 import { message } from "../message";
-import type { CatalogProduct, LedgerPosted } from "../types";
+import type { CatalogAlias, CatalogProduct, LedgerPosted } from "../types";
+import type { Ask } from "./ConfirmDialog";
 import Modal from "./Modal";
 
 interface Props {
   product: CatalogProduct;
+  ask: Ask;
   onClose: () => void;
+  onAliasRemoved: (productId: number, aliasId: number) => void;
   // null when the price changed without a revaluation
   onSaved: (posted: LedgerPosted | null) => void;
 }
 
-export default function ProductEditDialog({ product, onClose, onSaved }: Props) {
-  const oldPrice = Number(product.retail_price);
-  const [name, setName] = useState(product.name);
+export default function ProductEditDialog({ product, ask, onClose, onAliasRemoved, onSaved }: Props) {
+  const [original] = useState(() => ({ name: product.name, price: Number(product.retail_price) }));
+  const oldPrice = original.price;
+  const [name, setName] = useState(original.name);
   const [price, setPrice] = useState<number | null>(oldPrice);
   const [quantity, setQuantity] = useState<string | null>(null);
   const [date, setDate] = useState(todayInput);
@@ -32,6 +36,10 @@ export default function ProductEditDialog({ product, onClose, onSaved }: Props) 
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deletingAlias, setDeletingAlias] = useState<number | null>(null);
+  const [aliasError, setAliasError] = useState<string | null>(null);
+  const aliasesHeading = useRef<HTMLHeadingElement>(null);
+  const deleting = deletingAlias !== null;
 
   // the day the period is closed on, a revaluation may not be dated before it
   useEffect(() => {
@@ -44,7 +52,7 @@ export default function ProductEditDialog({ product, onClose, onSaved }: Props) 
     };
   }, []);
 
-  const nameChanged = name.trim() !== product.name;
+  const nameChanged = name.trim() !== original.name;
   const priceChanged = price !== null && price !== oldPrice;
   // no old stock on the shelf, the price changes without a ledger entry
   const noStock = quantity === null || (QUANTITY.test(quantity) && Number(quantity) === 0);
@@ -59,7 +67,7 @@ export default function ProductEditDialog({ product, onClose, onSaved }: Props) 
     revalue && valid && price !== null ? Number(quantity) * (price - oldPrice) : null;
 
   async function submit() {
-    if (!valid || busy || price === null) {
+    if (!valid || busy || deleting || price === null) {
       return;
     }
     setBusy(true);
@@ -83,8 +91,41 @@ export default function ProductEditDialog({ product, onClose, onSaved }: Props) 
     }
   }
 
+  async function removeAlias(alias: CatalogAlias) {
+    if (busy || deleting) {
+      return;
+    }
+    const confirmed = await ask({
+      title: "Удалить другое название?",
+      text: `«${product.name}» больше не будет находиться по названию «${alias.name}».`,
+      action: "Удалить",
+      danger: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingAlias(alias.id);
+    setAliasError(null);
+    try {
+      await deleteProductAlias(product.id, alias.id);
+      onAliasRemoved(product.id, alias.id);
+      aliasesHeading.current?.focus();
+    } catch (reason) {
+      setAliasError(message(reason));
+    } finally {
+      setDeletingAlias(null);
+    }
+  }
+
+  function close() {
+    if (!deleting) {
+      onClose();
+    }
+  }
+
   return (
-    <Modal onClose={onClose} className="modal-form modal-product">
+    <Modal label="Товар" onClose={close} className="modal-form modal-product">
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -178,13 +219,41 @@ export default function ProductEditDialog({ product, onClose, onSaved }: Props) 
               </dl>
             )}
           </div>
+          <section className="product-aliases" aria-labelledby="product-aliases-title">
+            <h3 id="product-aliases-title" ref={aliasesHeading} tabIndex={-1}>
+              Другие названия
+            </h3>
+            {product.aliases.length ? (
+              <ul className="product-alias-list">
+                {product.aliases.map((alias) => (
+                  <li key={alias.id}>
+                    <span>{alias.name}</span>
+                    <button
+                      type="button"
+                      className="button button-ghost"
+                      aria-label={`${deletingAlias === alias.id ? "Удаляем" : "Удалить"} «${alias.name}»`}
+                      disabled={busy || deleting}
+                      onClick={() => void removeAlias(alias)}
+                    >
+                      {deletingAlias === alias.id ? "Удаляем…" : "Удалить"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="modal-text">Нет других названий.</p>
+            )}
+            {aliasError && (
+              <p className="modal-error" role="alert">{aliasError}</p>
+            )}
+          </section>
           {error && <pre className="modal-error">{error}</pre>}
         </div>
         <div className="modal-actions">
-          <button type="button" className="button button-ghost" onClick={onClose}>
+          <button type="button" className="button button-ghost" disabled={deleting} onClick={close}>
             Отмена
           </button>
-          <button type="submit" className="button button-primary" disabled={!valid || busy}>
+          <button type="submit" className="button button-primary" disabled={!valid || busy || deleting}>
             Сохранить
           </button>
         </div>

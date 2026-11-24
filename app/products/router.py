@@ -55,6 +55,21 @@ async def edit_product(
     )
 
 
+@router.delete(
+    path="/product/{product_id}/aliases/{alias_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_product_alias(
+    product_id: int,
+    alias_id: int,
+    service: ProductServiceDep,
+) -> None:
+    await service.delete_alias(
+        product_id=product_id,
+        alias_id=alias_id,
+    )
+
+
 @router.put(
     path="/product/{product_id}/price-tag",
     status_code=status.HTTP_204_NO_CONTENT,

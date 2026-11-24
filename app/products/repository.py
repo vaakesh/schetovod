@@ -61,6 +61,23 @@ class ProductRepository:
         await self.session.flush()
         return alias
 
+    async def get_alias(
+        self,
+        alias_id: int,
+    ) -> ProductAlias | None:
+        return await self.session.get(
+            entity=ProductAlias,
+            ident=alias_id,
+        )
+
+    async def delete_alias(
+        self,
+        alias: ProductAlias,
+    ) -> None:
+        await self.session.delete(
+            instance=alias,
+        )
+
     async def find_by_aliases(
         self,
         supplier_id: int,

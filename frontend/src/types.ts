@@ -229,8 +229,14 @@ export interface CatalogProduct extends ProductSummary {
   supplier_id: number;
   // other names the product was printed with, the name itself is not repeated
   spellings: string[];
+  aliases: CatalogAlias[];
   // a shelf tag with the current retail price is hanging
   has_price_tag: boolean;
+}
+
+export interface CatalogAlias {
+  id: number;
+  name: string;
 }
 
 export interface Catalog {

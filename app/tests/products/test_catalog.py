@@ -56,9 +56,10 @@ class TestCatalog(InvoiceApi):
 
     def test_shows_the_last_posted_line_and_other_spellings(self) -> None:
         supplier, sugar, _ = self.known_supplier()
+        alias_id = self.store.new_id()
         self.store.aliases.append(
             ProductAlias(
-                id=self.store.new_id(),
+                id=alias_id,
                 product_id=sugar.id,
                 supplier_id=supplier.id,
                 alias_normalized=normalize_name(
@@ -86,5 +87,6 @@ class TestCatalog(InvoiceApi):
             "supplier_id": supplier.id,
             # the spelling that is the name itself is not repeated
             "spellings": ["Песок «Русский» 1кг"],
+            "aliases": [{"id": alias_id, "name": "Песок «Русский» 1кг"}],
             "has_price_tag": False,
         }

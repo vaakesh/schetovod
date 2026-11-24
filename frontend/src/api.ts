@@ -444,6 +444,10 @@ export function editProduct(id: number, body: ProductEdit): Promise<LedgerPosted
   return request("PUT", `/product/${id}`, body);
 }
 
+export function deleteProductAlias(productId: number, aliasId: number): Promise<void> {
+  return request("DELETE", `/product/${productId}/aliases/${aliasId}`);
+}
+
 // the cart, null while nothing is in it
 export function getDraftOrder(): Promise<Order | null> {
   return request("GET", "/order/draft");

@@ -21,10 +21,16 @@ class ProductSummary(BaseModel):
     retail_price: Decimal | None
 
 
+class CatalogAlias(BaseModel):
+    id: int
+    name: str
+
+
 class CatalogProduct(ProductSummary):
     supplier_id: int
     # other names the product was printed with, the name itself is not repeated
     spellings: list[str]
+    aliases: list[CatalogAlias]
     # a shelf tag with the current retail price is hanging
     has_price_tag: bool
 

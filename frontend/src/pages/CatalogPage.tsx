@@ -337,7 +337,7 @@ function ProductRows({
   // the cart lines by product
   ordered: Map<number, OrderLine>;
   onSort: (field: SortField) => void;
-  onEdit: (product: CatalogProduct) => void;
+  onEdit: (productId: number) => void;
   onTag: (product: CatalogProduct) => void;
   onOrder?: (product: CatalogProduct) => void;
 }) {
@@ -386,10 +386,10 @@ function ProductRows({
               className="list-row clickable"
               tabIndex={0}
               title="Исправить название или цену"
-              onClick={() => onEdit(product)}
+              onClick={() => onEdit(product.id)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
-                  onEdit(product);
+                  onEdit(product.id);
                 }
               }}
             >
@@ -464,12 +464,15 @@ export default function CatalogPage({ ask, go, cart, onCart, ordersEnabled }: Pr
   const [open, setOpen] = useState<Set<number>>(() => new Set());
   // a search or the filter opens every supplier, these were closed by hand since then
   const [closed, setClosed] = useState<Set<number>>(() => new Set());
-  const [editing, setEditing] = useState<CatalogProduct | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [editingSupplier, setEditingSupplier] = useState<SupplierSummary | null>(null);
   const [ordering, setOrdering] = useState<OrderTarget | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // bumped after an edit to load the catalog again
   const [version, setVersion] = useState(0);
+  const editing = editingId === null
+    ? null
+    : catalog?.products.find((product) => product.id === editingId);
 
   useEffect(() => {
     let current = true;
@@ -487,12 +490,31 @@ export default function CatalogPage({ ask, go, cart, onCart, ordersEnabled }: Pr
   }, [version]);
 
   function saved(posted: LedgerPosted | null) {
-    setEditing(null);
+    setEditingId(null);
     setNotice(
       posted
         ? `Товар сохранён, переоценка ${formatSigned(posted.amount)} ₽ записана в журнал`
         : "Товар сохранён",
     );
+    setVersion((previous) => previous + 1);
+  }
+
+  function aliasRemoved(productId: number, aliasId: number) {
+    setCatalog((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        products: previous.products.map((product) => {
+          if (product.id !== productId) {
+            return product;
+          }
+          const aliases = product.aliases.filter((alias) => alias.id !== aliasId);
+          return { ...product, aliases, spellings: aliases.map((alias) => alias.name) };
+        }),
+      };
+    });
     setVersion((previous) => previous + 1);
   }
 
@@ -728,7 +750,7 @@ export default function CatalogPage({ ask, go, cart, onCart, ordersEnabled }: Pr
                 tagging={tagging}
                 ordered={ordered}
                 onSort={changeSort}
-                onEdit={setEditing}
+                onEdit={setEditingId}
                 onTag={(product) => void tag(product)}
                 onOrder={ordersEnabled ? order : undefined}
               />
@@ -801,7 +823,7 @@ export default function CatalogPage({ ask, go, cart, onCart, ordersEnabled }: Pr
                         tagging={tagging}
                         ordered={ordered}
                         onSort={changeSort}
-                        onEdit={setEditing}
+                        onEdit={setEditingId}
                         onTag={(product) => void tag(product)}
                         onOrder={ordersEnabled ? order : undefined}
                       />
@@ -851,7 +873,9 @@ export default function CatalogPage({ ask, go, cart, onCart, ordersEnabled }: Pr
         <ProductEditDialog
           key={editing.id}
           product={editing}
-          onClose={() => setEditing(null)}
+          ask={ask}
+          onClose={() => setEditingId(null)}
+          onAliasRemoved={aliasRemoved}
           onSaved={saved}
         />
       )}

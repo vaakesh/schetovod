@@ -17,6 +17,7 @@ from products.pricing import normalize_name, reprice
 from products.repository import ProductRepositoryDep, ProductRow
 from products.schemas import (
     Catalog,
+    CatalogAlias,
     CatalogProduct,
     PriceTagMark,
     ProductEdit,
@@ -78,6 +79,17 @@ class ProductService:
             name_key = normalize_name(
                 name=row.product.name,
             )
+            aliases = [
+                CatalogAlias(
+                    id=alias.id,
+                    name=alias.alias_raw,
+                )
+                for alias in sorted(
+                    row.aliases,
+                    key=lambda alias: alias.id,
+                )
+                if alias.alias_normalized != name_key
+            ]
             products.append(
                 CatalogProduct(
                     **product_summary(
@@ -85,14 +97,8 @@ class ProductService:
                     ).model_dump(),
                     supplier_id=row.product.supplier_id,
                     has_price_tag=row.product.has_price_tag,
-                    spellings=[
-                        alias.alias_raw
-                        for alias in sorted(
-                            row.aliases,
-                            key=lambda alias: alias.id,
-                        )
-                        if alias.alias_normalized != name_key
-                    ],
+                    spellings=[alias.name for alias in aliases],
+                    aliases=aliases,
                 ),
             )
         return Catalog(
@@ -111,22 +117,17 @@ class ProductService:
         payload: ProductEdit,
     ) -> LedgerPosted | None:
         """a corrected name keeps the old one as a spelling, a new price revalues the old stock"""
+        await self.ledger.lock()
         if payload.revaluation is not None:
-            await self.ledger.lock()
             await check_date(
                 ledger=self.ledger,
                 on=payload.revaluation.occurred_on,
                 stock=True,
                 cash=False,
             )
-        product = await self.products.get(
+        product = await self._get_product(
             product_id=product_id,
         )
-        if product is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Товар не найден",
-            )
         new_price = Decimal(
             value=payload.retail_price,
         )
@@ -167,11 +168,55 @@ class ProductService:
             ),
         )
 
+    async def delete_alias(
+        self,
+        product_id: int,
+        alias_id: int,
+    ) -> None:
+        await self.ledger.lock()
+        product = await self._get_product(
+            product_id=product_id,
+        )
+        alias = await self.products.get_alias(
+            alias_id=alias_id,
+        )
+        if alias is None:
+            return
+        if alias.product_id != product.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Название у этого товара не найдено",
+            )
+        if alias.alias_normalized == normalize_name(
+            name=product.name,
+        ):
+            conflict(
+                detail="Основное название товара удалить нельзя",
+            )
+        await self.products.delete_alias(
+            alias=alias,
+        )
+        await self.ledger.commit()
+
     async def mark_price_tag(
         self,
         product_id: int,
         payload: PriceTagMark,
     ) -> None:
+        product = await self._get_product(
+            product_id=product_id,
+        )
+        if product.retail_price != payload.retail_price:
+            conflict(
+                detail="Цена товара изменилась, обновите страницу",
+            )
+        product.has_price_tag = payload.has_price_tag
+        await self.ledger.commit()
+
+    async def _get_product(
+        self,
+        product_id: int,
+    ) -> Product:
         product = await self.products.get(
             product_id=product_id,
         )
@@ -180,12 +225,7 @@ class ProductService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Товар не найден",
             )
-        if product.retail_price != payload.retail_price:
-            conflict(
-                detail="Цена товара изменилась, обновите страницу",
-            )
-        product.has_price_tag = payload.has_price_tag
-        await self.ledger.commit()
+        return product
 
     async def _rename(
         self,
