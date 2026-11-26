@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     openai_api_token: SecretStr = SecretStr(
         secret_value="",
     )
-    openai_model: str = "gpt-6.2-sol"
+    openai_model: str = "gpt-6.2-astra"
     openai_reasoning_effort: Literal[
         "low",
         "medium",
