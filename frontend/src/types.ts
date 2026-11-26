@@ -383,6 +383,8 @@ export interface PaymentCreate {
   comment: string | null;
 }
 
+export type LedgerSort = "number" | "kind";
+
 export type LedgerKind =
   | "invoice"
   | "sale"

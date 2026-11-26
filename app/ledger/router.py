@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
+from core.enums import LedgerSort
 from core.http import PageLimit, PageOffset
 from core.schema_types import InvoiceDate
 from ledger.revaluation import RevaluationServiceDep
@@ -33,10 +34,12 @@ async def ledger_history(
     service: LedgerServiceDep,
     limit: PageLimit = 50,
     offset: PageOffset = 0,
+    sort: LedgerSort = LedgerSort.NUMBER,
 ) -> LedgerPage:
     return await service.history(
         limit=limit,
         offset=offset,
+        sort=sort,
     )
 
 

@@ -5,18 +5,30 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import ARRAY, Text, exists, func, select, tuple_
+from sqlalchemy import ARRAY, Text, case, exists, func, select, tuple_
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import InstrumentedAttribute, aliased, selectinload
 
 from core.db import SessionDep
-from core.enums import LedgerKind
+from core.enums import LedgerKind, LedgerSort
 from invoices.models import Invoice, InvoiceItem
 from ledger.models import LedgerEntry, RevaluationItem
 from suppliers.models import Supplier
 
 # any constant shared by every writer of the ledger
 LEDGER_LOCK = 7_301_001
+
+KIND_RANK = {
+    LedgerKind.INVOICE: 0,
+    LedgerKind.SALE: 1,
+    LedgerKind.STOCK_IN: 2,
+    LedgerKind.CASH_IN: 3,
+    LedgerKind.REVALUATION: 4,
+    LedgerKind.WRITE_OFF: 5,
+    LedgerKind.CASH_OUT: 6,
+    LedgerKind.STOCKTAKE: 7,
+    LedgerKind.CASH_COUNT: 8,
+}
 
 
 @dataclass
@@ -375,6 +387,7 @@ class LedgerRepository:
         date_from: date | None = None,
         date_to: date | None = None,
         newest_first: bool = True,
+        sort: LedgerSort | None = None,
     ) -> list[LedgerRow]:
         """each entry with the balance right after it, the days are optional bounds"""
         running = (
@@ -409,16 +422,15 @@ class LedgerRepository:
         reversal = aliased(
             LedgerEntry,
         )
-        order = (
+        kind_order = (
             (
-                LedgerEntry.occurred_on.desc(),
-                LedgerEntry.id.desc(),
+                case(
+                    KIND_RANK,
+                    value=LedgerEntry.kind,
+                ),
             )
-            if newest_first
-            else (
-                LedgerEntry.occurred_on,
-                LedgerEntry.id,
-            )
+            if sort == LedgerSort.KIND
+            else ()
         )
         # the bounds go outside the running sum, so it still counts the earlier entries
         statement = (
@@ -448,7 +460,14 @@ class LedgerRepository:
                 onclause=Supplier.id == Invoice.supplier_id,
             )
             .order_by(
-                *order,
+                LedgerEntry.occurred_on.desc()
+                if newest_first
+                else LedgerEntry.occurred_on,
+                *kind_order,
+                # explicit display modes use the latest number first even on a printed day
+                LedgerEntry.id.desc()
+                if newest_first or sort is not None
+                else LedgerEntry.id,
             )
             .limit(
                 limit=limit,

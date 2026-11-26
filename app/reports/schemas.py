@@ -69,7 +69,7 @@ class ReportDay(BaseModel):
     # the balances before the first entry of the day
     opening: Decimal
     cash_opening: Decimal
-    # active movements in ledger order, invoices combined at the first invoice
+    # active movements in display order in each column
     stock_movements: list[ReportMovement]
     cash_movements: list[ReportMovement]
     sales_cash: Decimal

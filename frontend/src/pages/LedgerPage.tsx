@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { getLedger, reverseEntry, reverseInvoice } from "../api";
 import type { Ask } from "../components/ConfirmDialog";
 import LedgerBatchDialog from "../components/LedgerBatchDialog";
 import LedgerEntryDialog from "../components/LedgerEntryDialog";
+import LedgerSortField from "../components/LedgerSortField";
 import LedgerTable from "../components/LedgerTable";
 import PageHead from "../components/PageHead";
 import RevaluationDialog from "../components/RevaluationDialog";
@@ -12,12 +13,14 @@ import { formatMoney } from "../format";
 import { KIND_LABELS } from "../ledger";
 import { message } from "../message";
 import type { Route } from "../router";
-import type { BatchKind, LedgerEntry, ManualKind } from "../types";
+import type { BatchKind, LedgerEntry, LedgerSort, ManualKind } from "../types";
 
 interface Props {
   go: (route: Route) => void;
   ask: Ask;
   shiftImportEnabled: boolean;
+  sort: LedgerSort;
+  onSort: (sort: LedgerSort) => void;
 }
 
 const PAGE = 50;
@@ -30,7 +33,7 @@ function isBatch(kind: string): kind is BatchKind {
   return BATCH_KINDS.includes(kind);
 }
 
-export default function LedgerPage({ go, ask, shiftImportEnabled }: Props) {
+export default function LedgerPage({ go, ask, shiftImportEnabled, sort, onSort }: Props) {
   const [entries, setEntries] = useState<LedgerEntry[] | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
   const [cashBalance, setCashBalance] = useState<string | null>(null);
@@ -40,18 +43,12 @@ export default function LedgerPage({ go, ask, shiftImportEnabled }: Props) {
   // the rows loaded from the cash register, the page forgets them when it is left
   const [imported, setImported] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const requestId = useRef(0);
 
-  const load = useCallback(async () => {
-    try {
-      const page = await getLedger(PAGE, 0);
-      setEntries(page.entries);
-      setBalance(page.balance);
-      setCashBalance(page.cash_balance);
-      setHasMore(page.has_more);
-    } catch (reason) {
-      setError(message(reason));
-    }
-  }, []);
+  function reload() {
+    setRevision((current) => current + 1);
+  }
 
   function open(next: ManualKind | "revaluation" | "shifts") {
     setError(null);
@@ -67,22 +64,42 @@ export default function LedgerPage({ go, ask, shiftImportEnabled }: Props) {
   }
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    const id = ++requestId.current;
+    setEntries(null);
+    setHasMore(false);
+    setLoadingMore(false);
+    setError(null);
+    getLedger(PAGE, 0, sort)
+      .then((page) => {
+        if (id !== requestId.current) return;
+        setEntries(page.entries);
+        setBalance(page.balance);
+        setCashBalance(page.cash_balance);
+        setHasMore(page.has_more);
+      })
+      .catch((reason) => {
+        if (id === requestId.current) setError(message(reason));
+      });
+    return () => {
+      requestId.current++;
+    };
+  }, [sort, revision]);
 
   async function more() {
-    if (!entries) {
+    if (!entries || loadingMore) {
       return;
     }
     setLoadingMore(true);
+    const id = ++requestId.current;
     try {
-      const page = await getLedger(PAGE, entries.length);
+      const page = await getLedger(PAGE, entries.length, sort);
+      if (id !== requestId.current) return;
       setEntries([...entries, ...page.entries]);
       setHasMore(page.has_more);
     } catch (reason) {
-      setError(message(reason));
+      if (id === requestId.current) setError(message(reason));
     } finally {
-      setLoadingMore(false);
+      if (id === requestId.current) setLoadingMore(false);
     }
   }
 
@@ -111,7 +128,7 @@ export default function LedgerPage({ go, ask, shiftImportEnabled }: Props) {
       } else {
         await reverseEntry(entry.id);
       }
-      await load();
+      reload();
     } catch (reason) {
       setError(message(reason));
     }
@@ -120,6 +137,7 @@ export default function LedgerPage({ go, ask, shiftImportEnabled }: Props) {
   return (
     <main className="page">
       <PageHead title="Журнал">
+        <LedgerSortField sort={sort} onSort={onSort} />
         {shiftImportEnabled && (
           <button type="button" className="button button-soft" onClick={() => open("shifts")}>
             Загрузить из кассы
@@ -175,7 +193,7 @@ export default function LedgerPage({ go, ask, shiftImportEnabled }: Props) {
           onClose={() => setDialog(null)}
           onPosted={() => {
             setDialog(null);
-            void load();
+            reload();
           }}
         />
       )}
@@ -184,7 +202,7 @@ export default function LedgerPage({ go, ask, shiftImportEnabled }: Props) {
           onClose={() => setDialog(null)}
           onImported={(entryIds) => {
             setImported((rows) => new Set([...rows, ...entryIds]));
-            void load();
+            reload();
           }}
         />
       )}
@@ -194,7 +212,7 @@ export default function LedgerPage({ go, ask, shiftImportEnabled }: Props) {
           onClose={() => setDialog(null)}
           onPosted={() => {
             setDialog(null);
-            void load();
+            reload();
           }}
         />
       )}
@@ -204,7 +222,7 @@ export default function LedgerPage({ go, ask, shiftImportEnabled }: Props) {
           onClose={() => setDialog(null)}
           onPosted={() => {
             setDialog(null);
-            void load();
+            reload();
           }}
         />
       )}

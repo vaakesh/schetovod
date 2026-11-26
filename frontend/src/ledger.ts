@@ -1,4 +1,22 @@
-import type { LedgerEntry, LedgerKind } from "./types";
+import type { LedgerEntry, LedgerKind, LedgerSort } from "./types";
+
+const SORT_KEY = "ledger-sort";
+
+export function savedLedgerSort(): LedgerSort {
+  try {
+    return window.localStorage.getItem(SORT_KEY) === "kind" ? "kind" : "number";
+  } catch {
+    return "number";
+  }
+}
+
+export function saveLedgerSort(value: LedgerSort) {
+  try {
+    window.localStorage.setItem(SORT_KEY, value);
+  } catch {
+    // the current session still shares the selection between both pages
+  }
+}
 
 // the till operations, they never touch the stock
 export const CASH_KINDS: LedgerKind[] = ["cash_in", "cash_out", "cash_count"];

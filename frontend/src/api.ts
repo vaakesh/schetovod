@@ -12,6 +12,7 @@ import type {
   LedgerBalance,
   LedgerBatchLine,
   LedgerPage,
+  LedgerSort,
   LedgerPosted,
   SingleKind,
   LedgerReport,
@@ -279,8 +280,8 @@ export function getPosted(id: number): Promise<PostedInvoice> {
   return request("GET", `/invoice/${id}/confirmed`);
 }
 
-export function getLedger(limit: number, offset: number): Promise<LedgerPage> {
-  return request("GET", `/ledger${query({ limit, offset })}`);
+export function getLedger(limit: number, offset: number, sort: LedgerSort): Promise<LedgerPage> {
+  return request("GET", `/ledger${query({ limit, offset, sort })}`);
 }
 
 export function getBalance(on: string | null): Promise<LedgerBalance> {
@@ -341,13 +342,13 @@ export function getRevaluationLines(entryId: number): Promise<RevaluationLineOut
   return request("GET", `/ledger/${entryId}/revaluation`);
 }
 
-export function getReport(dateFrom: string, dateTo: string): Promise<LedgerReport> {
-  return request("GET", `/ledger/report${query({ date_from: dateFrom, date_to: dateTo })}`);
+export function getReport(dateFrom: string, dateTo: string, sort: LedgerSort): Promise<LedgerReport> {
+  return request("GET", `/ledger/report${query({ date_from: dateFrom, date_to: dateTo, sort })}`);
 }
 
 // the browser downloads the file by the url and takes the name from the response
-export function reportPdfUrl(dateFrom: string, dateTo: string): string {
-  return currentApiPath(`/ledger/report.pdf${query({ date_from: dateFrom, date_to: dateTo })}`);
+export function reportPdfUrl(dateFrom: string, dateTo: string, sort: LedgerSort): string {
+  return currentApiPath(`/ledger/report.pdf${query({ date_from: dateFrom, date_to: dateTo, sort })}`);
 }
 
 // the confirmed invoices without the retail prices, the browser opens the file to print

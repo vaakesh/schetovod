@@ -4,9 +4,9 @@ from decimal import Decimal
 from uuid import UUID
 
 from core.config import today
-from core.enums import LedgerKind
+from core.enums import LedgerKind, LedgerSort
 from ledger.models import LedgerEntry, RevaluationItem
-from ledger.repository import LedgerRow
+from ledger.repository import KIND_RANK, LedgerRow
 from tests.fakes.store import FakeStore
 
 
@@ -266,6 +266,7 @@ class FakeLedger:
         date_from: date | None = None,
         date_to: date | None = None,
         newest_first: bool = True,
+        sort: LedgerSort | None = None,
     ) -> list[LedgerRow]:
         ordered = sorted(
             self.store.entries,
@@ -313,6 +314,13 @@ class FakeLedger:
             if (date_from is None or row.entry.occurred_on >= date_from)
             and (date_to is None or row.entry.occurred_on <= date_to)
         ]
-        if newest_first:
-            rows.reverse()
+        rows.sort(
+            key=lambda row: (
+                -row.entry.occurred_on.toordinal()
+                if newest_first
+                else row.entry.occurred_on.toordinal(),
+                KIND_RANK[row.entry.kind] if sort == LedgerSort.KIND else 0,
+                -row.entry.id if newest_first or sort is not None else row.entry.id,
+            ),
+        )
         return rows[offset : None if limit is None else offset + limit]

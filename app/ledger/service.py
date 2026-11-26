@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 
-from core.enums import LedgerKind
+from core.enums import LedgerKind, LedgerSort
 from core.http import conflict, invalid
 from ledger.models import LedgerEntry
 from ledger.repository import LedgerRepository, LedgerRepositoryDep, LedgerRow
@@ -71,11 +71,13 @@ class LedgerService:
         self,
         limit: int,
         offset: int,
+        sort: LedgerSort = LedgerSort.NUMBER,
     ) -> LedgerPage:
         # one row more tells whether there is another page
         rows = await self.ledger.history(
             limit=limit + 1,
             offset=offset,
+            sort=sort,
         )
         return LedgerPage(
             balance=await self.ledger.balance(),

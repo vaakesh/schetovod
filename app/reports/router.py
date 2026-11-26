@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Response
 
+from core.enums import LedgerSort
 from core.http import ReportDate
 from reports.pdf import (
     invoices_pdf,
@@ -25,10 +26,12 @@ async def ledger_report(
     service: ReportServiceDep,
     date_from: ReportDate,
     date_to: ReportDate,
+    sort: LedgerSort | None = None,
 ) -> LedgerReport:
     return await service.report(
         date_from=date_from,
         date_to=date_to,
+        sort=sort,
     )
 
 
@@ -80,10 +83,12 @@ async def ledger_period_report(
     service: ReportServiceDep,
     date_from: ReportDate,
     date_to: ReportDate,
+    sort: LedgerSort | None = None,
 ) -> PeriodReport:
     return await service.period_report(
         date_from=date_from,
         date_to=date_to,
+        sort=sort,
     )
 
 
@@ -102,10 +107,12 @@ async def ledger_report_pdf(
     service: ReportServiceDep,
     date_from: ReportDate,
     date_to: ReportDate,
+    sort: LedgerSort | None = None,
 ) -> Response:
     report = await service.period_report(
         date_from=date_from,
         date_to=date_to,
+        sort=sort,
     )
     filename = report_pdf_filename(
         report=report,

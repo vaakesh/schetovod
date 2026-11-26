@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import Any
 
 import pymupdf
+import pytest
 
 from tests.fakes import invoice_payload
 from tests.ledger.helpers import LedgerApi, day
@@ -162,7 +163,7 @@ class TestPeriodReport(LedgerApi):
             ],
         }
 
-    def test_all_movements_keep_the_ledger_order_within_the_day(self) -> None:
+    def make_mixed_day(self) -> None:
         _, sugar, _ = self.known_supplier()
         self.stock(
             amount="5000.00",
@@ -209,6 +210,9 @@ class TestPeriodReport(LedgerApi):
         self.stock(
             amount="1000.00",
         )
+
+    def test_all_movements_keep_the_ledger_order_within_the_day(self) -> None:
+        self.make_mixed_day()
 
         report = self.days(
             date_from=day(),
@@ -272,6 +276,138 @@ class TestPeriodReport(LedgerApi):
             "paid_in_period": "0",
             "debts": [],
         }
+
+    @pytest.mark.parametrize(
+        argnames=("sort", "kinds", "stock", "cash"),
+        argvalues=[
+            (
+                "number",
+                [
+                    "invoice",
+                    "sale",
+                    "invoice",
+                    "sale",
+                    "cash_count",
+                    "stocktake",
+                    "cash_out",
+                    "revaluation",
+                    "stock_in",
+                    "write_off",
+                    "sale",
+                    "cash_in",
+                ],
+                [
+                    "42.00",
+                    "-10.00",
+                    "1000.00",
+                    "-20.00",
+                    "70.00",
+                    "10.00",
+                    "60.00",
+                    "-40.00",
+                    "-300.00",
+                ],
+                ["5.00", "-10.00", "-30.00", "100.00", "50.00"],
+            ),
+            (
+                "kind",
+                [
+                    "invoice",
+                    "invoice",
+                    "sale",
+                    "sale",
+                    "sale",
+                    "stock_in",
+                    "cash_in",
+                    "revaluation",
+                    "write_off",
+                    "cash_out",
+                    "stocktake",
+                    "cash_count",
+                ],
+                [
+                    "1042.00",
+                    "-10.00",
+                    "-20.00",
+                    "-300.00",
+                    "60.00",
+                    "10.00",
+                    "-40.00",
+                    "70.00",
+                ],
+                ["5.00", "100.00", "50.00", "-30.00", "-10.00"],
+            ),
+        ],
+    )
+    def test_selected_order_is_shared_by_the_ledger_and_both_report_columns(
+        self,
+        sort: str,
+        kinds: list[str],
+        stock: list[str],
+        cash: list[str],
+    ) -> None:
+        self.make_mixed_day()
+        self.sale(
+            amount="10.00",
+            cash="5.00",
+        )
+        self.stock(
+            amount="42.00",
+        )
+        period = {"date_from": day(), "date_to": day(), "sort": sort}
+
+        entries = self.client.get(
+            url="/ledger/report",
+            params=period,
+        )
+        assert entries.status_code == 200, entries.text
+        rows = entries.json()["entries"]
+        assert [row["kind"] for row in rows] == kinds
+        for offset in (0, 4, 8):
+            page = self.client.get(
+                url="/ledger",
+                params={"limit": 4, "offset": offset, "sort": sort},
+            )
+            assert page.status_code == 200, page.text
+            assert [row["id"] for row in page.json()["entries"]] == [
+                row["id"] for row in rows[offset : offset + 4]
+            ]
+
+        days = self.client.get(
+            url="/ledger/report/days",
+            params=period,
+        )
+        assert days.status_code == 200, days.text
+        [result] = days.json()["days"]
+        assert [move["amount"] for move in result["stock_movements"]] == stock
+        assert [move["amount"] for move in result["cash_movements"]] == cash
+        assert (result["opening"], result["balance_after"]) == ("5000.00", "5812.00")
+        assert (result["cash_opening"], result["cash_after"]) == ("200.00", "315.00")
+
+        download = self.client.get(
+            url="/ledger/report.pdf",
+            params=period,
+        )
+        assert download.status_code == 200, download.text
+        with pymupdf.open(
+            stream=download.content,
+            filetype="pdf",
+        ) as pdf:
+            page = pdf[0]
+            [deposit] = page.search_for(
+                text="внесение",
+            )
+            [count] = page.search_for(
+                text="сверка кассы",
+            )
+            [revalue] = page.search_for(
+                text="переоценка",
+            )
+            [stock_in] = page.search_for(
+                text="приход товара",
+            )
+            assert (deposit.y0 < count.y0) == (sort == "kind")
+            assert (stock_in.y0 < revalue.y0) == (sort == "kind")
 
     def test_zero_counts_are_shown_but_a_cashless_sale_has_no_cash_movement(
         self,

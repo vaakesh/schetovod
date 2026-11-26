@@ -38,7 +38,7 @@ class LedgerEntry(Base):
         primary_key=True,
         nullable=False,
     )
-    # the day it happened, reports are built by it, within a day entries go by id
+    # the operation day, balances within it are calculated in id order
     occurred_on: Mapped[date] = mapped_column(
         nullable=False,
         default=today,

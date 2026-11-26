@@ -67,3 +67,8 @@ class LedgerKind(StrEnum):
     CASH_IN = "cash_in"
     CASH_OUT = "cash_out"
     CASH_COUNT = "cash_count"
+
+
+class LedgerSort(StrEnum):
+    NUMBER = "number"
+    KIND = "kind"

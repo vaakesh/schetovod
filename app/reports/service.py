@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 
-from core.enums import LedgerKind
+from core.enums import LedgerKind, LedgerSort
 from core.http import invalid
 from invoices.repository import InvoiceRepositoryDep
 from ledger.repository import LedgerRepositoryDep, LedgerRow
@@ -39,6 +39,7 @@ class ReportService:
         self,
         date_from: date,
         date_to: date,
+        sort: LedgerSort | None = None,
     ) -> LedgerReport:
         if date_from > date_to:
             invalid(
@@ -71,7 +72,9 @@ class ReportService:
             offset=0,
             date_from=date_from,
             date_to=date_to,
-            newest_first=False,
+            # older clients reverse the chronological list themselves
+            newest_first=sort is not None,
+            sort=sort,
         )
         return LedgerReport(
             date_from=date_from,
@@ -137,6 +140,7 @@ class ReportService:
         self,
         date_from: date,
         date_to: date,
+        sort: LedgerSort | None = None,
     ) -> PeriodReport:
         """the period day by day with the invoices and what is owed for them"""
         if date_from > date_to:
@@ -152,6 +156,7 @@ class ReportService:
             date_from=date_from,
             date_to=date_to,
             newest_first=False,
+            sort=sort,
         )
         invoice_ids = [
             row.entry.invoice_id for row in rows if row.entry.invoice_id is not None
@@ -180,6 +185,7 @@ class ReportService:
                     ),
                     cost_totals=cost_totals,
                     paid_totals=paid_totals,
+                    combine_invoices=sort != LedgerSort.NUMBER,
                 )
                 for day, day_rows in groupby(
                     rows,
@@ -295,6 +301,7 @@ def _report_day(
     rows: list[LedgerRow],
     cost_totals: dict[int, Decimal],
     paid_totals: dict[int, Decimal],
+    combine_invoices: bool,
 ) -> ReportDay:
     """the entries of one day in the ledger order, a reversal cancels its entry in the sums"""
     zero = Decimal(
@@ -332,7 +339,7 @@ def _report_day(
                     stock_movements.append(
                         movement,
                     )
-                    if entry.kind == LedgerKind.INVOICE:
+                    if entry.kind == LedgerKind.INVOICE and combine_invoices:
                         invoice_movement = movement
             if entry.kind in (
                 LedgerKind.CASH_IN,
@@ -390,8 +397,15 @@ def _report_day(
                         comment=entry.comment,
                     ),
                 )
-    first = rows[0]
-    last = rows[-1]
+    # the balances belong to posting order regardless of how the movements are displayed
+    first = min(
+        rows,
+        key=lambda row: row.entry.id,
+    )
+    last = max(
+        rows,
+        key=lambda row: row.entry.id,
+    )
     return ReportDay(
         day=day,
         invoices=invoices,

@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent } from "react";
 
 import { ensureSession, getReport, reportPdfUrl } from "../api";
+import LedgerSortField from "../components/LedgerSortField";
 import LedgerTable from "../components/LedgerTable";
 import PageHead from "../components/PageHead";
 import PeriodFields from "../components/PeriodFields";
@@ -8,10 +9,12 @@ import { formatDate, formatMoney, formatSigned } from "../format";
 import { fromInputDate, todayInput } from "../form";
 import { message } from "../message";
 import type { Route } from "../router";
-import type { LedgerReport } from "../types";
+import type { LedgerReport, LedgerSort } from "../types";
 
 interface Props {
   go: (route: Route) => void;
+  sort: LedgerSort;
+  onSort: (sort: LedgerSort) => void;
 }
 
 // the signed sums between the opening and the closing balance, in the order of the report
@@ -20,10 +23,10 @@ type Flow = "invoices" | "sales" | "write_offs" | "stock_ins" | "stocktakes" | "
 const FLOWS: { key: Flow; label: string }[] = [
   { key: "invoices", label: "Приход по накладным" },
   { key: "sales", label: "Продажи" },
-  { key: "write_offs", label: "Списания" },
   { key: "stock_ins", label: "Приходы товара" },
-  { key: "stocktakes", label: "Переучёты" },
   { key: "revaluations", label: "Переоценка" },
+  { key: "write_offs", label: "Списания" },
+  { key: "stocktakes", label: "Переучёты" },
 ];
 
 type CashFlow = "sales_cash" | "cash_ins" | "cash_outs" | "cash_counts";
@@ -40,7 +43,7 @@ function monthStart(): string {
   return `${todayInput().slice(0, 8)}01`;
 }
 
-export default function ReportPage({ go }: Props) {
+export default function ReportPage({ go, sort, onSort }: Props) {
   const [start, setStart] = useState(monthStart);
   const [end, setEnd] = useState(todayInput);
   const [report, setReport] = useState<LedgerReport | null>(null);
@@ -50,12 +53,13 @@ export default function ReportPage({ go }: Props) {
   const dateTo = fromInputDate(end);
 
   useEffect(() => {
+    setReport(null);
     if (dateFrom === null || dateTo === null) {
       return;
     }
     let current = true;
     setError(null);
-    getReport(dateFrom, dateTo)
+    getReport(dateFrom, dateTo, sort)
       .then((next) => current && setReport(next))
       .catch((reason) => {
         if (current) {
@@ -66,7 +70,7 @@ export default function ReportPage({ go }: Props) {
     return () => {
       current = false;
     };
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, sort]);
 
   // the token may have expired, a bare link would then save the error instead of the file
   function download(event: MouseEvent<HTMLAnchorElement>) {
@@ -81,10 +85,11 @@ export default function ReportPage({ go }: Props) {
     <main className="page">
       <PageHead title="Отчёт">
         <PeriodFields start={start} end={end} onStart={setStart} onEnd={setEnd} />
+        <LedgerSortField sort={sort} onSort={onSort} />
         {dateFrom !== null && dateTo !== null && report && (
           <a
             className="button button-soft"
-            href={reportPdfUrl(dateFrom, dateTo)}
+            href={reportPdfUrl(dateFrom, dateTo, sort)}
             download
             onClick={download}
           >
@@ -145,9 +150,8 @@ export default function ReportPage({ go }: Props) {
             </section>
           </div>
 
-          {/* the report comes oldest first, the screen shows the latest on top */}
           <LedgerTable
-            entries={[...report.entries].reverse()}
+            entries={report.entries}
             go={go}
             empty="За период записей нет"
           />

@@ -12,6 +12,7 @@ import { useConfirm } from "./components/ConfirmDialog";
 import Icon from "./components/icons";
 import Sidebar from "./components/Sidebar";
 import { UPLOAD_LOADING, type UploadKind } from "./components/UploadMenu";
+import { savedLedgerSort, saveLedgerSort } from "./ledger";
 import { message } from "./message";
 import CatalogPage from "./pages/CatalogPage";
 import DraftPage from "./pages/DraftPage";
@@ -30,7 +31,7 @@ import TrafficPage from "./pages/TrafficPage";
 import UploadPage from "./pages/UploadPage";
 import { routeAvailable, routeHash, sameRoute, useRoute, useRouteMotion, type Route } from "./router";
 import type { Store } from "./stores";
-import type { InvoiceDraft, Order } from "./types";
+import type { InvoiceDraft, LedgerSort, Order } from "./types";
 
 type Guard = () => Promise<boolean>;
 
@@ -65,6 +66,7 @@ export default function App({ store, userId, onSignedOut }: Props) {
   const motion = useRouteMotion(route);
   const [ask, confirmDialog] = useConfirm();
   const [sidebarHidden, setSidebarHidden] = useState(savedSidebarHidden);
+  const [ledgerSort, setLedgerSort] = useState(savedLedgerSort);
   // a page with unsaved edits asks before it is left
   const guard = useRef<Guard | null>(null);
   const [uploaded, setUploaded] = useState<InvoiceDraft | null>(null);
@@ -80,6 +82,11 @@ export default function App({ store, userId, onSignedOut }: Props) {
     recognizing || batch.slots.some((slot) => slot.status !== "done" && slot.files.length > 0);
   // the results of a batch are announced until the upload page is opened
   const [batchUnseen, setBatchUnseen] = useState(false);
+
+  function changeLedgerSort(next: LedgerSort) {
+    setLedgerSort(next);
+    saveLedgerSort(next);
+  }
 
   useEffect(() => {
     if (batch.running) {
@@ -242,9 +249,17 @@ export default function App({ store, userId, onSignedOut }: Props) {
       case "orders":
         return <OrdersPage ask={ask} go={go} cart={cart} onCart={setCart} />;
       case "ledger":
-        return <LedgerPage go={go} ask={ask} shiftImportEnabled={store === "gastronom"} />;
+        return (
+          <LedgerPage
+            go={go}
+            ask={ask}
+            shiftImportEnabled={store === "gastronom"}
+            sort={ledgerSort}
+            onSort={changeLedgerSort}
+          />
+        );
       case "report":
-        return <ReportPage go={go} />;
+        return <ReportPage go={go} sort={ledgerSort} onSort={changeLedgerSort} />;
       case "traffic":
         return <TrafficPage />;
       case "profit":
