@@ -15,6 +15,7 @@ from core.schema_types import (
     InvoiceDate,
     Money,
     OutputDate,
+    PositiveShelfPrice,
     Quantity,
     Text,
     VatPercent,
@@ -66,16 +67,8 @@ class FormLine(FormModel):
         ]
         | None
     )
-    # None to keep the current markup of the product, whole rubles to set a new one
-    retail_price: (
-        Annotated[
-            int,
-            Field(
-                gt=0,
-            ),
-        ]
-        | None
-    )
+    # None to calculate the price using the current markup
+    retail_price: PositiveShelfPrice | None
     # the old stock on the shelf that takes the new price, a draft saved before has no key
     revalue_quantity: Quantity | None = None
 

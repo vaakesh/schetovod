@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -12,7 +13,7 @@ from tests.helpers import InvoiceApi
 class TestRevaluationOnConfirm(InvoiceApi):
     def draft_with_prices(
         self,
-        prices: list[int | None],
+        prices: Sequence[int | str | None],
         quantities: list[str | None],
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -50,7 +51,7 @@ class TestRevaluationOnConfirm(InvoiceApi):
         self.known_supplier()
 
         draft = self.draft_with_prices(
-            prices=[70, None],
+            prices=["95.50", None],
             quantities=[None, None],
         )
 
@@ -62,7 +63,7 @@ class TestRevaluationOnConfirm(InvoiceApi):
         assert {
             "line": 1,
             "message": (
-                "цена на полке меняется с 65 на 70 ₽, укажите, сколько старого товара "
+                "цена на полке меняется с 65.00 на 95.50 ₽, укажите, сколько старого товара "
                 "осталось, чтобы переоценить"
             ),
             "blocking": False,
@@ -72,7 +73,7 @@ class TestRevaluationOnConfirm(InvoiceApi):
     def test_old_stock_is_revalued_with_the_invoice(self) -> None:
         _, sugar, salt = self.known_supplier()
         draft = self.draft_with_prices(
-            prices=[70, None],
+            prices=["95.50", None],
             quantities=["4", None],
         )
         assert [issue["code"] for issue in draft["issues"]] == []
@@ -81,17 +82,17 @@ class TestRevaluationOnConfirm(InvoiceApi):
             draft=draft,
         )
 
-        # 2.5 kg at 70 and the salt at 36, then 4 kg on the shelf go up by 5
+        # 2.5 kg at 95.50 and salt at 36, then 4 kg on the shelf go up by 30.50
         assert (result["retail_total"], result["revaluation"], result["balance"]) == (
-            "211.00",
-            "20.00",
-            "231.00",
+            "274.75",
+            "122.00",
+            "396.75",
         )
         _, entry = self.store.entries
         assert (entry.kind, entry.amount, entry.comment) == (
             LedgerKind.REVALUATION,
             Decimal(
-                value="20.00",
+                value="122.00",
             ),
             "по накладной № 00042/А",
         )
@@ -114,12 +115,12 @@ class TestRevaluationOnConfirm(InvoiceApi):
                 value=65,
             ),
             Decimal(
-                value=70,
+                value="95.50",
             ),
         )
         assert (sugar.retail_price, salt.retail_price) == (
             Decimal(
-                value=70,
+                value="95.50",
             ),
             Decimal(
                 value=36,

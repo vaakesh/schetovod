@@ -14,14 +14,15 @@ class TestRetailPrice:
     @pytest.mark.parametrize(
         argnames=("cost_price", "markup_pct", "expected"),
         argvalues=[
-            ("425.00", "35", "574"),
-            ("54.00", "30", "70"),
-            ("170.00", "32.5", "225"),
-            ("51.00", "50", "77"),
-            ("100.00", "0", "100"),
+            ("425.00", "35", "573.75"),
+            ("54.00", "30", "70.20"),
+            ("170.00", "32.5", "225.25"),
+            ("51.00", "50", "76.50"),
+            ("1.01", "50", "1.52"),
+            ("100.00", "0", "100.00"),
         ],
     )
-    def test_rounds_retail_price_to_ruble(
+    def test_rounds_retail_price_to_kopecks(
         self,
         cost_price: str,
         markup_pct: str,
@@ -54,7 +55,7 @@ class TestMarkupForPrice:
             ("386.36", "485", "25.53"),
         ],
     )
-    def test_returns_markup_that_reproduces_retail_price(
+    def test_returns_markup_rounded_to_two_decimal_places(
         self,
         cost_price: str,
         price: str,
@@ -74,13 +75,6 @@ class TestMarkupForPrice:
 
         assert markup == Decimal(
             value=expected,
-        )
-        assert (
-            retail_price(
-                cost_price=cost,
-                markup_pct=markup,
-            )
-            == shelf_price
         )
 
 

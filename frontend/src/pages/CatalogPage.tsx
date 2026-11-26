@@ -430,7 +430,7 @@ function ProductRows({
                   className="catalog-tag-box"
                   aria-label={`Ценник висит: ${product.name}`}
                   checked={product.has_price_tag}
-                  disabled={tagging === product.id}
+                  disabled={tagging === product.id || product.retail_price === null}
                   onChange={() => onTag(product)}
                 />
               </td>
@@ -520,7 +520,7 @@ export default function CatalogPage({ ask, go, cart, onCart, ordersEnabled }: Pr
 
   // a misclick must not mark a tag, both directions ask first
   async function tag(product: CatalogProduct) {
-    if (tagging !== null) {
+    if (tagging !== null || product.retail_price === null) {
       return;
     }
     const price = `${formatMoney(product.retail_price)} ₽`;
@@ -544,7 +544,7 @@ export default function CatalogPage({ ask, go, cart, onCart, ordersEnabled }: Pr
     setTagging(product.id);
     setNotice(null);
     try {
-      await markPriceTag(product.id, !product.has_price_tag, Number(product.retail_price));
+      await markPriceTag(product.id, !product.has_price_tag, product.retail_price);
       setError(null);
     } catch (reason) {
       setError(message(reason));

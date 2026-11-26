@@ -13,8 +13,8 @@ class TestSaveForm(InvoiceApi):
         draft = self.upload()
         form = draft["form"]
         form["supplier"] = {"name": "ООО «Поставщик»", "inn": INN}
-        form["lines"][0]["retail_price"] = 65
-        form["lines"][1]["retail_price"] = 40
+        form["lines"][0]["retail_price"] = "95.50"
+        form["lines"][1]["retail_price"] = "40"
 
         draft = self.save(
             draft=draft,
@@ -25,7 +25,7 @@ class TestSaveForm(InvoiceApi):
         assert [
             (line["new_product"], line["markup_pct"], line["retail_price"])
             for line in draft["lines"]
-        ] == [(True, "30.00", "65"), (True, "33.33", "40")]
+        ] == [(True, "91.00", "95.50"), (True, "33.33", "40")]
         assert draft["form"] == form
         assert (self.store.suppliers, self.store.products, self.store.aliases) == (
             {},
@@ -65,6 +65,55 @@ class TestSaveForm(InvoiceApi):
         )
         assert invoice.supplier_id is None
 
+    def test_old_draft_with_integer_rubles_reopens(self) -> None:
+        self.known_supplier()
+        draft = self.upload()
+        form = draft["form"]
+        form["lines"][0]["retail_price"] = 95
+        self.store.invoices[draft["id"]].form = form
+
+        response = self.client.get(
+            url=f"/invoice/{draft['id']}",
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["form"]["lines"][0]["retail_price"] == "95"
+
+    @pytest.mark.parametrize(
+        argnames=("second_price", "problems"),
+        argvalues=[
+            (None, []),
+            ("575.02", [(2, "у этого товара уже задана другая цена в строке 1")]),
+        ],
+    )
+    def test_same_product_at_the_same_cost_uses_one_exact_manual_price(
+        self,
+        second_price: str | None,
+        problems: list[tuple[int | None, str]],
+    ) -> None:
+        self.known_supplier()
+        draft = self.upload()
+        form = draft["form"]
+        line = form["lines"][0] | {"quantity": "1", "cost_price_total": "425.00"}
+        form["lines"] = [
+            line | {"retail_price": "575.01"},
+            line | {"line_no": 2, "retail_price": second_price},
+        ]
+
+        saved = self.save(
+            draft=draft,
+            form=form,
+        )
+
+        # both manual prices imply 35.30 percent, which would give 575.03
+        assert [item["retail_price"] for item in saved["lines"]] == ["575.01", "575.01"]
+        assert (
+            self.blocking(
+                draft=saved,
+            )
+            == problems
+        )
+
     def test_edited_lines_are_recalculated(self) -> None:
         self.known_supplier()
         draft = self.upload()
@@ -84,12 +133,12 @@ class TestSaveForm(InvoiceApi):
                 line["retail_price"],
             )
             for line in draft["lines"]
-        ] == [("60.00", "150.00", "78"), ("30.00", "25.00", "36")]
+        ] == [("60.00", "150.00", "78.00"), ("30.00", "25.00", "36.00")]
         # what the model read disagrees now, which is only worth a look
         assert draft["ready"]
         assert [issue["message"] for issue in draft["issues"]] == [
             (
-                "цена на полке меняется с 65 на 78 ₽, укажите, сколько старого товара "
+                "цена на полке меняется с 65.00 на 78.00 ₽, укажите, сколько старого товара "
                 "осталось, чтобы переоценить"
             ),
             "сумма без НДС: в накладной 125.00, по сумме строки 150.00",
@@ -137,7 +186,7 @@ class TestSaveForm(InvoiceApi):
             draft["lines"][0]["product_id"],
             draft["lines"][0]["product_name"],
             draft["lines"][0]["retail_price"],
-        ) == (sugar.id, "Сахар-песок 1 кг", "65")
+        ) == (sugar.id, "Сахар-песок 1 кг", "65.00")
         assert draft["ready"]
 
     @pytest.mark.parametrize(
@@ -256,6 +305,7 @@ class TestSaveForm(InvoiceApi):
             ),
             ("root", {"invoice_date": "2026-08-12"}, ["body", "invoice_date"]),
             ("line", {"retail_price": 0}, ["body", "lines", 0, "retail_price"]),
+            ("line", {"retail_price": "95.501"}, ["body", "lines", 0, "retail_price"]),
             ("line", {"quantity": 2}, ["body", "lines", 0, "quantity"]),
             ("root", {"status": "confirmed"}, ["body", "status"]),
         ],

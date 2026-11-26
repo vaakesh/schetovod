@@ -48,10 +48,10 @@ class Product(Base):
         ),
         nullable=False,
     )
-    # the price on the shelf, whole rubles, the old price of a revaluation
+    # the price on the shelf before a revaluation
     retail_price: Mapped[Money] = mapped_column(
         CheckConstraint(
-            sqltext="retail_price >= 0 AND retail_price = trunc(retail_price)",
+            sqltext="retail_price >= 0",
             name="retail_price",
         ),
         nullable=False,

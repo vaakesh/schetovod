@@ -7,7 +7,15 @@ from pydantic import (
 )
 
 from core.enums import LedgerKind
-from core.schema_types import FormModel, InvoiceDate, Money, OutputDate, Quantity, Text
+from core.schema_types import (
+    FormModel,
+    InvoiceDate,
+    Money,
+    OutputDate,
+    PositiveShelfPrice,
+    Quantity,
+    Text,
+)
 
 
 # the ledger input has the strict formats of the form
@@ -86,13 +94,7 @@ class RevaluationLine(FormModel):
     ]
     # counted on the shelf
     quantity: Quantity
-    # whole rubles
-    new_price: Annotated[
-        int,
-        Field(
-            gt=0,
-        ),
-    ]
+    new_price: PositiveShelfPrice
 
 
 class RevaluationCreate(FormModel):

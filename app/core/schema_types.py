@@ -100,6 +100,35 @@ Money = Annotated[
         ],
     ),
 ]
+
+
+def legacy_price_text(value: object) -> object:
+    """older clients and saved invoice forms use integer rubles"""
+    if (
+        type(
+            value,
+        )
+        is int
+    ):
+        return str(
+            value,
+        )
+    return value
+
+
+ShelfPrice = Annotated[
+    Money,
+    BeforeValidator(
+        func=legacy_price_text,
+        json_schema_input_type=str | int,
+    ),
+]
+PositiveShelfPrice = Annotated[
+    ShelfPrice,
+    Field(
+        gt=0,
+    ),
+]
 Quantity = Annotated[
     Decimal,
     Field(

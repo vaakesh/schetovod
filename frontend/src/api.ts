@@ -431,7 +431,7 @@ export function getPurchaseHistory(id: number, period: PurchasePeriod): Promise<
 export async function markPriceTag(
   id: number,
   hasPriceTag: boolean,
-  retailPrice: number,
+  retailPrice: string,
 ): Promise<void> {
   await request("PUT", `/product/${id}/price-tag`, {
     has_price_tag: hasPriceTag,

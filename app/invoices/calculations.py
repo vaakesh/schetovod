@@ -233,6 +233,8 @@ def issue_text(issue: Issue) -> str:
 def price_lines(plan: DraftPlan) -> None:
     """one markup per product: from a price the user set, else the current one"""
     markups: dict[ProductKey, tuple[Decimal, int]] = {}
+    # a two-decimal markup cannot reproduce every shelf price at the same cost
+    prices: dict[tuple[ProductKey, Decimal], tuple[Decimal, int]] = {}
     # lines with a price that cannot be used, they already have their issue
     rejected: set[int] = set()
     for line in plan.lines:
@@ -251,9 +253,7 @@ def price_lines(plan: DraftPlan) -> None:
             continue
         markup_pct = markup_for_price(
             cost_price=line.cost_price,
-            price=Decimal(
-                value=price,
-            ),
+            price=price,
         )
         # an unchanged price keeps the markup, rounding would shift it a little
         if (
@@ -265,7 +265,7 @@ def price_lines(plan: DraftPlan) -> None:
             == price
         ):
             markup_pct = line.product.markup_pct
-        if not 0 <= markup_pct <= MAX_MARKUP_PCT:
+        if price < line.cost_price or not 0 <= markup_pct <= MAX_MARKUP_PCT:
             block(
                 plan=plan,
                 message=(
@@ -278,14 +278,19 @@ def price_lines(plan: DraftPlan) -> None:
                 line.position,
             )
             continue
-        other = markups.setdefault(
+        other_markup, markup_line = markups.setdefault(
             line.key,
             (markup_pct, line.position),
         )
-        if other[0] != markup_pct:
+        other_price, price_line = prices.setdefault(
+            (line.key, line.cost_price),
+            (price, line.position),
+        )
+        if other_markup != markup_pct or other_price != price:
+            conflicting_line = markup_line if other_markup != markup_pct else price_line
             block(
                 plan=plan,
-                message=f"у этого товара уже задана другая цена в строке {other[1]}",
+                message=f"у этого товара уже задана другая цена в строке {conflicting_line}",
                 line=line.position,
             )
 
@@ -310,9 +315,16 @@ def price_lines(plan: DraftPlan) -> None:
             continue
         line.markup_pct = markup_pct
         if line.cost_price is not None:
-            line.retail_price = retail_price(
-                cost_price=line.cost_price,
-                markup_pct=markup_pct,
+            manual = prices.get(
+                (line.key, line.cost_price),
+            )
+            line.retail_price = (
+                manual[0]
+                if manual is not None
+                else retail_price(
+                    cost_price=line.cost_price,
+                    markup_pct=markup_pct,
+                )
             )
             if line.form.quantity is not None:
                 line.retail_price_total = retail_price_total(
@@ -384,8 +396,8 @@ def check_revaluation(plan: DraftPlan) -> None:
             Issue(
                 line=line.position,
                 message=(
-                    f"цена на полке меняется с {line.previous_retail_price:.0f} "
-                    f"на {line.retail_price:.0f} ₽, укажите, сколько старого товара "
+                    f"цена на полке меняется с {line.previous_retail_price:.2f} "
+                    f"на {line.retail_price:.2f} ₽, укажите, сколько старого товара "
                     "осталось, чтобы переоценить"
                 ),
                 blocking=False,

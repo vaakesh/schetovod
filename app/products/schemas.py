@@ -1,12 +1,15 @@
 from decimal import Decimal
-from typing import Annotated
 
-from pydantic import (
-    BaseModel,
-    Field,
+from pydantic import BaseModel
+
+from core.schema_types import (
+    FormModel,
+    InvoiceDate,
+    PositiveShelfPrice,
+    Quantity,
+    ShelfPrice,
+    Text,
 )
-
-from core.schema_types import FormModel, InvoiceDate, Quantity, Text
 from suppliers.schemas import SupplierSummary
 
 
@@ -51,13 +54,7 @@ class ProductRevaluation(FormModel):
 class ProductEdit(FormModel):
     # the old name stays as another spelling of the product
     name: Text
-    # whole rubles
-    retail_price: Annotated[
-        int,
-        Field(
-            gt=0,
-        ),
-    ]
+    retail_price: PositiveShelfPrice
     # None when there is no old stock, the price then changes without a ledger entry
     revaluation: ProductRevaluation | None
 
@@ -65,9 +62,4 @@ class ProductEdit(FormModel):
 class PriceTagMark(FormModel):
     has_price_tag: bool
     # the price the user saw, a tag hung for an older price is not the current one
-    retail_price: Annotated[
-        int,
-        Field(
-            ge=0,
-        ),
-    ]
+    retail_price: ShelfPrice

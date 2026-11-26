@@ -206,10 +206,10 @@ class InvoiceItem(Base):
         ),
         nullable=False,
     )
-    # unit price with markup, whole rubles
+    # unit price with markup
     retail_price: Mapped[Money] = mapped_column(
         CheckConstraint(
-            sqltext="retail_price >= 0 AND retail_price = trunc(retail_price)",
+            sqltext="retail_price >= 0",
             name="retail_price",
         ),
         nullable=False,

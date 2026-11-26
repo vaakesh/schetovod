@@ -26,12 +26,6 @@ export function toText(input: string): string | null {
   return input.trim() === "" ? null : input;
 }
 
-// whole rubles only, anything else is dropped while typing
-export function toRubles(input: string): number | null {
-  const digits = input.replace(/\D/g, "");
-  return digits === "" ? null : Number(digits);
-}
-
 // the api date is DD-MM-YYYY, a date input works with YYYY-MM-DD
 export function toInputDate(value: string | null): string {
   const match = value?.match(/^(\d{2})-(\d{2})-(\d{4})$/);

@@ -1,14 +1,23 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
 
 interface Props {
   // escape, a click on the backdrop or a cancel button
   onClose: () => void;
+  closeOnBackdrop?: boolean;
   className?: string;
   label?: string;
+  style?: CSSProperties;
   children: ReactNode;
 }
 
-export default function Modal({ onClose, className, label, children }: Props) {
+export default function Modal({
+  onClose,
+  closeOnBackdrop = true,
+  className,
+  label,
+  style,
+  children,
+}: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
 
   // a modal dialog traps the focus and closes on escape by itself
@@ -23,13 +32,14 @@ export default function Modal({ onClose, className, label, children }: Props) {
       ref={dialog}
       aria-label={label}
       className={className ? `modal ${className}` : "modal"}
+      style={style}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
       }}
       onClick={(event) => {
         // a click on the backdrop lands on the dialog itself
-        if (event.target === dialog.current) {
+        if (closeOnBackdrop && event.target === dialog.current) {
           onClose();
         }
       }}

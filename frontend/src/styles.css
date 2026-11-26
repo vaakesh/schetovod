@@ -1465,7 +1465,8 @@ button {
   background: var(--hover);
 }
 
-.product-picker .menu-meta {
+.product-picker .menu-meta,
+.catalog-picker .menu-meta {
   font-variant-numeric: tabular-nums;
 }
 
@@ -2005,6 +2006,42 @@ button {
   background: var(--overlay);
   backdrop-filter: blur(4px);
   animation: fade-in 0.18s ease-out;
+}
+
+.catalog-picker[open] {
+  position: fixed;
+  inset: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  translate: -50% -50%;
+}
+
+.catalog-picker-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.catalog-picker-tools .menu-search {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+}
+
+.catalog-picker-tools .button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--control-h);
+  padding: 0;
+}
+
+.catalog-picker .menu-results {
+  max-height: none;
+  overscroll-behavior: contain;
 }
 
 .modal-body {

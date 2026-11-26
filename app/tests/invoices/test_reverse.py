@@ -15,14 +15,15 @@ class TestReverse(InvoiceApi):
     def posted(
         self,
         revalue: bool = False,
+        retail_price: str | None = None,
     ) -> dict[str, Any]:
         """the invoice of the known supplier, the sugar may get a new price with its old stock"""
         self.known_supplier()
         draft = self.upload()
-        if revalue:
+        if revalue or retail_price is not None:
             form = draft["form"]
-            form["lines"][0]["retail_price"] = 70
-            form["lines"][0]["revalue_quantity"] = "4"
+            form["lines"][0]["retail_price"] = retail_price or "70"
+            form["lines"][0]["revalue_quantity"] = "4" if revalue else None
             draft = self.save(
                 draft=draft,
                 form=form,
@@ -98,7 +99,9 @@ class TestReverse(InvoiceApi):
         )
 
     def test_copy_is_a_ready_draft_with_the_posted_lines(self) -> None:
-        posted = self.posted()
+        posted = self.posted(
+            retail_price="95.50",
+        )
 
         result = self.reverse(
             invoice_id=posted["id"],
@@ -137,7 +140,7 @@ class TestReverse(InvoiceApi):
                     Decimal(
                         value=125,
                     ),
-                    65,
+                    "95.50",
                 ),
                 (
                     "Соль",
@@ -147,7 +150,7 @@ class TestReverse(InvoiceApi):
                     Decimal(
                         value=30,
                     ),
-                    36,
+                    "36.00",
                 ),
             ],
         )

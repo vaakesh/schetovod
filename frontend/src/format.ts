@@ -30,6 +30,29 @@ function toKopecks(value: string | null): bigint | null {
   return match ? BigInt(match[1]! + (match[2] ?? "").padEnd(2, "0")) : null;
 }
 
+export function revaluationKopecks(
+  quantity: string | null,
+  oldPrice: string | null,
+  newPrice: string | null,
+): bigint | null {
+  const units = /^(\d{1,9})(?:[.,](\d{1,3}))?$/.exec(quantity ?? "");
+  const previous = toKopecks(oldPrice);
+  const next = toKopecks(newPrice);
+  if (!units || previous === null || next === null) return null;
+
+  const thousandths = BigInt(units[1]! + (units[2] ?? "").padEnd(3, "0"));
+  const amount = thousandths * (next - previous);
+  // round each product to a kopeck before adding the lines, just as the ledger does
+  return (amount + (amount < 0n ? -500n : 500n)) / 1000n;
+}
+
+export function formatSignedKopecks(amount: bigint): string {
+  const sign = amount < 0n ? "−" : amount > 0n ? "+" : "";
+  const absolute = amount < 0n ? -amount : amount;
+  const rubles = `${absolute / 100n}.${String(absolute % 100n).padStart(2, "0")}`;
+  return sign + formatMoney(rubles);
+}
+
 export function formatQuantityFromAmount(amount: string, price: string | null): string | null {
   const total = toKopecks(amount);
   const perUnit = toKopecks(price);

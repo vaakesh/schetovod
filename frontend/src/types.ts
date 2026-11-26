@@ -90,7 +90,7 @@ export interface FormLine {
   vat_percent: string | null;
   cost_price_total: string | null;
   product_id: number | null;
-  retail_price: number | null;
+  retail_price: string | null;
   // the old stock on the shelf that takes the new price
   revalue_quantity: string | null;
 }
@@ -623,8 +623,7 @@ export interface TrafficReport {
 export interface RevaluationLine {
   product_id: number;
   quantity: string;
-  // whole rubles
-  new_price: number;
+  new_price: string;
 }
 
 export interface RevaluationCreate {
@@ -643,7 +642,7 @@ export interface ProductRevaluation {
 export interface ProductEdit {
   // the old name stays as another spelling of the product
   name: string;
-  retail_price: number;
+  retail_price: string;
   // null when there is no old stock, the price then changes without a ledger entry
   revaluation: ProductRevaluation | null;
 }

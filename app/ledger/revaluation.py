@@ -55,9 +55,7 @@ class RevaluationService:
                 invalid(
                     detail=f"Товар «{product.name}» указан дважды",
                 )
-            new_price = Decimal(
-                value=line.new_price,
-            )
+            new_price = line.new_price
             if new_price == product.retail_price:
                 invalid(
                     detail=f"Цена товара «{product.name}» уже {line.new_price} ₽",

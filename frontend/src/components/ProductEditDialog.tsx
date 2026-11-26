@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 
 import { deleteProductAlias, editProduct, getBalance } from "../api";
-import { formatNumber, formatSigned } from "../format";
+import { formatNumber, formatSignedKopecks, revaluationKopecks } from "../format";
 import {
   fromInputDate,
   QUANTITY,
   toDecimal,
   toInputDate,
   todayInput,
-  toRubles,
   toText,
+  trimDecimal,
 } from "../form";
 import { message } from "../message";
 import type { CatalogAlias, CatalogProduct, LedgerPosted } from "../types";
 import type { Ask } from "./ConfirmDialog";
 import Modal from "./Modal";
+import RetailPriceInput from "./RetailPriceInput";
 
 interface Props {
   product: CatalogProduct;
@@ -26,10 +27,10 @@ interface Props {
 }
 
 export default function ProductEditDialog({ product, ask, onClose, onAliasRemoved, onSaved }: Props) {
-  const [original] = useState(() => ({ name: product.name, price: Number(product.retail_price) }));
-  const oldPrice = original.price;
+  const [original] = useState(() => ({ name: product.name, price: trimDecimal(product.retail_price) }));
+  const oldPrice = Number(original.price);
   const [name, setName] = useState(original.name);
-  const [price, setPrice] = useState<number | null>(oldPrice);
+  const [price, setPrice] = useState(original.price);
   const [quantity, setQuantity] = useState<string | null>(null);
   const [date, setDate] = useState(todayInput);
   const [closedOn, setClosedOn] = useState<string | null>(null);
@@ -53,18 +54,18 @@ export default function ProductEditDialog({ product, ask, onClose, onAliasRemove
   }, []);
 
   const nameChanged = name.trim() !== original.name;
-  const priceChanged = price !== null && price !== oldPrice;
+  const priceChanged = price !== null && Number(price) !== oldPrice;
   // no old stock on the shelf, the price changes without a ledger entry
   const noStock = quantity === null || (QUANTITY.test(quantity) && Number(quantity) === 0);
   const revalue = priceChanged && !noStock;
   const valid =
     name.trim() !== "" &&
     price !== null &&
-    price > 0 &&
+    Number(price) > 0 &&
     (nameChanged || priceChanged) &&
     (!revalue || (quantity !== null && QUANTITY.test(quantity) && fromInputDate(date) !== null));
   const amount =
-    revalue && valid && price !== null ? Number(quantity) * (price - oldPrice) : null;
+    revalue && valid ? revaluationKopecks(quantity, original.price, price) : null;
 
   async function submit() {
     if (!valid || busy || deleting || price === null) {
@@ -152,12 +153,11 @@ export default function ProductEditDialog({ product, ask, onClose, onAliasRemove
             <div className="field-row">
               <label className="field">
                 <span className="field-label">Цена, ₽ (была {formatNumber(oldPrice)})</span>
-                <input
+                <RetailPriceInput
                   className="input"
-                  inputMode="numeric"
                   required
-                  value={price ?? ""}
-                  onChange={(event) => setPrice(toRubles(event.target.value))}
+                  value={price}
+                  onChange={setPrice}
                 />
               </label>
               {priceChanged && (
@@ -209,7 +209,7 @@ export default function ProductEditDialog({ product, ask, onClose, onAliasRemove
                 <div>
                   <dt>Остаток изменится на</dt>
                   <dd>
-                    {!revalue ? "не изменится" : amount === null ? "—" : `${formatSigned(amount)} ₽`}
+                    {!revalue ? "не изменится" : amount === null ? "—" : `${formatSignedKopecks(amount)} ₽`}
                   </dd>
                 </div>
                 <div>

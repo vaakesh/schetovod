@@ -1,11 +1,10 @@
 import { Fragment, useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import { wordDiff } from "../diff";
-import { formatMoney, formatNumber, formatSigned } from "../format";
+import { formatMoney, formatNumber, formatSigned, formatSignedKopecks, revaluationKopecks } from "../format";
 import {
   emptyLine,
   toDecimal,
-  toRubles,
   toText,
   trimDecimal,
   updateLine,
@@ -21,6 +20,7 @@ import type {
 } from "../types";
 import { IssueItem } from "./IssuesList";
 import ProductPicker from "./ProductPicker";
+import RetailPriceInput from "./RetailPriceInput";
 import SlidingThumb from "./SlidingThumb";
 import TotalsBlock from "./TotalsBlock";
 
@@ -45,9 +45,9 @@ type View = "full" | "prices";
 // the storage may be unavailable, the view then is not remembered
 function savedView(): View {
   try {
-    return window.localStorage.getItem(VIEW_KEY) === "prices" ? "prices" : "full";
+    return window.localStorage.getItem(VIEW_KEY) === "full" ? "full" : "prices";
   } catch {
-    return "full";
+    return "prices";
   }
 }
 
@@ -60,12 +60,11 @@ function saveView(view: View) {
 }
 
 interface NameProps {
-  index: number;
   value: string | null;
   onChange: (value: string | null) => void;
 }
 
-function NameField({ index, value, onChange }: NameProps) {
+function NameField({ value, onChange }: NameProps) {
   const field = useRef<HTMLTextAreaElement>(null);
   const resize = useCallback(() => {
     const element = field.current;
@@ -107,7 +106,6 @@ function NameField({ index, value, onChange }: NameProps) {
     <textarea
       ref={field}
       className="cell cell-name"
-      data-name-index={index}
       rows={1}
       value={value ?? ""}
       placeholder="Название"
@@ -122,7 +120,7 @@ interface CatalogProps {
   // the name of a product picked since the last save, the draft does not know it yet
   pickedName: string | undefined;
   canPick: boolean;
-  onOpen: (anchor: HTMLElement) => void;
+  onOpen: () => void;
   onUnlink: () => void;
 }
 
@@ -159,7 +157,8 @@ function LineCatalog({ line, form, pickedName, canPick, onOpen, onUnlink }: Cata
         <button
           type="button"
           className={form.name === null ? "line-pick always" : "line-pick"}
-          onClick={(event) => onOpen(event.currentTarget.closest("td") ?? event.currentTarget)}
+          aria-haspopup="dialog"
+          onClick={onOpen}
         >
           {form.product_id !== null ? "другой товар" : "выбрать из каталога"}
         </button>
@@ -260,10 +259,7 @@ function RevalueField({ line, form, onChange }: RevalueProps) {
   const previous = line?.previous_retail_price ?? null;
   const price = line?.retail_price ?? null;
   const quantity = form.revalue_quantity;
-  const amount =
-    previous !== null && price !== null && quantity !== null && !Number.isNaN(Number(quantity))
-      ? Number(quantity) * (Number(price) - Number(previous))
-      : null;
+  const amount = revaluationKopecks(quantity, previous, price);
   return (
     <div className="revalue">
       <span className="revalue-text">
@@ -287,7 +283,7 @@ function RevalueField({ line, form, onChange }: RevalueProps) {
         {form.unit && <span className="revalue-unit">{form.unit}</span>}
       </label>
       {amount !== null ? (
-        <span className="revalue-amount">переоценка {formatSigned(amount)} ₽</span>
+        <span className="revalue-amount">переоценка {formatSignedKopecks(amount)} ₽</span>
       ) : (
         <span className="revalue-hint">пусто, если старого товара нет</span>
       )}
@@ -297,12 +293,11 @@ function RevalueField({ line, form, onChange }: RevalueProps) {
 
 export default function LinesTable({ draft, form, dirty, update }: Props) {
   const supplierId = form.supplier !== null && "id" in form.supplier ? form.supplier.id : null;
-  const [picker, setPicker] = useState<{ lineNo: number; anchor: HTMLElement } | null>(null);
+  const [pickerLine, setPickerLine] = useState<number | null>(null);
   const [pickedNames, setPickedNames] = useState<Record<number, string>>({});
   const [view, setView] = useState<View>(savedView);
   // the pinned name column gets its edge only once the table is scrolled sideways
   const [scrolled, setScrolled] = useState(false);
-  const closePicker = useCallback(() => setPicker(null), []);
   const linesByNumber = new Map(draft.lines.map((line) => [line.line, line]));
   const full = view === "full";
   const columns = full ? COLUMNS : COLUMNS - PURCHASE_DETAIL_COLUMNS;
@@ -329,7 +324,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
           : line,
       ),
     }));
-    setPicker(null);
+    setPickerLine(null);
   }
 
   // the index of the next line with a new product in the given direction, -1 when there is none
@@ -367,25 +362,16 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
     }
   }
 
-  function addLine(button: HTMLElement) {
-    const index = form.lines.length;
+  function addLine() {
     // reserve the source numbers even when their rows have been removed
     const sourceMax =
       Math.max(0, ...draft.extraction.items.map((item) => Number(item.line_no ?? 0))) +
       draft.extraction.items.filter((item) => item.line_no === null).length;
     const lineNo = Math.max(sourceMax, ...form.lines.map((line) => line.line_no)) + 1;
     update((current) => ({ ...current, lines: [...current.lines, emptyLine(lineNo)] }));
-    if (supplierId === null) {
-      return;
+    if (supplierId !== null) {
+      setPickerLine(lineNo);
     }
-    // a line added by hand starts from the catalog, opened under the new row once it is rendered
-    const table = button.closest("table");
-    requestAnimationFrame(() => {
-      const cell = table?.querySelector(`[data-name-index="${index}"]`)?.closest("td");
-      if (cell) {
-        setPicker({ lineNo, anchor: cell });
-      }
-    });
   }
 
   return (
@@ -480,7 +466,6 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                     <td className="num index sticky-no">{position}</td>
                     <td className="line-name sticky-name">
                       <NameField
-                        index={index}
                         value={formLine.name}
                         onChange={(name) => updateLine(update, index, { name })}
                       />
@@ -491,7 +476,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                           formLine.product_id !== null ? pickedNames[formLine.product_id] : undefined
                         }
                         canPick={supplierId !== null}
-                        onOpen={(anchor) => setPicker({ lineNo: position, anchor })}
+                        onOpen={() => setPickerLine(position)}
                         onUnlink={() => updateLine(update, index, { product_id: null })}
                       />
                       {formLine.product_id === null && formLine.name && line?.similar.length ? (
@@ -526,21 +511,18 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                       />
                     </td>
                     <td className="num group-start retail">
-                      <input
+                      <RetailPriceInput
                         className={
                           line?.new_product && formLine.retail_price === null
                             ? "cell cell-num cell-required"
                             : "cell cell-num"
                         }
-                        inputMode="numeric"
                         enterKeyHint={newProductIndex(index, 1) === -1 ? "done" : "next"}
                         data-retail-index={index}
                         // empty means the price by the current markup
                         placeholder={line?.retail_price ? formatNumber(line.retail_price) : "₽"}
-                        value={formLine.retail_price ?? ""}
-                        onChange={(event) =>
-                          updateLine(update, index, { retail_price: toRubles(event.target.value) })
-                        }
+                        value={formLine.retail_price}
+                        onChange={(price) => updateLine(update, index, { retail_price: price })}
                         onKeyDown={(event) => jumpToNewProduct(event, index)}
                       />
                     </td>
@@ -644,7 +626,7 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
                 <button
                   type="button"
                   className="add-line"
-                  onClick={(event) => addLine(event.currentTarget)}
+                  onClick={addLine}
                 >
                   + Строка
                 </button>
@@ -654,14 +636,13 @@ export default function LinesTable({ draft, form, dirty, update }: Props) {
           <TotalsBlock draft={draft} full={full} />
         </table>
       </div>
-      {picker &&
+      {pickerLine !== null &&
         supplierId !== null &&
-        form.lines.some((line) => line.line_no === picker.lineNo) && (
+        form.lines.some((line) => line.line_no === pickerLine) && (
           <ProductPicker
             supplierId={supplierId}
-            anchor={picker.anchor}
-            onPick={(product) => pick(picker.lineNo, product)}
-            onClose={closePicker}
+            onPick={(product) => pick(pickerLine, product)}
+            onClose={() => setPickerLine(null)}
           />
         )}
     </section>

@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { formatMoney, formatQuantityFromAmount } from "../src/format.ts";
+import { formatMoney, formatQuantityFromAmount, formatSignedKopecks, revaluationKopecks } from "../src/format.ts";
+
+test("revaluations round each product to the nearest kopeck before summing", () => {
+  const first = revaluationKopecks("0.5", "95.49", "95.50");
+  const second = revaluationKopecks("0.5", "12.00", "12.01");
+  assert.equal(first + second, 2n);
+  assert.equal(formatSignedKopecks(first + second), "+0,02");
+  assert.equal(formatSignedKopecks(revaluationKopecks("0.5", "95.50", "95.49")), "−0,01");
+  assert.equal(formatSignedKopecks(revaluationKopecks("0.499", "95.50", "95.49")), "0,00");
+  assert.equal(revaluationKopecks("0,", "95.50", "95.49"), null);
+});
 
 test("large stocktake totals retain their kopecks", () => {
   assert.equal(formatMoney("9007199254740993.01").replace(/\s/g, ""), "9007199254740993,01");

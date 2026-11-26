@@ -260,14 +260,14 @@ class RevaluationItem(Base):
     )
     old_price: Mapped[Money] = mapped_column(
         CheckConstraint(
-            sqltext="old_price >= 0 AND old_price = trunc(old_price)",
+            sqltext="old_price >= 0",
             name="old_price",
         ),
         nullable=False,
     )
     new_price: Mapped[Money] = mapped_column(
         CheckConstraint(
-            sqltext="new_price >= 0 AND new_price = trunc(new_price)",
+            sqltext="new_price >= 0",
             name="new_price",
         ),
         nullable=False,

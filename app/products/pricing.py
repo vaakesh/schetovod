@@ -6,9 +6,6 @@ from difflib import SequenceMatcher
 
 from products.models import Product
 
-RUBLE = Decimal(
-    value=1,
-)
 KOPECK = Decimal(
     value="0.01",
 )
@@ -69,9 +66,9 @@ def retail_price(
     cost_price: Decimal,
     markup_pct: Decimal,
 ) -> Decimal:
-    """marked-up price rounded to rubles, half up"""
+    """marked-up price rounded to the nearest kopeck, half up"""
     return (cost_price * (1 + markup_pct / 100)).quantize(
-        RUBLE,
+        KOPECK,
         rounding=ROUND_HALF_UP,
     )
 

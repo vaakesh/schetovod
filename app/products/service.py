@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -128,9 +127,7 @@ class ProductService:
         product = await self._get_product(
             product_id=product_id,
         )
-        new_price = Decimal(
-            value=payload.retail_price,
-        )
+        new_price = payload.retail_price
         if payload.revaluation is not None and new_price == product.retail_price:
             invalid(
                 detail=f"Цена уже {payload.retail_price} ₽, переоценивать нечего",

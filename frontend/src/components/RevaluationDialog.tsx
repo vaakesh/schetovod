@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 
 import { addRevaluation, getBalance, searchProducts, searchSuppliers } from "../api";
-import { formatNumber, formatSigned } from "../format";
-import { fromInputDate, toDecimal, toInputDate, todayInput, toRubles, toText } from "../form";
+import { formatNumber, formatSignedKopecks, revaluationKopecks } from "../format";
+import { fromInputDate, toDecimal, toInputDate, todayInput, toText } from "../form";
 import { message } from "../message";
 import type { ProductSummary, SupplierSummary } from "../types";
 import Modal from "./Modal";
+import RetailPriceInput from "./RetailPriceInput";
 
 interface Props {
   onClose: () => void;
@@ -15,21 +16,12 @@ interface Props {
 interface Line {
   product: ProductSummary;
   quantity: string | null;
-  price: number | null;
+  price: string | null;
 }
 
 const SEARCH_DELAY_MS = 250;
 // the api pages are at most this long, a shop has fewer suppliers
 const SUPPLIERS_LIMIT = 200;
-// pieces or kilograms with grams, the api rejects anything else
-const QUANTITY = /^\d+(\.\d{1,3})?$/;
-
-function lineAmount(line: Line): number | null {
-  if (line.quantity === null || !QUANTITY.test(line.quantity) || line.price === null) {
-    return null;
-  }
-  return Number(line.quantity) * (line.price - Number(line.product.retail_price));
-}
 
 export default function RevaluationDialog({ onClose, onPosted }: Props) {
   const [date, setDate] = useState(todayInput);
@@ -80,12 +72,14 @@ export default function RevaluationDialog({ onClose, onPosted }: Props) {
   }, [supplierId, search]);
 
   const chosen = new Set(lines.map((line) => line.product.id));
-  const amounts = lines.map(lineAmount);
+  const amounts = lines.map((line) =>
+    revaluationKopecks(line.quantity, line.product.retail_price, line.price),
+  );
   const valid =
     lines.length > 0 &&
     amounts.every((amount) => amount !== null) &&
-    lines.every((line) => line.price !== null && line.price !== Number(line.product.retail_price));
-  const total = amounts.reduce<number>((sum, amount) => sum + (amount ?? 0), 0);
+    lines.every((line) => Number(line.price) > 0 && Number(line.price) !== Number(line.product.retail_price));
+  const total = amounts.reduce<bigint>((sum, amount) => sum + (amount ?? 0n), 0n);
 
   function change(index: number, changes: Partial<Line>) {
     setLines((current) =>
@@ -106,7 +100,7 @@ export default function RevaluationDialog({ onClose, onPosted }: Props) {
         lines: lines.map((line) => ({
           product_id: line.product.id,
           quantity: line.quantity ?? "",
-          new_price: line.price ?? 0,
+          new_price: line.price ?? "",
         })),
       });
       onPosted();
@@ -233,15 +227,14 @@ export default function RevaluationDialog({ onClose, onPosted }: Props) {
                           />
                         </td>
                         <td>
-                          <input
+                          <RetailPriceInput
                             className="cell cell-num cell-short"
-                            inputMode="numeric"
                             placeholder="₽"
-                            value={line.price ?? ""}
-                            onChange={(event) => change(index, { price: toRubles(event.target.value) })}
+                            value={line.price}
+                            onChange={(price) => change(index, { price })}
                           />
                         </td>
-                        <td className="num nowrap">{amount === null ? "—" : formatSigned(amount)}</td>
+                        <td className="num nowrap">{amount === null ? "—" : formatSignedKopecks(amount)}</td>
                         <td>
                           <button
                             type="button"
@@ -267,7 +260,7 @@ export default function RevaluationDialog({ onClose, onPosted }: Props) {
               <dl className="stocktake-preview">
                 <div>
                   <dt>Остаток изменится на</dt>
-                  <dd>{valid ? `${formatSigned(total)} ₽` : "—"}</dd>
+                  <dd>{valid ? `${formatSignedKopecks(total)} ₽` : "—"}</dd>
                 </div>
                 <div>
                   <dt>Товаров</dt>

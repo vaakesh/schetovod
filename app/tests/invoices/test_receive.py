@@ -139,7 +139,7 @@ class TestReceiveInvoice(InvoiceApi):
         assert [
             (line["product_id"], line["markup_pct"], line["retail_price"])
             for line in draft["lines"]
-        ] == [(sugar.id, "30", "65"), (salt.id, "20", "36")]
+        ] == [(sugar.id, "30", "65.00"), (salt.id, "20", "36.00")]
         assert draft["totals"] == {
             "base_total": "155.00",
             "cost_total": "155.00",

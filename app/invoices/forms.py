@@ -128,8 +128,8 @@ def posted_form(
                     ),
                     "product_id": item.product_id,
                     # the shelf price the invoice set, so the markup is not taken anew
-                    "retail_price": int(
-                        item.retail_price,
+                    "retail_price": _decimal_text(
+                        value=item.retail_price,
                     ),
                     "revalue_quantity": None,
                 }
