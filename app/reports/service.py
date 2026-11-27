@@ -140,6 +140,8 @@ class ReportService:
         self,
         date_from: date,
         date_to: date,
+        *,
+        combine_invoices: bool,
         sort: LedgerSort | None = None,
     ) -> PeriodReport:
         """the period day by day with the invoices and what is owed for them"""
@@ -185,7 +187,7 @@ class ReportService:
                     ),
                     cost_totals=cost_totals,
                     paid_totals=paid_totals,
-                    combine_invoices=sort != LedgerSort.NUMBER,
+                    combine_invoices=combine_invoices,
                 )
                 for day, day_rows in groupby(
                     rows,

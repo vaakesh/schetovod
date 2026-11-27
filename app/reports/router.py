@@ -89,6 +89,7 @@ async def ledger_period_report(
         date_from=date_from,
         date_to=date_to,
         sort=sort,
+        combine_invoices=sort != LedgerSort.NUMBER,
     )
 
 
@@ -113,6 +114,7 @@ async def ledger_report_pdf(
         date_from=date_from,
         date_to=date_to,
         sort=sort,
+        combine_invoices=True,
     )
     filename = report_pdf_filename(
         report=report,

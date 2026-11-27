@@ -406,6 +406,14 @@ class TestPeriodReport(LedgerApi):
             [stock_in] = page.search_for(
                 text="приход товара",
             )
+            text = page.get_text()
+            assert (
+                text.splitlines().count(
+                    "накладные",
+                )
+                == 1
+            )
+            assert "+1 042,00\nнакладные" in text
             assert (deposit.y0 < count.y0) == (sort == "kind")
             assert (stock_in.y0 < revalue.y0) == (sort == "kind")
 
